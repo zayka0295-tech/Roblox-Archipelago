@@ -1,0 +1,4 @@
+# Скрипты всегда с LF, как в Studio; модели — бинарные
+* text=auto eol=lf
+*.rbxm binary
+*.rbxl binary
