@@ -12,6 +12,9 @@ local LeaderboardService = {}
 
 local global = {}   -- [userId] = kills (из DataStore)
 local offline = {}  -- [userId] = kills ушедших с этого сервера игроков
+-- [userId] = последнее известное число убийств игрока на сервере. При выходе DataService может выгрузить профиль
+-- раньше, чем сработает наш PlayerRemoving (порядок обработчиков не гарантирован), — тогда берём отсюда
+local seen = {}
 local names = {}
 local current = {}
 local lastKey = ""
@@ -128,11 +131,18 @@ function LeaderboardService.init()
 		return current
 	end
 
-	DataService.StatChanged.Event:Connect(function(_, field)
-		if field == "Kills" then broadcast(false) end
+	DataService.Loaded.Event:Connect(function(p)
+		seen[p.UserId] = DataService.get(p, "Kills")
+	end)
+	DataService.StatChanged.Event:Connect(function(p, field, value)
+		if field == "Kills" then
+			seen[p.UserId] = value
+			broadcast(false)
+		end
 	end)
 	Players.PlayerRemoving:Connect(function(p)
-		local k = DataService.get(p, "Kills")
+		local k = DataService.get(p, "Kills") or seen[p.UserId]
+		seen[p.UserId] = nil
 		if k then offline[p.UserId] = k end
 		names[p.UserId] = names[p.UserId] or p.DisplayName
 		task.defer(broadcast, false)
