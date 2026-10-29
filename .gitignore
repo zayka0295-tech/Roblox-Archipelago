@@ -1,0 +1,17 @@
+# Видео и рендеры для промо — большие, в git не нужны
+*.mp4
+*.mov
+render*.py
+promo/
+rank-screens/
+vip/
+*_donate.png
+
+# Файлы места целиком (сохраняются в Roblox, не в git)
+*.rbxl
+*.rbxlx
+*.lock
+
+# Служебное
+.claude/
+sourcemap.json

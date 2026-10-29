@@ -1,0 +1,115 @@
+-- Мини-модели техники для меню ангара и верфи (ViewportFrame на клиенте): копии шаблонов
+-- из ServerStorage без скриптов, связей и света — в ReplicatedStorage.VehiclePreviews[тип].
+-- Исключение — Island (карточка BASE в выборе точки появления): настоящий остров — Terrain, который
+-- ViewportFrame не показывает, поэтому строим игрушечную базу из деталей (флаг — TeamPaint, клиент красит).
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
+local Config = require(ReplicatedStorage.Config.GameConfig)
+
+local PreviewService = {}
+
+-- что оставляем: детали и их внешний вид
+local KEEP = {"BasePart", "Model", "Folder", "DataModelMesh", "Decal", "SurfaceAppearance"}
+local function keep(d)
+	for _, c in ipairs(KEEP) do
+		if d:IsA(c) then return true end
+	end
+	return false
+end
+
+local function strip(template, name)
+	local m = template:Clone()
+	m.Name = name
+	local desc = m:GetDescendants()
+	for i = #desc, 1, -1 do
+		local d = desc[i]
+		if d.Parent and not keep(d) then d:Destroy() end
+	end
+	for _, d in ipairs(m:GetDescendants()) do
+		if d:IsA("BasePart") then
+			d.Anchored = true
+			d.CanCollide = false
+			d.CanQuery = false
+			d.CanTouch = false
+		end
+	end
+	return m
+end
+
+-- мини-остров базы: вода, песок, трава, полоса с самолётом, ангар, вышка, причал, деревья, флаг
+local function buildIsland()
+	local m = Instance.new("Model")
+	m.Name = "Island"
+	local function p(props, teamPaint)
+		local x = Instance.new("Part")
+		x.Anchored, x.CanCollide, x.CanQuery, x.CanTouch = true, false, false, false
+		x.TopSurface, x.BottomSurface = Enum.SurfaceType.Smooth, Enum.SurfaceType.Smooth
+		x.Material = Enum.Material.SmoothPlastic
+		for k, v in pairs(props) do x[k] = v end
+		if teamPaint then x:SetAttribute("TeamPaint", true) end
+		x.Parent = m
+		return x
+	end
+	local up = CFrame.Angles(0, 0, math.rad(90)) -- цилиндр осью вверх
+	local function disc(name, y, h, d, color)
+		return p({Name = name, Shape = Enum.PartType.Cylinder, Size = Vector3.new(h, d, d), CFrame = CFrame.new(0, y, 0) * up, Color = color})
+	end
+	disc("Water", -1, 1, 120, Color3.fromRGB(40, 110, 170))
+	disc("Shallows", -0.6, 1, 92, Color3.fromRGB(70, 170, 200))
+	disc("Sand", 0, 2, 80, Color3.fromRGB(226, 205, 150))
+	disc("Grass", 0.6, 2, 70, Color3.fromRGB(96, 160, 72))
+	local top = 1.6
+	local grey = Color3.fromRGB(200, 205, 215)
+	-- взлётная полоса с разметкой и самолётом
+	p({Name = "Runway", Size = Vector3.new(10, 0.3, 54), CFrame = CFrame.new(-12, top + 0.15, 2), Color = Color3.fromRGB(58, 62, 70)})
+	for i = -4, 4 do
+		p({Name = "Stripe", Size = Vector3.new(0.8, 0.32, 3), CFrame = CFrame.new(-12, top + 0.17, 2 + i * 5.5), Color = Color3.new(1, 1, 1)})
+	end
+	local jet = CFrame.new(-12, top + 1.2, 14)
+	p({Name = "PlaneBody", Size = Vector3.new(1.4, 1.2, 7), CFrame = jet, Color = grey})
+	p({Name = "PlaneWing", Size = Vector3.new(9, 0.3, 2), CFrame = jet * CFrame.new(0, 0, 0.5), Color = grey}, true)
+	p({Name = "PlaneTail", Size = Vector3.new(3.5, 0.3, 1.2), CFrame = jet * CFrame.new(0, 0, 3), Color = grey})
+	p({Name = "PlaneFin", Size = Vector3.new(0.3, 1.8, 1.2), CFrame = jet * CFrame.new(0, 1, 3), Color = grey}, true)
+	-- ангар с полукруглой крышей
+	p({Name = "Hangar", Size = Vector3.new(12, 5, 10), CFrame = CFrame.new(4, top + 2.5, -12), Color = Color3.fromRGB(150, 156, 166)})
+	p({Name = "HangarRoof", Shape = Enum.PartType.Cylinder, Size = Vector3.new(10.4, 12, 12), CFrame = CFrame.new(4, top + 5, -12) * CFrame.Angles(0, math.rad(90), 0), Color = Color3.fromRGB(120, 126, 138)})
+	p({Name = "HangarDoor", Size = Vector3.new(8, 4.4, 0.3), CFrame = CFrame.new(4, top + 2.2, -6.9), Color = Color3.fromRGB(60, 64, 72)})
+	p({Name = "HangarStripe", Size = Vector3.new(12.2, 1, 10.2), CFrame = CFrame.new(4, top + 4, -12), Color = Color3.fromRGB(200, 200, 200)}, true)
+	-- диспетчерская вышка
+	p({Name = "Tower", Shape = Enum.PartType.Cylinder, Size = Vector3.new(12, 3, 3), CFrame = CFrame.new(16, top + 6, -2) * up, Color = Color3.fromRGB(225, 225, 225)})
+	p({Name = "TowerCab", Shape = Enum.PartType.Cylinder, Size = Vector3.new(2.6, 5.6, 5.6), CFrame = CFrame.new(16, top + 12.6, -2) * up, Color = Color3.fromRGB(90, 180, 230), Material = Enum.Material.Glass, Transparency = 0.15})
+	p({Name = "TowerRoof", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.8, 6.4, 6.4), CFrame = CFrame.new(16, top + 14.3, -2) * up, Color = Color3.fromRGB(70, 74, 82)})
+	-- склады
+	p({Name = "Depot", Size = Vector3.new(6, 3, 5), CFrame = CFrame.new(12, top + 1.5, 12), Color = Color3.fromRGB(176, 140, 96)})
+	p({Name = "Depot2", Size = Vector3.new(4, 4, 4), CFrame = CFrame.new(19, top + 2, 10), Color = Color3.fromRGB(110, 120, 96)})
+	-- причал
+	p({Name = "Dock", Size = Vector3.new(4, 0.6, 18), CFrame = CFrame.new(22, 0.5, 30) * CFrame.Angles(0, math.rad(-35), 0), Color = Color3.fromRGB(130, 96, 60), Material = Enum.Material.WoodPlanks})
+	-- деревья
+	for _, t in ipairs({{-26, -16}, {-22, -24}, {24, -18}, {28, 4}, {-28, 14}, {-2, 26}, {6, 28}}) do
+		p({Name = "Trunk", Size = Vector3.new(0.8, 4, 0.8), CFrame = CFrame.new(t[1], top + 2, t[2]), Color = Color3.fromRGB(110, 76, 44)})
+		p({Name = "Leaves", Shape = Enum.PartType.Ball, Size = Vector3.new(4.5, 4.5, 4.5), CFrame = CFrame.new(t[1], top + 5, t[2]), Color = Color3.fromRGB(60, 130, 56)})
+	end
+	-- флаг команды
+	p({Name = "FlagPole", Size = Vector3.new(0.4, 12, 0.4), CFrame = CFrame.new(-2, top + 6, -2), Color = Color3.fromRGB(230, 230, 230)})
+	p({Name = "Flag", Size = Vector3.new(0.2, 3, 5), CFrame = CFrame.new(-2, top + 10.5, 0.6), Color = Color3.fromRGB(200, 200, 200)}, true)
+	return m
+end
+
+function PreviewService.init()
+	local folder = Instance.new("Folder")
+	folder.Name = "VehiclePreviews"
+	local sources = {Carrier = ServerStorage.Ships:FindFirstChild("AircraftCarrier")}
+	for kind, P in pairs(Config.Planes) do
+		sources[kind] = ServerStorage.Vehicles:FindFirstChild(P.Model or kind)
+	end
+	for kind in pairs(Config.Ships) do
+		sources[kind] = ServerStorage.Ships:FindFirstChild(kind)
+	end
+	for kind, template in pairs(sources) do
+		if template then strip(template, kind).Parent = folder end
+	end
+	buildIsland().Parent = folder
+	folder.Parent = ReplicatedStorage
+end
+
+return PreviewService

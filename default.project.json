@@ -1,0 +1,39 @@
+{
+  "name": "Archipelago",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": {
+      "$path": "src/ServerScriptService",
+      "$ignoreUnknownInstances": true
+    },
+    "ReplicatedStorage": {
+      "$ignoreUnknownInstances": true,
+      "Config": {
+        "$path": "src/ReplicatedStorage/Config",
+        "$ignoreUnknownInstances": true
+      },
+      "Shared": {
+        "$path": "src/ReplicatedStorage/Shared",
+        "$ignoreUnknownInstances": true
+      }
+    },
+    "ReplicatedFirst": {
+      "$path": "src/ReplicatedFirst",
+      "$ignoreUnknownInstances": true
+    },
+    "StarterPlayer": {
+      "$ignoreUnknownInstances": true,
+      "StarterPlayerScripts": {
+        "$path": "src/StarterPlayer/StarterPlayerScripts",
+        "$ignoreUnknownInstances": true
+      }
+    },
+    "ServerStorage": {
+      "$ignoreUnknownInstances": true,
+      "Tools": {
+        "$path": "src/ServerStorage/Tools",
+        "$ignoreUnknownInstances": true
+      }
+    }
+  }
+}
