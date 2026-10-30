@@ -46,8 +46,10 @@ return function(ctx)
 	local frame = UI.new("Frame", {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 12), Size = UDim2.fromOffset(250, 92), BackgroundTransparency = 1}, hudGui)
 	UI.scale(frame)
 
+	-- на телефоне кнопка ближе к правому краю и к панели островов (так же сдвинута кнопка ранга в RankUI)
 	local btn = circle(UI.new("TextButton", {
-		Name = "SpinButton", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 1, 12), Size = UDim2.fromOffset(66, 66),
+		Name = "SpinButton", AnchorPoint = Vector2.new(1, 0), Size = UDim2.fromOffset(66, 66),
+		Position = UI.touchOnly and UDim2.new(1, 8, 1, 6) or UDim2.new(1, -6, 1, 12),
 		Text = "", AutoButtonColor = false, BackgroundColor3 = Color3.new(1, 1, 1),
 	}, frame))
 	local btnGrad = UI.new("UIGradient", {Color = ColorSequence.new({

@@ -32,8 +32,11 @@ return function(ctx)
 	local hudGui = UI.screen("RankButton", 6)
 	local frame = UI.new("Frame", {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 12), Size = UDim2.fromOffset(250, 92), BackgroundTransparency = 1}, hudGui)
 	UI.scale(frame)
+	-- на телефоне — ближе к краю и вплотную под рулеткой (её позиция в DailySpinUI)
+	local btnX, btnY = -6, 122
+	if UI.touchOnly then btnX, btnY = 8, 96 end
 	local btn = circle(UI.new("TextButton", {
-		Name = "RankButton", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 1, 122), Size = UDim2.fromOffset(66, 66),
+		Name = "RankButton", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, btnX, 1, btnY), Size = UDim2.fromOffset(66, 66),
 		Text = "", AutoButtonColor = false, BackgroundColor3 = T.Panel2,
 	}, frame))
 	local btnStroke = UI.new("UIStroke", {Color = T.Line, Thickness = 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border}, btn)
@@ -54,7 +57,7 @@ return function(ctx)
 	-- всплывающее «+N XP» слева от кнопки
 	local function floatXP(n, reason)
 		local l = UI.label(frame, ("+%d XP"):format(n) .. (reason and ("  ·  " .. reason) or ""), {
-			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -84, 1, 155), Size = UDim2.fromOffset(260, 20),
+			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, btnX - 78, 1, btnY + 33), Size = UDim2.fromOffset(260, 20),
 			TextSize = 15, TextColor3 = GOLD, TextStrokeTransparency = 0.35, TextXAlignment = Enum.TextXAlignment.Right,
 		})
 		local info = TweenInfo.new(1.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
