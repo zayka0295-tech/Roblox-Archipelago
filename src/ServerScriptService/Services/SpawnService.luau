@@ -109,6 +109,7 @@ local function onCharacter(player, char)
 		char:PivotTo(target)
 	end
 	if player.Character ~= char then return end
+	char:SetAttribute("Placed", true) -- клиент (SpawnFade) держит экран тёмным до этого момента
 	player:SetAttribute("SpawnedAt", kind)
 
 	local devSpeed = Config.Dev and Config.Dev.StudioWalkSpeed or 0
