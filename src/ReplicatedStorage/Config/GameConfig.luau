@@ -246,7 +246,9 @@ Config.DailySpin = {
 }
 
 Config.ShipOrder = {"Carrier", "Battleship", "Gunboat", "Submarine"}
-Config.ShipAbandonDespawn = 60 -- корабль (личный или линкор), в котором никого нет, самоуничтожается через N сек. (авианосец — нет)
+Config.ShipAbandonDespawn = 120 -- корабль (личный или линкор), в котором никого нет, самоуничтожается через N сек. (авианосец — нет)
+-- владельцу брошенной техники — предупреждения за столько секунд до самоуничтожения (AbandonTimer)
+Config.AbandonWarn = {60, 30, 10, 3}
 
 -- Морские орудия (снаряды летят по баллистике и взрываются)
 Config.Weapons = {
@@ -282,7 +284,7 @@ Config.Planes = {
 		GunCooldown = 0.07,
 		GunRange = 900,
 		CrashSpeed = 30,         -- удар быстрее этого = крушение
-		AbandonDespawn = 60,     -- брошенный самолёт исчезает через N сек.
+		AbandonDespawn = 120,    -- брошенный самолёт исчезает через N сек.
 		MaxAltitude = 900,       -- потолок (лобби выше)
 		BoundsX = 4200,          -- у границы карты самолёт сам разворачивается
 		BoundsZ = 2150,
@@ -309,7 +311,7 @@ Config.Planes = {
 		GunCooldown = 0.1,
 		GunRange = 800,
 		CrashSpeed = 30,
-		AbandonDespawn = 60,
+		AbandonDespawn = 120,
 		MaxAltitude = 900,
 		BoundsX = 4200,
 		BoundsZ = 2150,

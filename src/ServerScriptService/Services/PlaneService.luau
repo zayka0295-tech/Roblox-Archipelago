@@ -15,6 +15,7 @@ local TeamService = require(Services.TeamService)
 local CarrierService = require(Services.CarrierService)
 local CombatService = require(Services.CombatService)
 local Notifier = require(Services.Notifier)
+local AbandonTimer = require(Services.AbandonTimer)
 local Guard = require(Services.RemoteGuard)
 local AntiCheat = require(Services.AntiCheatService)
 local TurretService = require(Services.TurretService)
@@ -581,6 +582,7 @@ local function step(dt)
 		end
 		-- стрелок ждёт пилота — самолёт не брошен
 		if not st.pilot and st.abandonT and #crewSeats(st) > 0 then st.abandonT = now end
+		AbandonTimer.check(st, P.DisplayName:lower(), P.AbandonDespawn, now)
 		if not st.pilot and st.abandonT and now - st.abandonT > P.AbandonDespawn then
 			-- пустой самолёт самоуничтожается: взрыв без урона и наград
 			planes[model] = nil

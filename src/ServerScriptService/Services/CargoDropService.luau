@@ -30,9 +30,14 @@ local ROUTE_TIMEOUT = 30
 local MAP_X, MAP_Z = 3600, 1800 -- пределы карты для выбора точки
 local mapData -- острова и базы для мини-карты (собирается один раз)
 
-local folder = Instance.new("Folder")
+-- папка одна: если в place сохранилась старая, берём её (клиенты ищут по имени — с двумя папками
+-- звук двигателя и ParachuteUI могли смотреть в пустую)
+local folder = workspace:FindFirstChild("CargoDrops") or Instance.new("Folder")
 folder.Name = "CargoDrops"
 folder.Parent = workspace
+for _, c in ipairs(workspace:GetChildren()) do
+	if c.Name == "CargoDrops" and c ~= folder then c:Destroy() end
+end
 
 local groundParams = RaycastParams.new()
 groundParams.FilterType = Enum.RaycastFilterType.Exclude

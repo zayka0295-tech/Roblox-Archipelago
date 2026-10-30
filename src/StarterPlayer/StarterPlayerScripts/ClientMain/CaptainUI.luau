@@ -106,7 +106,7 @@ return function(ctx)
 		local deployed = ctx.state() == "Deployed"
 		local text
 		if s == 0 then
-			text = "Talk to the Captain at the quest board"
+			text = "Talk to the Captain at the barracks"
 		elseif s == 1 or s == 2 then
 			if ready then
 				text = "Done! Return to the Captain"

@@ -1,4 +1,4 @@
--- Обучение у Капитана (модель Captain в Decor каждой базы, у доски заданий).
+-- Обучение у Капитана (модель Captain в Decor каждой базы, у казармы рядом с площадью).
 -- Шаг хранит DataService.Tutorial:
 --  0 — ещё не говорил. Разговор → задание «самолёт» (шаг 1).
 --  1 — улететь на FlyDistance от места, где сел в самолёт, и вернуться к Капитану → FlyReward, шаг 2.
@@ -158,7 +158,7 @@ function TutorialService.init()
 							if d >= goalOf(step) then
 								pr.done = true
 								p:SetAttribute("TutReady", true)
-								Notifier.send(p, "Task done! Return to the Captain at the quest board", "success")
+								Notifier.send(p, "Task done! Return to the Captain at the barracks", "success")
 							end
 						end
 					end

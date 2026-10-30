@@ -14,6 +14,7 @@ local CombatService = require(Services.CombatService)
 local CarrierService = require(Services.CarrierService)
 local TurretService = require(Services.TurretService)
 local Notifier = require(Services.Notifier)
+local AbandonTimer = require(Services.AbandonTimer)
 local TreasuryService = require(Services.TreasuryService)
 local Guard = require(Services.RemoteGuard)
 local AntiCheat = require(Services.AntiCheatService)
@@ -568,7 +569,7 @@ function selfDestruct(st)
 	e.Position = st.root.Position
 	e.Parent = workspace
 	if isPlayer(st.owner) and st.owner.Parent then
-		Notifier.send(st.owner, ("Your %s self-destructed: nobody aboard for %d s"):format(st.cfg.DisplayName:lower(), Config.ShipAbandonDespawn or 60), "info")
+		Notifier.send(st.owner, ("Your %s self-destructed: nobody aboard for %d s"):format(st.cfg.DisplayName:lower(), Config.ShipAbandonDespawn or 120), "info")
 	end
 	ShipService.remove(st.model)
 end
@@ -914,9 +915,17 @@ function ShipService.init()
 				forget(st)
 			elseif not st.dead then
 				step(st, dt)
-				-- в корабле никого (ни у штурвала, ни у орудий) дольше минуты — самоуничтожение:
-				-- освобождает место в лимите команды и разгружает сервер
-				if not st.driver and st.abandonT and now - st.abandonT > (Config.ShipAbandonDespawn or 60) then
+				-- в корабле никого (ни у штурвала, ни у орудий) дольше ShipAbandonDespawn — самоуничтожение:
+				-- освобождает место в лимите команды и разгружает сервер. Перед этим владельцу — предупреждения
+				-- (AbandonTimer), поэтому экипаж у орудий проверяем заранее (раз в секунду, когда пора предупреждать)
+				local despawn = Config.ShipAbandonDespawn or 120
+				if not st.driver and st.abandonT and now - st.abandonT > despawn - Config.AbandonWarn[1] - 1
+					and now - (st.crewCheckT or 0) > 1 then
+					st.crewCheckT = now
+					if crewed(model) then st.abandonT = now end
+				end
+				AbandonTimer.check(st, st.cfg.DisplayName:lower(), despawn, now)
+				if not st.driver and st.abandonT and now - st.abandonT > despawn then
 					if crewed(model) then
 						st.abandonT = now
 					else
