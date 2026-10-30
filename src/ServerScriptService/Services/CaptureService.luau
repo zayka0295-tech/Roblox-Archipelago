@@ -135,7 +135,8 @@ local function setOwner(isl, owner)
 			for _, p in ipairs(inZone(old == "Blue" and "Red" or "Blue")) do RankService.award(p, "Neutralize") end
 		end
 	else
-		Notifier.team(owner, ("Island captured: %s! Cargo ships will sail to your base."):format(isl.name), "success")
+		Notifier.team(owner, isl.def.IsRig and ("Oil rig captured: %s! A cargo helicopter will fly to your base."):format(isl.name)
+			or ("Island captured: %s! Cargo ships will sail to your base."):format(isl.name), "success")
 		-- личная награда участникам захвата (кто сейчас в зоне)
 		local rw = Config.Economy.Rewards and Config.Economy.Rewards.CaptureParticipant or 0
 		for _, p in ipairs(inZone(owner)) do

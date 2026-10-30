@@ -32,6 +32,7 @@ local ShipService = require(Services.ShipService)
 local TreasuryService = require(Services.TreasuryService)
 local CaptureService = require(Services.CaptureService)
 local LogisticsService = require(Services.LogisticsService)
+local HeliService = require(Services.HeliService)
 local NavalWeaponsService = require(Services.NavalWeaponsService)
 local AirRaidService = require(Services.AirRaidService)
 local GunService = require(Services.GunService)
@@ -66,6 +67,7 @@ ShipService.init()
 TreasuryService.init()
 CaptureService.init()
 LogisticsService.init()
+HeliService.init() -- после LogisticsService: дополняет его CombatService.onCargoHit
 NavalWeaponsService.init()
 AirRaidService.init()
 GunService.init()
@@ -146,6 +148,8 @@ if game:GetService("RunService"):IsStudio() then
 			return RoundService.devAddPlayed(player, amount) -- секунды в бою за текущую команду в этом раунде
 		elseif cmd == "islandOwner" then
 			return CaptureService.devSetOwner(player, amount) -- player = Id острова, amount = команда
+		elseif cmd == "heliDepart" then
+			return HeliService.devDepart(player) -- player = Id платформы (RigN / RigS)
 		elseif cmd == "cargoDepart" then
 			return LogisticsService.devDepartNow(player) -- player = Id острова
 		elseif cmd == "cargoState" then

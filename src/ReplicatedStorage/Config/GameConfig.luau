@@ -393,6 +393,27 @@ Config.Islands = {
 	{Id = "SW", Letter = "E", Outpost = "Outpost_SW", Name = "Southwest Isle", DockDir = Vector3.new(0, 0, -1)},
 	{Id = "NE", Letter = "F", Outpost = "Outpost_NE", Name = "Northeast Isle", DockDir = Vector3.new(0, 0, 1)},
 	{Id = "SE", Letter = "G", Outpost = "Outpost_SE", Name = "Southeast Isle", DockDir = Vector3.new(0, 0, -1)},
+	-- нефтяные платформы (IsRig): вместо грузовых судов — грузовой вертолёт (Config.Helis)
+	{Id = "RigN", Letter = "H", Outpost = "Rig_North", Name = "North Oil Rig", IsRig = true},
+	{Id = "RigS", Letter = "I", Outpost = "Rig_South", Name = "South Oil Rig", IsRig = true},
+}
+
+-- Грузовой вертолёт нефтяной платформы (HeliService): пока платформа у команды, возит по одному контейнеру
+-- с её вертолётной площадки на площадку базы (Decor.Helipad) и обратно. Быстрее грузовых судов, но его можно сбить.
+Config.Helis = {
+	Speed = 75,          -- студов/с в полёте (грузовое судно — 30)
+	Climb = 22,          -- набор высоты, студов/с
+	Descend = 16,        -- снижение
+	Altitude = 120,      -- высота перелёта
+	TurnRate = 70,       -- °/с
+	LoadTime = 12,       -- сек.: погрузка контейнера на платформе
+	UnloadTime = 6,      -- сек.: выгрузка на базе
+	Health = 500,
+	Reward = 200,        -- золота в казну команды за доставку
+	PersonalShare = 30,  -- плюс каждому игроку команды
+	KillReward = 100,    -- тому, кто сбил вражеский вертолёт
+	RespawnDelay = 30,   -- сек.: новый вертолёт на платформе после потери
+	ContainerLife = 40,  -- сек.: доставленный контейнер стоит у площадки базы
 }
 
 -- Аэродром на острове (модель Airstrip в аутпосте): команда, которая владеет островом, вызывает самолёты

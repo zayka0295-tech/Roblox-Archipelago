@@ -8,7 +8,7 @@ return function(ctx)
 	local gui = UI.screen("IslandsUI", 6)
 	local panel = UI.panel(gui, {
 		Name = "Islands", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 12), -- на одном уровне с панелью золота (HUD.Stats)
-		Size = UDim2.fromOffset(250, 92),
+		Size = UDim2.fromOffset(290, 92),
 	})
 	UI.scale(panel)
 	UI.padding(panel, 10)
@@ -19,11 +19,13 @@ return function(ctx)
 	local chips = {}
 	for i, def in ipairs(Config.Islands) do
 		local chip = UI.new("TextLabel", {
-			LayoutOrder = i, Size = UDim2.fromOffset(def.IsCenter and 36 or 28, 30), BackgroundColor3 = T.Panel2,
+			LayoutOrder = i, Size = UDim2.fromOffset(def.IsCenter and 32 or 25, 30), BackgroundColor3 = T.Panel2,
 			Text = def.Letter or def.Id, TextColor3 = Color3.new(1, 1, 1), Font = UI.Bold, TextSize = 13,
 		}, row)
 		UI.corner(chip, 6)
-		local stroke = UI.new("UIStroke", {ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Thickness = def.IsCenter and 2 or 1, Color = Color3.fromRGB(255, 220, 120), Transparency = def.IsCenter and 0 or 1}, chip)
+		-- центр — золотая рамка, нефтяные платформы — бирюзовая
+		local accent = def.IsRig and Color3.fromRGB(90, 220, 200) or Color3.fromRGB(255, 220, 120)
+		local stroke = UI.new("UIStroke", {ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Thickness = (def.IsCenter or def.IsRig) and 2 or 1, Color = accent, Transparency = (def.IsCenter or def.IsRig) and 0 or 1}, chip)
 		chips[def.Id] = {chip = chip, stroke = stroke}
 	end
 	local note = UI.label(panel, "", {Position = UDim2.fromOffset(0, 60), Size = UDim2.new(1, 0, 0, 14), TextSize = 11, Font = UI.Medium, TextColor3 = T.Muted})

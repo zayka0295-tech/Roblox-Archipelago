@@ -13,6 +13,8 @@ local KIND = {
 	Cargo      = {sound = "EngineCargo", speed = 30},
 	-- грузовой самолёт десанта (workspace.CargoDrops): гул + второй слой — свист турбин
 	CargoPlane = {sound = "EngineCargoPlane", layer = "EngineCargoPlaneWhine", speed = 90},
+	-- грузовой вертолёт нефтяной платформы (Map.Helis)
+	Heli = {sound = "EngineCargoPlane", layer = "EngineCargoPlaneWhine", speed = 75},
 }
 local STEP = 0.1
 
@@ -23,6 +25,7 @@ return function(ctx)
 		if folderName == "Planes" then return "Plane" end
 		if folderName == "Carriers" then return "Carrier" end
 		if folderName == "CargoDrops" then return "CargoPlane" end
+		if folderName == "Helis" then return "Heli" end
 		return model:GetAttribute("ShipType")
 	end
 
@@ -50,7 +53,7 @@ return function(ctx)
 
 	task.spawn(function()
 		local map = workspace:WaitForChild("Map")
-		for _, name in ipairs({"Planes", "Carriers", "Vessels", "Cargo", "CargoDrops"}) do
+		for _, name in ipairs({"Planes", "Carriers", "Vessels", "Cargo", "CargoDrops", "Helis"}) do
 			task.spawn(function()
 				local f = (name == "CargoDrops" and workspace or map):WaitForChild(name, 60)
 				if not f then return end
