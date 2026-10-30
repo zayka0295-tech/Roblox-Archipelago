@@ -2,6 +2,7 @@
 -- Прогресс и награды считает сервер (QuestService); окно только показывает и просит забрать награду.
 -- Задание «группа»: кнопка JOIN открывает встроенное окно Roblox «вступить в группу» (ссылки в браузер
 -- игра открывать не может); вступил — награда забирается сразу (членство проверяет сервер).
+-- «!» над доской (BillboardGui в модели QuestBoard) виден, только пока у игрока есть невыполненные задания.
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local GroupService = game:GetService("GroupService")
 
@@ -42,8 +43,27 @@ return function(ctx)
 	local current = {}
 	local busy = false
 	local refresh -- объявлена ниже
+
+	-- «!» над досками баз (стриминг: доски подгружаются позже — применяем и в цикле ниже)
+	local allDone = false
+	local function applyMark()
+		local map = workspace:FindFirstChild("Map")
+		local teams = map and map:FindFirstChild("Teams")
+		for _, base in ipairs(teams and teams:GetChildren() or {}) do
+			local decor = base:FindFirstChild("Decor")
+			local board = decor and decor:FindFirstChild("QuestBoard")
+			local bb = board and board:FindFirstChild("Board") and board.Board:FindFirstChild("BillboardGui")
+			if bb then bb.Enabled = not allDone end
+		end
+	end
+
 	local function render(list)
 		current = list or current
+		allDone = #current > 0
+		for _, s in ipairs(current) do
+			if not s.done and not s.locked then allDone = false end
+		end
+		applyMark()
 		for i, s in ipairs(current) do
 			local r = rows[i]
 			if r then
@@ -133,6 +153,18 @@ return function(ctx)
 		if res.list then render(res.list) end -- не вышло — просто повторим в следующий раз
 	end
 	close.Activated:Connect(closeUI)
+
+	-- состояние заданий при входе, затем раз в минуту (время в игре идёт само) и доски из стриминга
+	task.spawn(function()
+		while not ctx.player:GetAttribute("DataLoaded") do task.wait(1) end
+		local n = 0
+		while true do
+			if n % 20 == 0 and not gui.Enabled then refresh() end
+			applyMark()
+			n += 1
+			task.wait(3)
+		end
+	end)
 
 	ProximityPromptService.PromptTriggered:Connect(function(prompt)
 		if prompt.Name == "QuestPrompt" then open() end
