@@ -1,10 +1,14 @@
 -- Капитан (обучение новичка, см. TutorialService): окно диалога, строка текущего задания
 -- под левой колонкой HUD, значок над головой («!» — есть что сказать), анимация стояния.
+-- Пока к Капитану ведёт дорожка (GuidePath: шаг 0 или задание выполнено), Капитан своей базы машет рукой.
 -- Шаг 3 (пройдено): Капитана для этого игрока нет — прячем модель, значок и кнопку «Talk» локально.
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local IDLE_ANIM = "rbxassetid://507766388" -- стандартное «стояние» R15 от Roblox
+local WAVE_ANIM = "rbxassetid://507770239" -- стандартный жест «помахать» R15 от Roblox
+local WAVE_EVERY = 3.5 -- сек. между взмахами
+local WAVE_NEAR = 14   -- ближе — игрок уже пришёл, не машет
 
 return function(ctx)
 	local UI, T, Config = ctx.UI, ctx.UI.T, ctx.Config
@@ -29,7 +33,8 @@ return function(ctx)
 		local head = cap:WaitForChild("Head", 10)
 		local hum = cap:FindFirstChildOfClass("Humanoid")
 		if not head or not hum then return end
-		-- анимация стояния (только у этого клиента)
+		-- анимации стояния и взмаха (только у этого клиента)
+		local wave
 		pcall(function()
 			local animator = hum:FindFirstChildOfClass("Animator") or Instance.new("Animator", hum)
 			local a = Instance.new("Animation")
@@ -37,18 +42,22 @@ return function(ctx)
 			local track = animator:LoadAnimation(a)
 			track.Looped = true
 			track:Play()
+			local w = Instance.new("Animation")
+			w.AnimationId = WAVE_ANIM
+			wave = animator:LoadAnimation(w)
+			wave.Priority = Enum.AnimationPriority.Action
+			wave.Looped = false
 		end)
 		local bb = Instance.new("BillboardGui")
 		bb.Name = "CaptainMark"
-		bb.Size = UDim2.fromOffset(120, 54)
-		bb.StudsOffset = Vector3.new(0, 2.6, 0)
+		bb.Size = UDim2.fromOffset(120, 34)
+		bb.StudsOffset = Vector3.new(0, 4.4, 0) -- над табличкой NameTag (имя и должность — в модели на карте)
 		bb.AlwaysOnTop = true
 		bb.MaxDistance = 140
 		bb.Adornee = head
 		local mark = UI.label(bb, "!", {Size = UDim2.new(1, 0, 0, 30), TextSize = 30, TextColor3 = T.Gold, TextXAlignment = Enum.TextXAlignment.Center, TextStrokeTransparency = 0.3})
-		UI.label(bb, "CAPTAIN", {Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 0, 20), TextSize = 15, TextXAlignment = Enum.TextXAlignment.Center, TextStrokeTransparency = 0.4})
 		bb.Parent = player.PlayerGui
-		table.insert(captains, {model = cap, mark = mark, bb = bb, root = cap:FindFirstChild("HumanoidRootPart"), hidden = false})
+		table.insert(captains, {model = cap, mark = mark, bb = bb, root = cap:FindFirstChild("HumanoidRootPart"), hidden = false, wave = wave, nextWave = 0})
 		refreshSoon()
 	end
 	-- StreamingEnabled: базы подгружаются позже и могут выгружаться — раз в секунду ищем
@@ -71,6 +80,9 @@ return function(ctx)
 		if c.hidden == hide then return end
 		c.hidden = hide
 		c.bb.Enabled = not hide
+		local head = c.model:FindFirstChild("Head")
+		local tag = head and head:FindFirstChild("NameTag")
+		if tag then tag.Enabled = not hide end
 		local prompt = c.root and c.root:FindFirstChild("TalkPrompt")
 		if prompt then prompt.Enabled = not hide end
 		for _, p in ipairs(c.model:GetDescendants()) do
@@ -122,10 +134,26 @@ return function(ctx)
 		for i = #captains, 1, -1 do
 			if not captains[i].model.Parent then captains[i].bb:Destroy() table.remove(captains, i) end
 		end
+		-- машет, пока к нему ведёт дорожка (те же условия, что в GuidePath) и игрок ещё не подошёл
+		local team = ctx.team()
+		local char = player.Character
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		local now = os.clock()
 		for _, c in ipairs(captains) do
 			local waiting = finaleAt and os.clock() - finaleAt < 20
 			if not c.fading and not waiting then setHidden(c, s >= 3, false) end
 			c.mark.Text = (s == 0 or ready) and "!" or "…"
+			local base = c.model.Parent and c.model.Parent.Parent
+			local wantWave = deployed and s < 3 and (s == 0 or ready) and team ~= nil and base ~= nil and base.Name == team .. "Base"
+				and not (hrp and c.root and (hrp.Position - c.root.Position).Magnitude < WAVE_NEAR)
+			if c.wave then
+				if wantWave and not c.wave.IsPlaying and now >= c.nextWave then
+					c.wave:Play(0.2)
+					c.nextWave = now + WAVE_EVERY
+				elseif not wantWave and c.wave.IsPlaying then
+					c.wave:Stop(0.3)
+				end
+			end
 		end
 	end
 	for _, a in ipairs({"Tutorial", "TutReady", "TutProgress", "State"}) do

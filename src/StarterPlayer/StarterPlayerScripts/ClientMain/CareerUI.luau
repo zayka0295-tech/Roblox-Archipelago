@@ -2,9 +2,13 @@
 -- Статуя у каждого игрока своя: по атрибуту CareerLevel (сколько уровней карьеры забрано, CareerService)
 -- клиент локально наряжает статую СВОЕЙ базы (у статуи чужой базы — базовый каменный вид): меняет материал скульптуры (камень → бронза → серебро → золото …) и включает украшения
 -- из папок Stage2..Stage6 модели CareerStatue (флаги, прожекторы, жаровни, неон, нимб и столб света).
+-- На своей статуе вместо солдата — каменная копия персонажа игрока (как он одет сейчас: форма или свой скин)
+-- в позе отдания чести, а на флагах Stage2 — знак его текущего ранга (RankBadge).
 -- Ступени — Config.Career.Stages. Данные и награды — сервер (Remotes.Career).
 local ProximityPromptService = game:GetService("ProximityPromptService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local RankBadge = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("RankBadge"))
 
 -- облик скульптуры на каждой ступени
 local LOOK = {
@@ -49,9 +53,242 @@ return function(ctx)
 		end
 		return list
 	end
-	local applied = {} -- [статуя] = {level, count}
-	local function applyStatue(st, level)
+
+	-- каменная копия персонажа: клон без скриптов, одежды и текстур, все детали закреплены
+	local STRIP = {"LuaSourceContainer", "Tool", "ForceField", "Sound", "Shirt", "Pants", "ShirtGraphic", "BodyColors", "Decal", "Texture",
+		"SurfaceAppearance", "BillboardGui", "SurfaceGui", "ProximityPrompt", "Light", "ParticleEmitter", "Trail", "Beam", "Fire", "Smoke",
+		"Sparkles", "Highlight", "Animator", "FaceControls"}
+	local function isStripped(d)
+		for _, cls in ipairs(STRIP) do
+			if d:IsA(cls) then return true end
+		end
+		return false
+	end
+	-- соединение двух деталей в нейтральной позе (без анимации): part0, part1 и CFrame part1 в осях part0
+	local function jointRel(j)
+		if j:IsA("Motor6D") or j:IsA("Weld") or j:IsA("ManualWeld") or j:IsA("Snap") then
+			if j.Part0 and j.Part1 then return j.Part0, j.Part1, j.C0 * j.C1:Inverse() end
+		elseif j:IsA("AnimationConstraint") or j:IsA("RigidConstraint") then
+			local a0, a1 = j.Attachment0, j.Attachment1
+			if a0 and a1 and a0.Parent and a1.Parent and a0.Parent:IsA("BasePart") and a1.Parent:IsA("BasePart") then
+				return a0.Parent, a1.Parent, a0.CFrame * a1.CFrame:Inverse()
+			end
+		elseif j:IsA("WeldConstraint") then
+			if j.Part0 and j.Part1 then return j.Part0, j.Part1, j.Part0.CFrame:ToObjectSpace(j.Part1.CFrame) end
+		end
+		return nil
+	end
+	-- повернуть детали вокруг точки
+	local function turn(parts, pivot, rot)
+		for _, p in ipairs(parts) do p.CFrame = CFrame.new(pivot) * rot * (p.CFrame - pivot) end
+	end
+	local function attPos(part, name)
+		local a = part and part:FindFirstChild(name)
+		return a and a:IsA("Attachment") and a.WorldPosition
+	end
+	local function buildFigure(char)
+		if not char:FindFirstChild("HumanoidRootPart") or not char:FindFirstChild("UpperTorso") or not char:FindFirstChild("Head") then
+			return nil -- только R15
+		end
+		local wasArchivable = char.Archivable
+		char.Archivable = true
+		local ok, m = pcall(function() return char:Clone() end)
+		char.Archivable = wasArchivable
+		if not ok or not m then return nil end
+		m.Name = "AvatarFigure"
+		-- нейтральная поза: обходим соединения от корня (клон застаёт персонажа в кадре анимации)
+		local edges = {}
+		for _, j in ipairs(m:GetDescendants()) do
+			local p0, p1, rel = jointRel(j)
+			if p0 and p1 and p0:IsDescendantOf(m) and p1:IsDescendantOf(m) then
+				edges[p0] = edges[p0] or {}
+				edges[p1] = edges[p1] or {}
+				table.insert(edges[p0], {p1, rel})
+				table.insert(edges[p1], {p0, rel:Inverse()})
+			end
+		end
+		local root = m.HumanoidRootPart
+		local flat = root.CFrame.LookVector * Vector3.new(1, 0, 1)
+		flat = flat.Magnitude > 0.01 and flat.Unit or Vector3.new(0, 0, -1)
+		root.CFrame = CFrame.lookAt(root.Position, root.Position + flat) -- в кресле корень бывает наклонён
+		local seen, queue = {[root] = true}, {root}
+		while #queue > 0 do
+			local p = table.remove(queue, 1)
+			for _, e in ipairs(edges[p] or {}) do
+				if not seen[e[1]] then
+					seen[e[1]] = true
+					e[1].CFrame = p.CFrame * e[2]
+					table.insert(queue, e[1])
+				end
+			end
+		end
+		for _, d in ipairs(m:GetDescendants()) do
+			if isStripped(d) or d:IsA("JointInstance") or d:IsA("Constraint") or d:IsA("WeldConstraint") then d:Destroy() end
+		end
+		for _, d in ipairs(m:GetDescendants()) do
+			if d:IsA("BasePart") then
+				d.Anchored = true
+				d.CanCollide, d.CanQuery, d.CanTouch = false, false, false
+				d.Massless = true
+				if d ~= root then d:SetAttribute("StatueRole", "Sculpture") end
+				if d:IsA("MeshPart") then pcall(function() d.TextureID = "" end) end
+			elseif d:IsA("SpecialMesh") then
+				d.TextureId = ""
+			end
+		end
+		local hum = m:FindFirstChildOfClass("Humanoid")
+		if hum then
+			hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+			hum.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+			pcall(function() hum.EvaluateStateMachine = false end)
+		end
+		-- отдание чести: правое плечо в сторону и чуть вперёд, предплечье — к виску, ладонь к козырьку
+		local ut, ua, la, hand, head = m:FindFirstChild("UpperTorso"), m:FindFirstChild("RightUpperArm"), m:FindFirstChild("RightLowerArm"),
+			m:FindFirstChild("RightHand"), m:FindFirstChild("Head")
+		local sh = attPos(ut, "RightShoulderRigAttachment")
+		local el = attPos(ua, "RightElbowRigAttachment")
+		if sh and el and la and hand and head then
+			local tr = ut.CFrame - ut.Position
+			turn({ua, la, hand}, sh, CFrame.fromRotationBetweenVectors((el - sh).Unit, tr:VectorToWorldSpace(Vector3.new(0.85, 0.12, -0.5).Unit)))
+			el = attPos(ua, "RightElbowRigAttachment")
+			local wr = attPos(la, "RightWristRigAttachment")
+			local hs = head.Size
+			local brow = (head.CFrame * CFrame.new(hs.X * 0.3, hs.Y * 0.2, -hs.Z * 0.45)).Position
+			if el and wr then
+				turn({la, hand}, el, CFrame.fromRotationBetweenVectors((wr - el).Unit, (brow - el).Unit))
+				wr = attPos(la, "RightWristRigAttachment")
+				turn({hand}, wr, CFrame.fromRotationBetweenVectors((hand.Position - wr).Unit,
+					((brow - el).Unit + tr:VectorToWorldSpace(Vector3.new(-0.6, 0.3, 0))).Unit))
+			end
+		end
+		m.PrimaryPart = root
+		return m
+	end
+	-- признак внешности: фигуру пересобираем, только если персонаж переоделся
+	local function looksOf(char)
+		local parts = {}
+		for _, d in ipairs(char:GetChildren()) do
+			if d:IsA("Accessory") then
+				table.insert(parts, "a:" .. d.Name)
+			elseif d:IsA("Shirt") then
+				table.insert(parts, "s:" .. d.ShirtTemplate)
+			elseif d:IsA("Pants") then
+				table.insert(parts, "p:" .. d.PantsTemplate)
+			elseif d:IsA("MeshPart") then
+				table.insert(parts, d.Name .. ":" .. d.MeshId)
+			end
+		end
+		table.sort(parts)
+		return table.concat(parts, "|")
+	end
+	local figureLooks -- внешность, с которой собрана текущая фигура
+	local function liveChar()
+		local char = player.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if char and hum and hum.Health > 0 and char:FindFirstChild("UpperTorso") and char:FindFirstChild("HumanoidRootPart") then return char end
+		return nil
+	end
+	-- своя статуя: фигура игрока вместо солдата; чужая — солдат
+	local function placeFigure(st, mine)
+		local soldier = st:FindFirstChild("Soldier")
+		local fig = st:FindFirstChild("AvatarFigure")
+		local char = liveChar()
+		-- солдат мог ещё не подгрузиться (стриминг): тогда размер не знаем — ждём следующей проверки
+		local soldierPart = soldier and soldier:FindFirstChildWhichIsA("BasePart", true)
+		if mine and soldierPart and char then
+			local looks = looksOf(char)
+			if not fig or figureLooks ~= looks then
+				local ok, m = pcall(buildFigure, char)
+				local cf, sz = soldier:GetBoundingBox()
+				local msz = ok and m and select(2, m:GetBoundingBox())
+				if msz and msz.Y > 0.5 and sz.Y > 1 then
+					m:ScaleTo(sz.Y * 0.92 / msz.Y)
+					local mcf, msz2 = m:GetBoundingBox()
+					local up = m:GetPivot().Position.Y - (mcf.Position.Y - msz2.Y / 2)
+					local at = Vector3.new(cf.Position.X, cf.Position.Y - sz.Y / 2 + up, cf.Position.Z)
+					local look = soldier:GetPivot().LookVector * Vector3.new(1, 0, 1)
+					m:PivotTo(CFrame.lookAt(at, at + look))
+					if fig then fig:Destroy() end
+					m.Parent = st
+					fig = m
+					figureLooks = looks
+				elseif ok and m then
+					m:Destroy()
+				end
+			end
+		elseif not mine and fig then
+			fig:Destroy()
+			fig = nil
+		end
+		if soldier then
+			for _, p in ipairs(soldier:GetDescendants()) do
+				if p:IsA("BasePart") then p.LocalTransparencyModifier = fig and 1 or 0 end
+			end
+		end
+	end
+
+	-- флаги Stage2 своей статуи: знак текущего ранга и его название (с обеих сторон полотнища)
+	local function rankFlags(st, mine, idx)
+		local stage2 = st:FindFirstChild("Stage2")
+		local rank = math.clamp(player:GetAttribute("Rank") or 1, 1, #Config.Ranks.List)
+		for _, flag in ipairs(stage2 and stage2:GetDescendants() or {}) do
+			if flag:IsA("BasePart") and flag.Name == "Flag" then
+				for _, face in ipairs({Enum.NormalId.Front, Enum.NormalId.Back}) do
+					local name = "RankFlag" .. face.Name
+					local sg = flag:FindFirstChild(name)
+					if sg and (not mine or sg:GetAttribute("Rank") ~= rank) then
+						sg:Destroy()
+						sg = nil
+					end
+					if mine and not sg then
+						sg = Instance.new("SurfaceGui")
+						sg.Name = name
+						sg.Face = face
+						sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+						sg.PixelsPerStud = 40
+						sg.LightInfluence = 0.6
+						sg:SetAttribute("Rank", rank)
+						local dark = flag.Color:Lerp(Color3.new(0, 0, 0), 0.6)
+						local bg = Instance.new("Frame")
+						bg.Size = UDim2.fromScale(1, 1)
+						bg.BackgroundColor3 = Color3.new(1, 1, 1)
+						bg.BorderSizePixel = 0
+						bg.Parent = sg
+						local grad = Instance.new("UIGradient")
+						grad.Rotation = 90
+						grad.Color = ColorSequence.new(flag.Color, dark)
+						grad.Parent = bg
+						local edge = Instance.new("UIStroke")
+						edge.Color = RankBadge.textColor(rank)
+						edge.Thickness = 8
+						edge.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+						edge.Parent = bg
+						RankBadge.build(bg, rank, {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.42),
+							Size = UDim2.fromScale(0.6, 0.6), SizeConstraint = Enum.SizeConstraint.RelativeYY}, 120)
+						local lbl = Instance.new("TextLabel")
+						lbl.AnchorPoint = Vector2.new(0.5, 1)
+						lbl.Position = UDim2.fromScale(0.5, 0.96)
+						lbl.Size = UDim2.fromScale(0.92, 0.2)
+						lbl.BackgroundTransparency = 1
+						lbl.Font = Enum.Font.GothamBlack
+						lbl.TextScaled = true
+						lbl.Text = string.upper(Config.Ranks.List[rank].Name)
+						lbl.TextColor3 = RankBadge.textColor(rank)
+						lbl.TextStrokeTransparency = 0.3
+						lbl.Parent = bg
+						sg.Parent = flag
+					end
+					if sg then sg.Enabled = idx >= 2 end
+				end
+			end
+		end
+	end
+
+	local applied = {} -- [статуя] = {level, count, rank, mine}
+	local function applyStatue(st, level, mine)
+		placeFigure(st, mine)
 		local idx = stageOf(level)
+		rankFlags(st, mine, idx)
 		local look = LOOK[idx]
 		for _, d in ipairs(st:GetDescendants()) do
 			local role = d:GetAttribute("StatueRole")
@@ -76,15 +313,23 @@ return function(ctx)
 		local plaque = st:FindFirstChild("Plaque")
 		local stageLbl = plaque and plaque:FindFirstChild("SurfaceGui") and plaque.SurfaceGui:FindFirstChild("Stage")
 		if stageLbl then stageLbl.Text = ("%s · %d/%d"):format(C.Stages[idx].Name, level, #C.List * 3) end
-		applied[st] = {level = level, count = #st:GetDescendants()}
+		applied[st] = {level = level, count = #st:GetDescendants(), rank = player:GetAttribute("Rank"), mine = mine}
 	end
 	local function applyAll(force)
 		local myLevel = player:GetAttribute("CareerLevel") or 0
+		local char = liveChar()
+		local looks = char and looksOf(char)
 		for _, e in ipairs(statues()) do
-			local st, level = e[1], e[2] and myLevel or 0
+			local st, mine = e[1], e[2]
+			local level = mine and myLevel or 0
 			local a = applied[st]
-			-- стриминг: деталей стало больше — применяем заново
-			if force or not a or a.level ~= level or a.count ~= #st:GetDescendants() then applyStatue(st, level) end
+			-- стриминг: деталей стало больше — применяем заново; переоделся или сменился ранг — новая фигура / флаги
+			local stale = force or not a or a.level ~= level or a.mine ~= mine or a.count ~= #st:GetDescendants()
+			if mine and a and (a.rank ~= player:GetAttribute("Rank") or (looks and looks ~= figureLooks)
+				or (char and not st:FindFirstChild("AvatarFigure"))) then
+				stale = true
+			end
+			if stale then applyStatue(st, level, mine) end
 		end
 	end
 
@@ -255,10 +500,12 @@ return function(ctx)
 	end)
 
 	player:GetAttributeChangedSignal("CareerLevel"):Connect(function() applyAll(false) end)
+	player:GetAttributeChangedSignal("Rank"):Connect(function() applyAll(false) end)
 	player:GetPropertyChangedSignal("Team"):Connect(function() applyAll(true) end)
 	task.spawn(function()
 		while true do
-			applyAll(false)
+			local ok, err = pcall(applyAll, false)
+			if not ok then warn("[CareerUI] statue: " .. tostring(err)) end
 			task.wait(3)
 		end
 	end)

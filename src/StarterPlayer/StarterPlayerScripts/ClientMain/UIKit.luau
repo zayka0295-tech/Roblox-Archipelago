@@ -401,36 +401,59 @@ function UI.setEnabled(b, enabled, color, text)
 	if text then b.Text = text end
 end
 
--- всплывающие уведомления: карточка с цветной иконкой и подсветкой слева, появляется с лёгким «прыжком»,
--- снизу полоска оставшегося времени. Тот же текст повторно не плодит копии — карточка вздрагивает
--- и таймер начинается заново. Виды: success, error, info, safe (безопасная зона), reward (награда золотом).
+-- всплывающие уведомления: тёмная стеклянная карточка с цветом вида — влетает сверху с пружинкой,
+-- по ней пробегает блик, вокруг иконки расходится кольцо, снизу тает полоска времени.
+-- Награда — переливающаяся золотая рамка, ошибка — короткая встряска. Соседние карточки раздвигаются
+-- и смыкаются плавно (у каждой своя обёртка, высота которой анимируется). Тот же текст повторно
+-- не плодит копии — карточка подпрыгивает, на ней счётчик «×2», таймер начинается заново.
+-- Виды: success, error, info, safe (безопасная зона), reward (награда золотом).
 local TextService = game:GetService("TextService")
-local TOAST_W, TOAST_TIME, TOAST_MAX = 440, 4, 4
+local TOAST_W, TOAST_TIME, TOAST_MAX, TOAST_GAP = 440, 4, 4, 8
 local TOAST_KINDS = {
-	success = {color = Color3.fromRGB(80, 205, 120), icon = "check"},
-	error = {color = Color3.fromRGB(240, 95, 80), icon = "!"},
-	info = {color = Color3.fromRGB(110, 190, 255), icon = "i"},
-	safe = {color = Color3.fromRGB(60, 215, 125), icon = "shield", title = "SAFE ZONE", tint = 0.42, wash = 0.82},
-	reward = {color = Color3.fromRGB(255, 200, 80), icon = "+"},
+	success = {color = Color3.fromRGB(80, 215, 130), icon = "check", title = "DONE"},
+	error = {color = Color3.fromRGB(255, 95, 80), icon = "!", title = "HEADS UP", shake = true},
+	info = {color = Color3.fromRGB(110, 190, 255), icon = "i", title = "INFO"},
+	safe = {color = Color3.fromRGB(60, 225, 130), icon = "shield", title = "SAFE ZONE", tint = 0.5},
+	reward = {color = Color3.fromRGB(255, 200, 70), icon = "+", title = "REWARD", gold = true},
 }
 local toastHolder
 local toastN = 0
 local toastByKey = {}
+local function tween(obj, t, props, style, dir)
+	local tw = TweenService:Create(obj, TweenInfo.new(t, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out), props)
+	tw:Play()
+	return tw
+end
 local function toastIcon(parent, spec)
 	local dark = Color3.fromRGB(14, 20, 26)
-	local c = UI.new("Frame", {
-		Size = UDim2.fromOffset(32, 32), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, -1),
-		BackgroundColor3 = spec.color, BackgroundTransparency = spec.icon == "shield" and 0.75 or 0, BorderSizePixel = 0,
-	}, parent)
-	UI.corner(c, 16)
+	local holder = UI.new("Frame", {Size = UDim2.fromOffset(36, 36), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 32, 0.5, 0),
+		BackgroundTransparency = 1}, parent)
+	-- кольцо, которое расходится при появлении
+	local ring = UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1}, holder)
+	UI.corner(ring, 100)
+	local ringStroke = UI.new("UIStroke", {Color = spec.color, Thickness = 3, Transparency = 0.1}, ring)
+	local c = UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0}, holder)
+	UI.corner(c, 100)
+	UI.new("UIGradient", {Rotation = 90, Color = ColorSequence.new(spec.color:Lerp(Color3.new(1, 1, 1), 0.25), spec.color:Lerp(Color3.new(0, 0, 0), 0.15))}, c)
+	local glyphScale = UI.new("UIScale", {Scale = 0}, c)
 	if spec.icon == "check" then
 		-- галочка из двух палочек: символа ✓ в шрифте нет
-		UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(11, 18), Size = UDim2.fromOffset(9, 3), Rotation = 45, BackgroundColor3 = dark, BorderSizePixel = 0}, c)
-		UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(18, 15), Size = UDim2.fromOffset(15, 3), Rotation = -50, BackgroundColor3 = dark, BorderSizePixel = 0}, c)
+		UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(12, 20), Size = UDim2.fromOffset(10, 3.5), Rotation = 45, BackgroundColor3 = dark, BorderSizePixel = 0}, c)
+		UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(20, 17), Size = UDim2.fromOffset(17, 3.5), Rotation = -50, BackgroundColor3 = dark, BorderSizePixel = 0}, c)
 	elseif spec.icon == "shield" then
-		UI.new("TextLabel", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "🛡️", TextSize = 18, Font = UI.Bold}, c)
+		UI.new("TextLabel", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "🛡️", TextSize = 19, Font = UI.Bold}, c)
 	else
-		UI.new("TextLabel", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = spec.icon, TextSize = 20, Font = UI.Bold, TextColor3 = dark}, c)
+		UI.new("TextLabel", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = spec.icon, TextSize = 22, Font = UI.Bold, TextColor3 = dark}, c)
+	end
+	return function()
+		glyphScale.Scale = 0
+		tween(glyphScale, 0.45, {Scale = 1}, Enum.EasingStyle.Back)
+		ring.Size = UDim2.fromScale(1, 1)
+		ringStroke.Transparency = 0.1
+		tween(ring, 0.7, {Size = UDim2.fromScale(2.1, 2.1)})
+		tween(ringStroke, 0.7, {Transparency = 1})
 	end
 end
 function UI.toast(text, kind, title)
@@ -442,10 +465,10 @@ function UI.toast(text, kind, title)
 	if not toastHolder then
 		local g = UI.screen("Notifications", 50)
 		toastHolder = UI.new("Frame", {
-			Name = "Holder", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 92),
+			Name = "Holder", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 106),
 			Size = UDim2.fromOffset(TOAST_W, 320), BackgroundTransparency = 1,
 		}, g)
-		UI.new("UIListLayout", {Padding = UDim.new(0, 8), HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder}, toastHolder)
+		UI.new("UIListLayout", {Padding = UDim.new(0, 0), HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder}, toastHolder)
 		UI.scale(toastHolder)
 	end
 
@@ -456,65 +479,131 @@ function UI.toast(text, kind, title)
 		return
 	end
 
-	local textW = TOAST_W - 58 - 16
+	local textW = TOAST_W - 72 - 18
 	local msgH = TextService:GetTextSize(text, 16, UI.Medium, Vector2.new(textW, 1000)).Y
-	local titleH = title and 17 or 0
-	local h = math.max(50, msgH + titleH + 22)
+	local titleH = title and 16 or 0
+	local h = math.max(56, msgH + titleH + 26)
 
 	toastN += 1
+	-- обёртка: её высота плавно растёт / схлопывается — соседи сдвигаются без рывков
+	local wrap = UI.new("Frame", {Name = "Toast", Size = UDim2.new(1, 0, 0, 0), BackgroundTransparency = 1, LayoutOrder = toastN}, toastHolder)
+	local slot = UI.new("Frame", {Size = UDim2.new(1, 0, 0, h), BackgroundTransparency = 1}, wrap)
+	-- тень под карточкой
+	local shadow = UI.new("Frame", {Position = UDim2.fromOffset(0, 4), Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 1, BorderSizePixel = 0}, slot)
+	UI.corner(shadow, 14)
 	local card = UI.new("CanvasGroup", {
-		Name = "Toast", Size = UDim2.new(1, 0, 0, h), BackgroundColor3 = UI.T.Panel, BackgroundTransparency = 0.04,
-		BorderSizePixel = 0, LayoutOrder = toastN, GroupTransparency = 1,
-	}, toastHolder)
-	UI.corner(card, 10)
-	local pop = UI.new("UIScale", {Scale = 0.88}, card)
-	-- подсветка цветом вида слева направо
-	local glow = UI.new("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0}, card)
-	UI.corner(glow, 10)
-	UI.new("UIGradient", {Color = ColorSequence.new({
-		-- tint/wash: насколько карточка залита цветом слева и справа (safe — целиком зелёная)
-		ColorSequenceKeypoint.new(0, spec.color:Lerp(UI.T.Panel, spec.tint or 0.68)),
-		ColorSequenceKeypoint.new(0.5, spec.color:Lerp(UI.T.Panel, spec.wash or 1)),
-		ColorSequenceKeypoint.new(1, spec.color:Lerp(UI.T.Panel, spec.wash or 1)),
-	})}, glow)
-	-- рамка внутри (снаружи CanvasGroup её обрезал бы)
+		Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, GroupTransparency = 1,
+	}, slot)
+	UI.corner(card, 14)
+	local pop = UI.new("UIScale", {Scale = 0.82}, card)
+	-- стекло: тёмный градиент сверху вниз и цвет вида, разлитый слева (градиент — на отдельной рамке:
+	-- UIGradient прямо в CanvasGroup тонировал бы всё содержимое, включая текст)
+	local glass = UI.new("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0}, card)
+	UI.new("UIGradient", {Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(34, 40, 52), Color3.fromRGB(16, 19, 26))}, glass)
+	local wash = UI.new("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = spec.color, BackgroundTransparency = 0, BorderSizePixel = 0}, card)
+	UI.new("UIGradient", {Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, spec.tint or 0.72), NumberSequenceKeypoint.new(0.45, 0.94), NumberSequenceKeypoint.new(1, 1),
+	})}, wash)
+	-- блеск сверху
+	UI.new("Frame", {Size = UDim2.new(1, 0, 0, 1), Position = UDim2.fromOffset(0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.82, BorderSizePixel = 0}, card)
+	-- рамка внутри (снаружи CanvasGroup её обрезал бы); у награды — переливается золотом
 	local edge = UI.new("Frame", {Position = UDim2.fromOffset(1, 1), Size = UDim2.new(1, -2, 1, -2), BackgroundTransparency = 1}, card)
-	UI.corner(edge, 9)
-	UI.new("UIStroke", {Color = spec.color, Thickness = 1.5, Transparency = 0.35}, edge)
-	toastIcon(card, spec)
+	UI.corner(edge, 13)
+	local stroke = UI.new("UIStroke", {Color = spec.gold and Color3.new(1, 1, 1) or spec.color, Thickness = spec.gold and 2 or 1.5, Transparency = spec.gold and 0 or 0.45}, edge)
+	if spec.gold then
+		local g = UI.new("UIGradient", {Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 170, 40)), ColorSequenceKeypoint.new(0.45, Color3.fromRGB(255, 245, 190)),
+			ColorSequenceKeypoint.new(0.55, Color3.fromRGB(255, 245, 190)), ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 170, 40)),
+		})}, stroke)
+		TweenService:Create(g, TweenInfo.new(2.2, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1), {Rotation = 360}):Play()
+	end
+	-- пробегающий блик
+	local shine = UI.new("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0}, card)
+	local shineGrad = UI.new("UIGradient", {Rotation = 20, Offset = Vector2.new(-1, 0), Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.42, 1), NumberSequenceKeypoint.new(0.5, spec.gold and 0.55 or 0.78),
+		NumberSequenceKeypoint.new(0.58, 1), NumberSequenceKeypoint.new(1, 1),
+	})}, shine)
+	local playIcon = toastIcon(card, spec)
 	if title then
-		UI.label(card, title, {Position = UDim2.fromOffset(58, 9), Size = UDim2.new(1, -74, 0, 16), TextSize = 14, Font = UI.Bold, TextColor3 = spec.color})
+		UI.label(card, title, {Position = UDim2.fromOffset(62, 10), Size = UDim2.new(1, -110, 0, 14), TextSize = 12, Font = UI.Bold, TextColor3 = spec.color})
 	end
 	UI.label(card, text, {
-		Position = UDim2.fromOffset(58, 10 + titleH), Size = UDim2.new(1, -74, 1, -(titleH + 20)),
+		Position = UDim2.fromOffset(62, 10 + titleH), Size = UDim2.new(1, -78, 1, -(titleH + 20)),
 		TextSize = 16, Font = UI.Medium, TextWrapped = true, TextYAlignment = title and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center,
 	})
-	local bar = UI.new("Frame", {AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 3), BackgroundColor3 = spec.color, BackgroundTransparency = 0.2, BorderSizePixel = 0}, card)
+	-- счётчик повторов «×2»
+	local count = UI.label(card, "", {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 8), Size = UDim2.fromOffset(40, 16),
+		TextSize = 13, Font = UI.Bold, TextColor3 = spec.color, TextXAlignment = Enum.TextXAlignment.Right})
+	local countScale = UI.new("UIScale", {}, count)
+	-- полоска оставшегося времени: тает к центру
+	local bar = UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -1), Size = UDim2.new(1, -24, 0, 3),
+		BackgroundColor3 = spec.color, BorderSizePixel = 0}, card)
+	UI.corner(bar, 2)
+	UI.new("UIGradient", {Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.7), NumberSequenceKeypoint.new(0.5, 0), NumberSequenceKeypoint.new(1, 0.7),
+	})}, bar)
 
-	local entry = {card = card, token = 0}
+	local entry = {card = wrap, token = 0, n = 1}
 	toastByKey[key] = entry
+	local closing = false
 	local function close()
 		if toastByKey[key] == entry then toastByKey[key] = nil end
-		if not card.Parent then return end
-		TweenService:Create(card, TweenInfo.new(0.3), {GroupTransparency = 1}):Play()
-		TweenService:Create(pop, TweenInfo.new(0.3), {Scale = 0.94}):Play()
-		task.delay(0.3, function() card:Destroy() end)
+		if closing or not wrap.Parent then return end
+		closing = true
+		-- уезжает вверх и тает, потом обёртка схлопывается — соседи плавно подтягиваются
+		tween(card, 0.25, {GroupTransparency = 1})
+		tween(shadow, 0.25, {BackgroundTransparency = 1})
+		tween(slot, 0.3, {Position = UDim2.fromOffset(0, -14)})
+		tween(pop, 0.3, {Scale = 0.92})
+		task.delay(0.2, function()
+			tween(wrap, 0.25, {Size = UDim2.new(1, 0, 0, 0)})
+			task.delay(0.26, function() wrap:Destroy() end)
+		end)
+	end
+	local function sweep()
+		shineGrad.Offset = Vector2.new(-1, 0)
+		tween(shineGrad, 0.7, {Offset = Vector2.new(1, 0)}, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
 	end
 	function entry.restart(again)
 		entry.token += 1
 		local tok = entry.token
 		if again then
-			pop.Scale = 1.05
-			TweenService:Create(pop, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+			entry.n += 1
+			count.Text = "×" .. entry.n
+			countScale.Scale = 1.6
+			tween(countScale, 0.35, {Scale = 1}, Enum.EasingStyle.Back)
+			pop.Scale = 1.06
+			tween(pop, 0.3, {Scale = 1}, Enum.EasingStyle.Back)
+			playIcon()
+			sweep()
 		end
-		bar.Size = UDim2.new(1, 0, 0, 3)
-		TweenService:Create(bar, TweenInfo.new(TOAST_TIME, Enum.EasingStyle.Linear), {Size = UDim2.new(0, 0, 0, 3)}):Play()
+		bar.Size = UDim2.new(1, -24, 0, 3)
+		tween(bar, TOAST_TIME, {Size = UDim2.new(0, 0, 0, 3)}, Enum.EasingStyle.Linear)
 		task.delay(TOAST_TIME, function()
 			if entry.token == tok then close() end
 		end)
 	end
-	TweenService:Create(card, TweenInfo.new(0.2), {GroupTransparency = 0}):Play()
-	TweenService:Create(pop, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+	-- появление: место раздвигается, карточка падает сверху с пружинкой
+	tween(wrap, 0.28, {Size = UDim2.new(1, 0, 0, h + TOAST_GAP)})
+	slot.Position = UDim2.fromOffset(0, -22)
+	tween(slot, 0.45, {Position = UDim2.fromOffset(0, 0)}, Enum.EasingStyle.Back)
+	tween(card, 0.22, {GroupTransparency = 0})
+	tween(shadow, 0.3, {BackgroundTransparency = 0.6})
+	tween(pop, 0.45, {Scale = 1}, Enum.EasingStyle.Back)
+	playIcon()
+	task.delay(0.15, sweep)
+	if spec.shake then
+		-- короткая встряска для предупреждений
+		task.spawn(function()
+			task.wait(0.42) -- после того как карточка упала на место
+			for _, dx in ipairs({-7, 6, -4, 3, 0}) do
+				task.wait(0.05)
+				if not slot.Parent then return end
+				tween(slot, 0.05, {Position = UDim2.fromOffset(dx, 0)})
+			end
+		end)
+	end
 	entry.restart(false)
 
 	local cards = {}

@@ -539,14 +539,15 @@ Config.Invite = {
 -- со счётчиком (не менять у существующих). Rewards — награда за уровень (1, 2, 3).
 -- Статуя у каждого игрока своя (видит только он): чем больше уровней забрано, тем она роскошнее —
 -- Stages: с какого числа забранных уровней начинается каждая ступень.
+-- уровни лёгкие в начале (первый — за один-два боя) и растут примерно ×4: раунд идёт ~30 мин
 Config.Career = {
 	List = {
-		{Id = "planes", Field = "CPlanes", Text = "Shoot down planes", Icon = "✈️", Events = {PlaneKill = 1}, Tiers = {10, 50, 200}},
-		{Id = "ships", Field = "CShips", Text = "Sink ships", Icon = "⚓", Events = {Sink = 1, CarrierKill = 1}, Tiers = {10, 50, 200}},
-		{Id = "islands", Field = "CIslands", Text = "Capture islands", Icon = "🚩", Events = {Capture = 1}, Tiers = {10, 50, 150}},
-		{Id = "wins", Field = "CWins", Text = "Win rounds", Icon = "🏆", Events = {RoundWin = 1}, Tiers = {5, 25, 100}},
-		{Id = "cargo", Field = "CCargo", Text = "Deliver cargo", Icon = "📦", Events = {Delivery = 1}, Tiers = {10, 50, 200}},
-		{Id = "enemies", Field = "CEnemies", Text = "Defeat enemies", Icon = "🎯", Events = {Kill = 1, BotKill = 1}, Tiers = {50, 250, 1000}},
+		{Id = "planes", Field = "CPlanes", Text = "Shoot down planes", Icon = "✈️", Events = {PlaneKill = 1}, Tiers = {3, 15, 50}},
+		{Id = "ships", Field = "CShips", Text = "Sink ships", Icon = "⚓", Events = {Sink = 1, CarrierKill = 1}, Tiers = {2, 10, 35}},
+		{Id = "islands", Field = "CIslands", Text = "Capture islands", Icon = "🚩", Events = {Capture = 1}, Tiers = {3, 15, 50}},
+		{Id = "wins", Field = "CWins", Text = "Win rounds", Icon = "🏆", Events = {RoundWin = 1}, Tiers = {1, 5, 15}},
+		{Id = "cargo", Field = "CCargo", Text = "Deliver cargo", Icon = "📦", Events = {Delivery = 1}, Tiers = {2, 10, 35}},
+		{Id = "enemies", Field = "CEnemies", Text = "Defeat enemies", Icon = "🎯", Events = {Kill = 1, BotKill = 1}, Tiers = {10, 50, 200}},
 	},
 	Rewards = {{Gold = 500}, {Gold = 2000, Diamonds = 20}, {Gold = 5000, Diamonds = 75}},
 	Stages = {
