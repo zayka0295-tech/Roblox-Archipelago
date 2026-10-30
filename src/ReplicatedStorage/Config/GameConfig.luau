@@ -462,15 +462,21 @@ Config.Guns = {
 -- стартовое оружие команд
 Config.TeamGun = {Blue = "M4A1", Red = "AK47"}
 
--- Задания на доске объявлений (у оружейного стенда базы). Каждое — один раз на игрока.
--- Bit — флаг выполнения в сохранении (QuestDone), не менять у существующих заданий.
+-- «Путь новичка» на доске объявлений (у оружейного стенда базы): первые шаги в игре, каждый — один раз на игрока.
+-- Bit — флаг в сохранении: QuestDone — награда забрана, Starter — шаг сделан. Не менять у существующих заданий
+-- (бит 4 занят старым заданием «10 убийств» — не использовать).
 Config.Quests = {
 	GroupId = 610058879,      -- ID группы Roblox для задания «вступи в группу» (0 — задание выключено)
 	GroupName = "DartSols | Island War", -- как группа называется в тексте задания
 	List = {
 		{Id = "group", Bit = 1, Reward = 500},
+		{Id = "deploy", Bit = 8, Reward = 100},     -- вышел в бой (плита в лобби)
+		{Id = "plane", Bit = 16, Reward = 150},     -- сел в самолёт
+		{Id = "helm", Bit = 32, Reward = 150},      -- встал за штурвал корабля
+		{Id = "firstkill", Bit = 64, Reward = 200}, -- первое убийство (игрок или бот)
+		{Id = "capture", Bit = 128, Reward = 300},  -- участвовал в захвате / нейтрализации острова
+		{Id = "reward", Bit = 256, Reward = 100},   -- забрал любую награду в окне REWARDS
 		{Id = "play", Bit = 2, Reward = 200, Goal = 20 * 60}, -- секунд в игре (суммарно, можно за несколько заходов)
-		{Id = "kills", Bit = 4, Reward = 1000, Goal = 10},  -- убийств с момента появления задания
 	},
 }
 
@@ -524,6 +530,27 @@ Config.Invite = {
 	NewPlayerGold = 500,
 	MaxRewarded = 50,
 	NewPlayerMaxSec = 300,
+}
+
+-- Карьера (CareerService, окно у статуи на площади базы): долгие достижения за всё время, у каждого 3 уровня
+-- (Tiers — сколько нужно для бронзы, серебра, золота). Events — ключи RankService.Action. Field — поле сохранения
+-- со счётчиком (не менять у существующих). Rewards — награда за уровень (1, 2, 3).
+-- Статуя у каждого игрока своя (видит только он): чем больше уровней забрано, тем она роскошнее —
+-- Stages: с какого числа забранных уровней начинается каждая ступень.
+Config.Career = {
+	List = {
+		{Id = "planes", Field = "CPlanes", Text = "Shoot down planes", Icon = "✈️", Events = {PlaneKill = 1}, Tiers = {10, 50, 200}},
+		{Id = "ships", Field = "CShips", Text = "Sink ships", Icon = "⚓", Events = {Sink = 1, CarrierKill = 1}, Tiers = {10, 50, 200}},
+		{Id = "islands", Field = "CIslands", Text = "Capture islands", Icon = "🚩", Events = {Capture = 1}, Tiers = {10, 50, 150}},
+		{Id = "wins", Field = "CWins", Text = "Win rounds", Icon = "🏆", Events = {RoundWin = 1}, Tiers = {5, 25, 100}},
+		{Id = "cargo", Field = "CCargo", Text = "Deliver cargo", Icon = "📦", Events = {Delivery = 1}, Tiers = {10, 50, 200}},
+		{Id = "enemies", Field = "CEnemies", Text = "Defeat enemies", Icon = "🎯", Events = {Kill = 1, BotKill = 1}, Tiers = {50, 250, 1000}},
+	},
+	Rewards = {{Gold = 500}, {Gold = 2000, Diamonds = 20}, {Gold = 5000, Diamonds = 75}},
+	Stages = {
+		{From = 0, Name = "STONE"}, {From = 3, Name = "BRONZE"}, {From = 6, Name = "SILVER"},
+		{From = 9, Name = "GOLD"}, {From = 12, Name = "CHAMPION"}, {From = 16, Name = "LEGEND"},
+	},
 }
 
 -- Значки Roblox (BadgesService): ID из Creator Dashboard (Монетизация → Badges / «Значки»). 0 — значок ещё не создан,

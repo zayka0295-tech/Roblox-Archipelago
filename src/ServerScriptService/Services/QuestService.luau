@@ -1,7 +1,8 @@
--- Доска заданий (у оружейного стенда базы): одноразовые задания с наградой золотом (Config.Quests).
+-- Доска «Путь новичка» (у оружейного стенда базы): первые шаги с разовой наградой золотом (Config.Quests).
 --  group — вступить в группу Roblox (проверяем по списку групп игрока),
 --  play  — наиграть N секунд (суммарно, за любое число заходов),
---  kills — N убийств вражеских игроков (боты не считаются) с момента появления задания.
+--  остальные — разовые шаги (STEPS ниже): вышел в бой, сел в самолёт / за штурвал, первое убийство,
+--  захват острова, забрал награду в REWARDS. Сделанный шаг — бит в поле Starter.
 -- Прогресс и флаги выполнения хранит DataService; награду забирают кнопкой на доске (Remotes.Quests).
 local Players = game:GetService("Players")
 local GroupService = game:GetService("GroupService")
@@ -13,12 +14,21 @@ local DataService = require(Services.DataService)
 local CombatService = require(Services.CombatService)
 local Notifier = require(Services.Notifier)
 local Guard = require(Services.RemoteGuard)
+local RankService = require(Services.RankService)
+local RewardsService = require(Services.RewardsService)
 
 local QuestService = {}
 local Q = Config.Quests
 local TICK = 5            -- сек.: шаг учёта времени в игре
 local groupCache = {}     -- [игрок] = {ok, t}
 local notified = {}       -- [игрок] = {[id] = true}: «задание готово» уже сообщали
+-- разовые шаги: id → что сказать, когда шаг сделан
+local STEPS = {
+	deploy = "Deployed to the battlefield", plane = "First flight", helm = "Took the helm",
+	firstkill = "First enemy defeated", capture = "Helped capture an island", reward = "Claimed a reward",
+}
+-- действия RankService.Action → шаг
+local STEP_OF_ACTION = {Kill = "firstkill", BotKill = "firstkill", Capture = "capture", Neutralize = "capture"}
 
 local function questOf(id)
 	for _, q in ipairs(Q.List) do
@@ -63,8 +73,8 @@ local function stateOf(player, q)
 		s.goal = q.Goal
 		s.progress = math.min(q.Goal, DataService.get(player, "PlaySec") or 0)
 	else
-		s.goal = q.Goal
-		s.progress = math.min(q.Goal, DataService.get(player, "QuestKills") or 0)
+		s.goal = 1
+		s.progress = bit32.band(DataService.get(player, "Starter") or 0, q.Bit) ~= 0 and 1 or 0
 	end
 	s.ready = not done and not s.locked and s.progress >= s.goal
 	return s
@@ -111,6 +121,33 @@ local function checkReady(player, id)
 	end
 end
 
+-- разовый шаг сделан (повторно — ничего)
+local function markStep(player, id)
+	local q = questOf(id)
+	if not q or not STEPS[id] or not DataService.isLoaded(player) then return end
+	if bit32.band(DataService.get(player, "Starter") or 0, q.Bit) ~= 0 then return end
+	local res = DataService.apply(player, function(data)
+		if bit32.band(data.Starter, q.Bit) ~= 0 then return nil end
+		data.Starter = bit32.bor(data.Starter, q.Bit)
+		return {}
+	end)
+	if not res then return end
+	if bit32.band(DataService.get(player, "QuestDone") or 0, q.Bit) == 0 then
+		Notifier.send(player, ("First step: %s! Claim +%d gold at the quest board"):format(STEPS[id], q.Reward), "success")
+	end
+end
+
+-- посадка: самолёт (атрибут PlaneSeat) или штурвал корабля (Helm)
+local function watchSeats(player, char)
+	local hum = char:WaitForChild("Humanoid", 10)
+	if not hum then return end
+	hum.Seated:Connect(function(active, seat)
+		if not active or not seat then return end
+		if seat:GetAttribute("PlaneSeat") then markStep(player, "plane")
+		elseif seat:GetAttribute("Helm") then markStep(player, "helm") end
+	end)
+end
+
 function QuestService.init()
 	-- убийства для задания (CombatService зовёт при каждом засчитанном убийстве игроком)
 	CombatService.onKill = function(killer)
@@ -128,6 +165,26 @@ function QuestService.init()
 		end
 		return {ok = true, list = listFor(player)}
 	end
+
+	-- разовые шаги «Пути новичка»
+	RankService.Action.Event:Connect(function(player, key)
+		local id = STEP_OF_ACTION[key]
+		if id then markStep(player, id) end
+	end)
+	RewardsService.Claimed.Event:Connect(function(player) markStep(player, "reward") end)
+	local function hookPlayer(p)
+		p:GetAttributeChangedSignal("State"):Connect(function()
+			if p:GetAttribute("State") == "Deployed" then markStep(p, "deploy") end
+		end)
+		p.CharacterAdded:Connect(function(char) watchSeats(p, char) end)
+		if p.Character then task.spawn(watchSeats, p, p.Character) end
+	end
+	Players.PlayerAdded:Connect(hookPlayer)
+	for _, p in ipairs(Players:GetPlayers()) do hookPlayer(p) end
+	-- вошёл, уже будучи в бою или до загрузки данных — шаг «в бою» засчитаем, когда данные загрузятся
+	DataService.Loaded.Event:Connect(function(p)
+		if p:GetAttribute("State") == "Deployed" then markStep(p, "deploy") end
+	end)
 
 	-- время в игре
 	task.spawn(function()

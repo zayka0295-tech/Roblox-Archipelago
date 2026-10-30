@@ -242,7 +242,7 @@ return function(ctx)
 	local acc = 0
 	local wasReady
 	RunService.RenderStepped:Connect(function(dt)
-		frame.Visible = player:GetAttribute("Rank") ~= nil and ctx.state() == "Deployed" -- в лобби тут окно выбора команды
+		frame.Visible = player:GetAttribute("Rank") ~= nil -- и в лобби, и в бою
 		if not frame.Visible then gui.Enabled = false return end
 		local t = os.clock()
 		local ready = pending()

@@ -1,5 +1,5 @@
 -- Окно REWARDS: ежедневные задания, серия входов (7 дней), сундуки за время в игре и приглашение друзей.
--- Кнопка — в столбце справа под кнопкой ранга (та же рамка, что у DailySpinUI / RankUI; как и они — только в бою), красный счётчик —
+-- Кнопка — в столбце справа под кнопкой ранга (та же рамка, что у DailySpinUI / RankUI), красный счётчик —
 -- атрибут игрока RewardsReady. Данные и награды — только сервер (RewardsService, Remotes.Rewards).
 -- Награда серии за сегодня не забрана — окно само открывается на вкладке STREAK (раз за заход, в лобби).
 -- После первой забранной награды — просьба Roblox включить уведомления игры (раз за заход).
@@ -361,7 +361,6 @@ return function(ctx)
 	RunService.Heartbeat:Connect(function(dt)
 		t += dt
 		local n = player:GetAttribute("RewardsReady") or 0
-		frame.Visible = ctx.state() == "Deployed" -- в лобби на этом месте окно выбора команды (как у DailySpinUI)
 		btnScale.Scale = n > 0 and 1 + 0.06 * math.max(0, math.sin(t * 4)) or 1
 		if gui.Enabled and state and math.floor(t * 4) ~= math.floor((t - dt) * 4) then render() end
 	end)

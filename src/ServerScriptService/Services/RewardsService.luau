@@ -18,6 +18,7 @@ local Notifier = require(Services.Notifier)
 local Guard = require(Services.RemoteGuard)
 
 local RewardsService = {}
+RewardsService.Claimed = Instance.new("BindableEvent") -- (игрок, вид) — забрана любая награда (шаг «Пути новичка»)
 local D, S, G, I = Config.Daily, Config.Streak, Config.Gifts, Config.Invite
 local TICK = 5            -- сек.: шаг учёта времени для сундуков
 local FLAG_REFERRED = 1   -- Flags: награда новичку за приглашение уже выдана
@@ -175,6 +176,7 @@ local function claim(player, kind, index)
 		if res and count >= 7 then BadgesService.award(player, "Streak7") end
 		if res then
 			task.spawn(DataService.save, player)
+			RewardsService.Claimed:Fire(player, kind)
 			return true, ("Day %d streak reward: %s"):format(count, rewardText(res))
 		end
 	elseif kind == "gift" then
@@ -193,6 +195,7 @@ local function claim(player, kind, index)
 	end
 	if not res then return false, MSG[why] or MSG.NoData end
 	task.spawn(DataService.save, player)
+	RewardsService.Claimed:Fire(player, kind)
 	return true, "Reward claimed: " .. rewardText(res)
 end
 

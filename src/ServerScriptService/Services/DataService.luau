@@ -2,7 +2,9 @@
 -- выполненных заданий), Diamonds (премиальная валюта), Tutorial (шаг обучения у Капитана),
 -- XP и Rank (подтверждённый ранг, 1..#Config.Ranks.List), награды RewardsService: ежедневные задания (DQDay — день набора,
 -- DQ1..DQ3 — прогресс, DQDone — биты забранных + бонус), серия входов (Streak, StreakLast — день последней награды),
--- сундуки за время (GiftDay, GiftSec, GiftDone — биты), Flags (биты разовых событий) и Invites (приглашённые друзья).
+-- сундуки за время (GiftDay, GiftSec, GiftDone — биты), Flags (биты разовых событий), Invites (приглашённые друзья)
+-- Starter (биты сделанных шагов «Пути новичка», QuestService), карьера (CareerService): счётчики C* за всё время
+-- и CareerDone — биты забранных уровней.
 -- Diamonds, Tutorial, XP и Rank не в leaderstats — клиенты читают их из атрибутов игрока (Rank — и чужие, для значка над головой).
 -- Все изменения только через этот модуль.
 --
@@ -46,9 +48,10 @@ end
 DataService.KillsStore = killsStore
 
 local FIELDS = {"Gold", "Kills", "Deaths", "PlaySec", "QuestKills", "QuestDone", "Diamonds", "Tutorial", "LastSpin", "XP", "Rank",
-	"DQDay", "DQ1", "DQ2", "DQ3", "DQDone", "Streak", "StreakLast", "GiftDay", "GiftSec", "GiftDone", "Flags", "Invites"}
+	"DQDay", "DQ1", "DQ2", "DQ3", "DQDone", "Streak", "StreakLast", "GiftDay", "GiftSec", "GiftDone", "Flags", "Invites", "Starter",
+	"CPlanes", "CShips", "CIslands", "CWins", "CCargo", "CEnemies", "CareerDone"}
 -- при слиянии с профилем, забранным позже (adoptLater): битовые поля объединяем, дни и счётчики наград — берём больший
-local BIT_FIELDS = {QuestDone = true, DQDone = true, GiftDone = true, Flags = true}
+local BIT_FIELDS = {QuestDone = true, DQDone = true, GiftDone = true, Flags = true, Starter = true, CareerDone = true}
 local MAX_FIELDS = {Tutorial = true, LastSpin = true, Rank = true, DQDay = true, DQ1 = true, DQ2 = true, DQ3 = true,
 	Streak = true, StreakLast = true, GiftDay = true, GiftSec = true, Invites = true}
 local ATTR_FIELDS = {Diamonds = true, Tutorial = true, LastSpin = true, XP = true, Rank = true} -- публикуются атрибутами игрока
@@ -60,7 +63,8 @@ local REFRESH = 90     -- сек.: продление замка, даже ес�
 
 local function defaults()
 	return {Gold = Config.Economy.StartGold, Kills = 0, Deaths = 0, PlaySec = 0, QuestKills = 0, QuestDone = 0, Diamonds = 0, Tutorial = 0, LastSpin = 0, XP = 0, Rank = 1,
-		DQDay = 0, DQ1 = 0, DQ2 = 0, DQ3 = 0, DQDone = 0, Streak = 0, StreakLast = 0, GiftDay = 0, GiftSec = 0, GiftDone = 0, Flags = 0, Invites = 0}
+		DQDay = 0, DQ1 = 0, DQ2 = 0, DQ3 = 0, DQDone = 0, Streak = 0, StreakLast = 0, GiftDay = 0, GiftSec = 0, GiftDone = 0, Flags = 0, Invites = 0, Starter = 0,
+		CPlanes = 0, CShips = 0, CIslands = 0, CWins = 0, CCargo = 0, CEnemies = 0, CareerDone = 0}
 end
 
 local function key(player)

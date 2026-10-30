@@ -52,6 +52,7 @@ local RankService = require(Services.RankService)
 local VipService = require(Services.VipService)
 local BadgesService = require(Services.BadgesService)
 local RewardsService = require(Services.RewardsService)
+local CareerService = require(Services.CareerService)
 
 DataService.init()
 CarrierService.init()
@@ -84,6 +85,7 @@ RankService.init()
 VipService.init()
 BadgesService.init()
 RewardsService.init() -- ежедневные задания, серия входов, сундуки, приглашения
+CareerService.init() -- карьерные достижения (статуя на базе)
 AntiCheatService.init()
 BotService.init()
 
@@ -136,6 +138,8 @@ if game:GetService("RunService"):IsStudio() then
 			return DataService.addXP(player, amount) -- опыт для проверки рангов
 		elseif cmd == "rewards" then
 			return RewardsService.devShift(player, amount) -- amount: "newday" / "gifts" / "quests"
+		elseif cmd == "career" then
+			return CareerService.devAdd(player, amount) -- прибавить ко всем счётчикам карьеры
 		elseif cmd == "spinReset" then
 			return DataService.devSet(player, "LastSpin", 0) -- рулетка снова доступна
 		elseif cmd == "roundPlayed" then

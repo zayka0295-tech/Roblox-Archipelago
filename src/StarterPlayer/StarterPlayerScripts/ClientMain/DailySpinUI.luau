@@ -248,7 +248,7 @@ return function(ctx)
 		local t = os.clock()
 		local left = waitLeft()
 		local ready = left == 0
-		frame.Visible = left ~= nil and ctx.state() == "Deployed" -- в лобби на этом месте окно выбора команды
+		frame.Visible = left ~= nil -- и в лобби, и в бою
 		if not frame.Visible and not spinning then gui.Enabled = false end
 		-- кнопка: готово — яркая, пульсирует, колесо крутится, иногда покачивается; иначе серая с таймером
 		if ready then
