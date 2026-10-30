@@ -223,6 +223,9 @@ function CaptureService.init()
 			point:SetAttribute("Control", 0)
 			point:SetAttribute("Contested", false)
 			point:SetAttribute("IslandName", def.Name)
+			-- буква точки на значке над островом
+			local letter = isl.badge and isl.badge:FindFirstChild("Letter", true)
+			if letter and def.Letter then letter.Text = def.Letter end
 			outpost:SetAttribute("Owner", "Neutral")
 			GameState:SetAttribute("Island_" .. def.Id .. "_Owner", "Neutral")
 			GameState:SetAttribute("Island_" .. def.Id .. "_Contested", false)

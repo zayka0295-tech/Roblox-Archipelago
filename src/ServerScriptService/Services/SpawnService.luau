@@ -1,4 +1,6 @@
--- Лобби, автораспределение по командам (при входе и возврате в лобби), выбор точки появления, возрождение
+-- Лобби, автораспределение по командам (при входе и возврате в лобби), выбор точки появления, возрождение.
+-- Точки появления (атрибут игрока SpawnChoice): Base, Carrier и Island — перрон аэродрома на острове
+-- (Config.IslandAirfield), только пока остров у команды игрока.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
@@ -13,6 +15,7 @@ local CombatService = require(Services.CombatService)
 local Notifier = require(Services.Notifier)
 local Guard = require(Services.RemoteGuard)
 local AntiCheat = require(Services.AntiCheatService)
+local CaptureService = require(Services.CaptureService)
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local SpawnService = {}
@@ -63,7 +66,34 @@ function SpawnService.basePoints(team)
 	return spawnsIn(base and base:FindFirstChild("Spawns"))
 end
 
--- куда ставить персонажа: Lobby / Base / Carrier (с откатом на базу)
+-- аэродром на острове: остров (запись Config.Islands) и площадки появления на перроне
+local function airfieldIsland()
+	local id = Config.IslandAirfield and Config.IslandAirfield.Island
+	for _, def in ipairs(Config.Islands) do
+		if def.Id == id then return def end
+	end
+	return nil
+end
+local function islandPads()
+	local def = airfieldIsland()
+	local outpost = def and workspace.Map.Neutral:FindFirstChild(def.Outpost)
+	local strip = outpost and outpost:FindFirstChild("Airstrip")
+	local folder = strip and strip:FindFirstChild("Spawns")
+	local list = {}
+	for _, c in ipairs(folder and folder:GetChildren() or {}) do
+		if c:IsA("BasePart") then table.insert(list, c) end
+	end
+	return list
+end
+-- можно ли команде появляться на острове: (да/нет, причина)
+function SpawnService.islandStatus(team)
+	local def = airfieldIsland()
+	if not def or #islandPads() == 0 then return false, "No airfield" end
+	if CaptureService.getOwner(def.Id) ~= team then return false, ("Capture point %s first"):format(def.Letter or def.Name) end
+	return true, def.Name
+end
+
+-- куда ставить персонажа: Lobby / Base / Carrier / Island (с откатом на базу)
 function SpawnService.resolve(player)
 	local team = TeamService.getTeamName(player)
 	if player:GetAttribute("State") ~= "Deployed" or not team then
@@ -76,6 +106,13 @@ function SpawnService.resolve(player)
 		end
 		player:SetAttribute("SpawnChoice", "Base")
 		Notifier.send(player, "Carrier unavailable — spawning at base", "error")
+	end
+	if player:GetAttribute("SpawnChoice") == "Island" then
+		if SpawnService.islandStatus(team) then
+			return pick(islandPads()), "Island"
+		end
+		player:SetAttribute("SpawnChoice", "Base")
+		Notifier.send(player, "Your team lost the island — spawning at base", "error")
 	end
 	local base = SpawnService.basePoints(team)
 	if #base == 0 then
@@ -193,6 +230,26 @@ end
 
 function SpawnService.init()
 	Players.PlayerRemoving:Connect(function(p) SpawnService.placeOverride[p] = nil end)
+	-- площадки перрона — в цвет владельца острова; потеряли остров — выбравшим его игрокам точка «база»
+	local NEUTRAL_PAD = Color3.fromRGB(150, 155, 165)
+	local function paintPads(owner)
+		local t = Config.Teams[owner]
+		for _, pad in ipairs(islandPads()) do pad.Color = t and t.Color or NEUTRAL_PAD end
+	end
+	paintPads("Neutral")
+	CaptureService.OwnerChanged.Event:Connect(function(id, owner, old)
+		local def = airfieldIsland()
+		if not def or id ~= def.Id then return end
+		paintPads(owner)
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p:GetAttribute("SpawnChoice") == "Island" and TeamService.getTeamName(p) ~= owner then
+				p:SetAttribute("SpawnChoice", "Base")
+				if p:GetAttribute("State") == "Deployed" then
+					Notifier.send(p, ("Point %s lost — next spawn: base"):format(def.Letter or def.Name), "error")
+				end
+			end
+		end
+	end)
 	-- команду выбирает сервер (баланс), самому перейти нельзя
 	Remotes.SelectTeam.OnServerInvoke = function()
 		return result(false, "Teams are assigned automatically")
@@ -200,15 +257,18 @@ function SpawnService.init()
 
 	Remotes.SelectSpawn.OnServerInvoke = function(player, choice)
 		if not Guard.allow(player, "SelectSpawn") then return result(false, "Too fast, please wait") end
-		if choice ~= "Base" and choice ~= "Carrier" then return result(false, "Unknown spawn point") end
+		if choice ~= "Base" and choice ~= "Carrier" and choice ~= "Island" then return result(false, "Unknown spawn point") end
 		local team = TeamService.getTeamName(player)
 		if not team then return result(false, "Choose a team first") end
 		if choice == "Carrier" then
 			local ok, why = CarrierService.status(team)
 			if not ok then return result(false, why) end
+		elseif choice == "Island" then
+			local ok, why = SpawnService.islandStatus(team)
+			if not ok then return result(false, why) end
 		end
 		player:SetAttribute("SpawnChoice", choice)
-		local where = choice == "Carrier" and "carrier" or "base"
+		local where = choice == "Carrier" and "carrier" or choice == "Island" and "island airfield" or "base"
 		if player:GetAttribute("State") == "Deployed" then
 			return result(true, "Next spawn: " .. where)
 		end
@@ -225,6 +285,9 @@ function SpawnService.init()
 		if player:GetAttribute("SpawnChoice") == "Carrier" and not CarrierService.isActive(team) then
 			player:SetAttribute("SpawnChoice", "Base")
 			note = "Carrier unavailable — spawning at base"
+		elseif player:GetAttribute("SpawnChoice") == "Island" and not SpawnService.islandStatus(team) then
+			player:SetAttribute("SpawnChoice", "Base")
+			note = "Your team doesn't hold the island — spawning at base"
 		end
 		player:SetAttribute("State", "Deployed")
 		task.spawn(function()

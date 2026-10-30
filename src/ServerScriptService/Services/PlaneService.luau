@@ -20,6 +20,7 @@ local Guard = require(Services.RemoteGuard)
 local AntiCheat = require(Services.AntiCheatService)
 local TurretService = require(Services.TurretService)
 local ProjectileService = require(Services.ProjectileService)
+local CaptureService = require(Services.CaptureService)
 
 local PlaneService = {}
 local Bombs = Config.Bombs
@@ -155,16 +156,37 @@ function PlaneService.damage(model, amount, attacker)
 end
 
 ------------------------------------------------------------------ вызов
+-- аэродром на острове (Config.IslandAirfield): определение острова и модель Airstrip в его аутпосте
+local function airfieldIsland()
+	local id = Config.IslandAirfield and Config.IslandAirfield.Island
+	for _, def in ipairs(Config.Islands) do
+		if def.Id == id then return def end
+	end
+	return nil
+end
+local function airstrip()
+	local def = airfieldIsland()
+	local outpost = def and workspace.Map.Neutral:FindFirstChild(def.Outpost)
+	return outpost and outpost:FindFirstChild("Airstrip")
+end
+
 local function spawnCFrame(team, where, carrier, P)
 	P = P or Config.Planes.Fighter
 	local marker
 	if where == "Carrier" then
 		marker = carrier and carrier:FindFirstChild("PlaneSpawn")
 	else
-		-- на базе несколько стартовых позиций на пороге ВПП: берём свободную
-		local base = workspace.Map.Teams:FindFirstChild(team .. "Base")
+		-- на базе (и на аэродроме острова) несколько стартовых позиций на пороге ВПП: берём свободную
+		local zones
+		if where == "Island" then
+			local strip = airstrip()
+			zones = strip and strip:FindFirstChild("Zones")
+		else
+			local base = workspace.Map.Teams:FindFirstChild(team .. "Base")
+			zones = base and base:FindFirstChild("Zones")
+		end
 		local list = {}
-		for _, z in ipairs(base and base.Zones:GetChildren() or {}) do
+		for _, z in ipairs(zones and zones:GetChildren() or {}) do
 			if z.Name:match("^PlaneSpawn") then table.insert(list, z) end
 		end
 		table.sort(list, function(x, y) return x.Name < y.Name end)
@@ -351,6 +373,13 @@ function PlaneService.requestSpawn(player, team, where, carrier, kind)
 		return false
 	end
 	if where == "Carrier" and not CarrierService.isActive(team) then return false end
+	if where == "Island" then
+		local def = airfieldIsland()
+		if not def or CaptureService.getOwner(def.Id) ~= team then
+			Notifier.send(player, "Your team doesn't hold this island — the airfield is closed", "error")
+			return false
+		end
+	end
 	local cf = spawnCFrame(team, where, carrier, P)
 	if not cf then
 		Notifier.send(player, "Takeoff point not found", "error")
@@ -743,6 +772,12 @@ function PlaneService.init()
 		prompt.ObjectText = label
 		prompt.Triggered:Connect(function(player)
 			local team = getTeam()
+			if not Config.Teams[team] then
+				-- нейтральный остров: аэродром закрыт
+				local def = airfieldIsland()
+				Notifier.send(player, ("Capture point %s to use this airfield"):format(def and def.Letter or ""), "error")
+				return
+			end
 			if TeamService.getTeamName(player) ~= team then
 				Notifier.send(player, "This is the other team's terminal", "error")
 				return
@@ -758,6 +793,14 @@ function PlaneService.init()
 		if prompt then
 			hookTerminal(prompt, "Air terminal", function() return team end, "Base", nil)
 		end
+	end
+	-- аэродром на острове: самолёты — только команде, которая им владеет
+	local strip = airstrip()
+	local iterm = strip and strip:FindFirstChild("AirTerminal")
+	local iprompt = iterm and iterm:FindFirstChild("PlanePrompt")
+	if iprompt then
+		local def = airfieldIsland()
+		hookTerminal(iprompt, "Airfield " .. (def.Letter or def.Name), function() return CaptureService.getOwner(def.Id) end, "Island", nil)
 	end
 	local carriers = workspace.Map:WaitForChild("Carriers")
 	local function hookCarrier(c)

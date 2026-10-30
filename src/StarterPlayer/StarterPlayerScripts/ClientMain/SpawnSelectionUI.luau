@@ -1,6 +1,6 @@
--- Выбор точки появления: база или авианосец.
+-- Выбор точки появления: база, авианосец или аэродром острова (Config.IslandAirfield — пока остров у команды).
 -- В лобби открывается с плиты DEPLOY (Remotes.OpenSpawnMenu), в бою — из HUD (смена точки).
--- В карточках — мини-модели (VehiclePreview): остров базы и авианосец в цвете команды; недоступный — серый.
+-- В карточках — мини-модели (VehiclePreview): остров базы, авианосец и истребитель в цвете команды; недоступный — серый.
 return function(ctx)
 	local UI, T, Config = ctx.UI, ctx.UI.T, ctx.Config
 	local player = ctx.player
@@ -8,7 +8,7 @@ return function(ctx)
 	local gui = UI.screen("SpawnSelectionUI", 30)
 	local panel = UI.panel(gui, {
 		Name = "Panel", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.55),
-		Size = UDim2.fromOffset(560, 400), Visible = false,
+		Size = UDim2.fromOffset(780, 400), Visible = false,
 	})
 	UI.scale(panel)
 	UI.padding(panel, 18)
@@ -17,10 +17,10 @@ return function(ctx)
 
 	local mode = "deploy"
 	local options = {}
-	local function makeCard(key, title, x, model, zoom)
+	local function makeCard(key, title, i, model, zoom)
 		local card = UI.new("TextButton", {
-			AutoButtonColor = false, Text = "", Position = UDim2.new(x, x > 0 and 6 or 0, 0, 66),
-			Size = UDim2.new(0.5, -6, 0, 220), BackgroundColor3 = T.Panel2, BorderSizePixel = 0,
+			AutoButtonColor = false, Text = "", Position = UDim2.new((i - 1) / 3, (i - 1) * 4, 0, 66),
+			Size = UDim2.new(1 / 3, -8, 0, 220), BackgroundColor3 = T.Panel2, BorderSizePixel = 0,
 		}, panel)
 		UI.corner(card, 8)
 		local stroke = UI.stroke(card, T.Line, 1)
@@ -44,8 +44,10 @@ return function(ctx)
 			end
 		end)
 	end
-	makeCard("Base", "BASE", 0, "Island", 1.55)
-	makeCard("Carrier", "CARRIER", 0.5, "Carrier", 1.4)
+	local _, _, airDef = ctx.islandStatus(nil)
+	makeCard("Base", "BASE", 1, "Island", 1.55)
+	makeCard("Carrier", "CARRIER", 2, "Carrier", 1.4)
+	makeCard("Island", "AIRFIELD " .. (airDef and airDef.Letter or ""), 3, "Fighter", 1.3)
 
 	local back = UI.button(panel, "CLOSE", T.Panel2, {AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(0.34, 0, 0, 50)})
 	UI.stroke(back)
@@ -65,11 +67,17 @@ return function(ctx)
 		options.Carrier.tag.Text = available and ("AVAILABLE · " .. ctext) or ("LOCKED · " .. ctext)
 		options.Carrier.tag.TextColor3 = available and T.Good or T.Bad
 		options.Carrier.card.BackgroundColor3 = available and T.Panel2 or Color3.fromRGB(30, 30, 36)
-		-- модели — в цвет команды; авианосец без доступа — серый и приглушённый
+		local isl, itext = ctx.islandStatus(team)
+		options.Island.tag.Text = isl and ("AVAILABLE · " .. itext) or ("LOCKED · " .. itext)
+		options.Island.tag.TextColor3 = isl and T.Good or T.Bad
+		options.Island.card.BackgroundColor3 = isl and T.Panel2 or Color3.fromRGB(30, 30, 36)
+		-- модели — в цвет команды; недоступные — серые и приглушённые
 		for _, o in pairs(options) do o.preview.paint(team) end
-		local vp = options.Carrier.preview.frame
-		vp.ImageColor3 = available and Color3.new(1, 1, 1) or Color3.fromRGB(150, 150, 160)
-		vp.ImageTransparency = available and 0 or 0.2
+		for key, ok in pairs({Carrier = available, Island = isl}) do
+			local vp = options[key].preview.frame
+			vp.ImageColor3 = ok and Color3.new(1, 1, 1) or Color3.fromRGB(150, 150, 160)
+			vp.ImageTransparency = ok and 0 or 0.2
+		end
 
 		for key, o in pairs(options) do
 			local sel = key == choice

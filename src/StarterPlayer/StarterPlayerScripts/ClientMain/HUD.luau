@@ -49,7 +49,8 @@ return function(ctx)
 			teamLbl.TextColor3 = T.Text
 			carrierLbl.Text = ""
 		end
-		spawnInfo.Text = "Next spawn: " .. (player:GetAttribute("SpawnChoice") == "Carrier" and "carrier" or "base")
+		local choice = player:GetAttribute("SpawnChoice")
+		spawnInfo.Text = "Next spawn: " .. (choice == "Carrier" and "carrier" or choice == "Island" and "island airfield" or "base")
 	end
 
 	local function hookStats(ls)

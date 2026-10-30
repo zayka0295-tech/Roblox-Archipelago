@@ -47,6 +47,20 @@ function ctx.carrierStatus(team)
 	return false, ("Not purchased · %d from treasury at the shipyard"):format(Config.Economy.CarrierPrice), st
 end
 
+-- аэродром на острове (Config.IslandAirfield): доступен команде?, текст, запись острова
+function ctx.islandStatus(team)
+	local id = Config.IslandAirfield and Config.IslandAirfield.Island
+	local def
+	for _, d in ipairs(Config.Islands) do
+		if d.Id == id then def = d end
+	end
+	if not def then return false, "No airfield", nil end
+	local owner = GameState:GetAttribute("Island_" .. def.Id .. "_Owner") or "Neutral"
+	if team and owner == team then return true, ("Point %s · %s"):format(def.Letter, def.Name), def end
+	if owner == "Neutral" then return false, ("Capture point %s · %s"):format(def.Letter, def.Name), def end
+	return false, ("Point %s held by the enemy"):format(def.Letter), def
+end
+
 -- безопасный вызов RemoteFunction
 function ctx.invoke(name, ...)
 	local args = table.pack(...)

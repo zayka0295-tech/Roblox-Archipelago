@@ -1,8 +1,6 @@
 -- Панель островов: сколько островов у каждой команды и кто владеет каждым (только чтение состояния сервера)
 local RunService = game:GetService("RunService")
 
-local SHORT = {Center = "C", North = "N", South = "S", NW = "NW", SW = "SW", NE = "NE", SE = "SE"}
-
 return function(ctx)
 	local UI, T, Config = ctx.UI, ctx.UI.T, ctx.Config
 	local GameState = ctx.GameState
@@ -22,7 +20,7 @@ return function(ctx)
 	for i, def in ipairs(Config.Islands) do
 		local chip = UI.new("TextLabel", {
 			LayoutOrder = i, Size = UDim2.fromOffset(def.IsCenter and 36 or 28, 30), BackgroundColor3 = T.Panel2,
-			Text = SHORT[def.Id] or def.Id, TextColor3 = Color3.new(1, 1, 1), Font = UI.Bold, TextSize = 13,
+			Text = def.Letter or def.Id, TextColor3 = Color3.new(1, 1, 1), Font = UI.Bold, TextSize = 13,
 		}, row)
 		UI.corner(chip, 6)
 		local stroke = UI.new("UIStroke", {ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Thickness = def.IsCenter and 2 or 1, Color = Color3.fromRGB(255, 220, 120), Transparency = def.IsCenter and 0 or 1}, chip)

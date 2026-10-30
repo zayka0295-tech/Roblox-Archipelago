@@ -384,15 +384,20 @@ Config.Capture = {
 }
 
 -- Острова: Id, модель аванпоста, название, сторона причала (направление от центра острова)
+-- Letter — буква точки на панели и на значке над островом (A, B, C …)
 Config.Islands = {
-	{Id = "Center", Outpost = "Outpost_Center", Name = "Central Fort", IsCenter = true, DockDir = Vector3.new(0, 0, -1)},
-	{Id = "North", Outpost = "Outpost_North", Name = "North Island", DockDir = Vector3.new(0, 0, 1)},
-	{Id = "South", Outpost = "Outpost_South", Name = "South Island", DockDir = Vector3.new(0, 0, -1)},
-	{Id = "NW", Outpost = "Outpost_NW", Name = "Northwest Isle", DockDir = Vector3.new(0, 0, 1)},
-	{Id = "SW", Outpost = "Outpost_SW", Name = "Southwest Isle", DockDir = Vector3.new(0, 0, -1)},
-	{Id = "NE", Outpost = "Outpost_NE", Name = "Northeast Isle", DockDir = Vector3.new(0, 0, 1)},
-	{Id = "SE", Outpost = "Outpost_SE", Name = "Southeast Isle", DockDir = Vector3.new(0, 0, -1)},
+	{Id = "Center", Letter = "A", Outpost = "Outpost_Center", Name = "Central Fort", IsCenter = true, DockDir = Vector3.new(0, 0, -1)},
+	{Id = "North", Letter = "B", Outpost = "Outpost_North", Name = "North Island", DockDir = Vector3.new(0, 0, 1)},
+	{Id = "South", Letter = "C", Outpost = "Outpost_South", Name = "South Island", DockDir = Vector3.new(0, 0, -1)},
+	{Id = "NW", Letter = "D", Outpost = "Outpost_NW", Name = "Northwest Isle", DockDir = Vector3.new(0, 0, 1)},
+	{Id = "SW", Letter = "E", Outpost = "Outpost_SW", Name = "Southwest Isle", DockDir = Vector3.new(0, 0, -1)},
+	{Id = "NE", Letter = "F", Outpost = "Outpost_NE", Name = "Northeast Isle", DockDir = Vector3.new(0, 0, 1)},
+	{Id = "SE", Letter = "G", Outpost = "Outpost_SE", Name = "Southeast Isle", DockDir = Vector3.new(0, 0, -1)},
 }
+
+-- Аэродром на острове (модель Airstrip в аутпосте): команда, которая владеет островом, вызывает самолёты
+-- с его терминала и может выбрать перрон точкой появления. Пока остров нейтральный — аэродром закрыт.
+Config.IslandAirfield = {Island = "Center"}
 
 -- Морская логистика: острова команды отправляют грузовые суда на её базу
 Config.Logistics = {
