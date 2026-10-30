@@ -1,6 +1,8 @@
 -- Сохранение прогресса: Gold, Kills, Deaths, задания доски (PlaySec, QuestKills, QuestDone — биты
 -- выполненных заданий), Diamonds (премиальная валюта), Tutorial (шаг обучения у Капитана),
--- XP и Rank (подтверждённый ранг, 1..#Config.Ranks.List).
+-- XP и Rank (подтверждённый ранг, 1..#Config.Ranks.List), награды RewardsService: ежедневные задания (DQDay — день набора,
+-- DQ1..DQ3 — прогресс, DQDone — биты забранных + бонус), серия входов (Streak, StreakLast — день последней награды),
+-- сундуки за время (GiftDay, GiftSec, GiftDone — биты), Flags (биты разовых событий) и Invites (приглашённые друзья).
 -- Diamonds, Tutorial, XP и Rank не в leaderstats — клиенты читают их из атрибутов игрока (Rank — и чужие, для значка над головой).
 -- Все изменения только через этот модуль.
 --
@@ -43,7 +45,12 @@ do
 end
 DataService.KillsStore = killsStore
 
-local FIELDS = {"Gold", "Kills", "Deaths", "PlaySec", "QuestKills", "QuestDone", "Diamonds", "Tutorial", "LastSpin", "XP", "Rank"}
+local FIELDS = {"Gold", "Kills", "Deaths", "PlaySec", "QuestKills", "QuestDone", "Diamonds", "Tutorial", "LastSpin", "XP", "Rank",
+	"DQDay", "DQ1", "DQ2", "DQ3", "DQDone", "Streak", "StreakLast", "GiftDay", "GiftSec", "GiftDone", "Flags", "Invites"}
+-- при слиянии с профилем, забранным позже (adoptLater): битовые поля объединяем, дни и счётчики наград — берём больший
+local BIT_FIELDS = {QuestDone = true, DQDone = true, GiftDone = true, Flags = true}
+local MAX_FIELDS = {Tutorial = true, LastSpin = true, Rank = true, DQDay = true, DQ1 = true, DQ2 = true, DQ3 = true,
+	Streak = true, StreakLast = true, GiftDay = true, GiftSec = true, Invites = true}
 local ATTR_FIELDS = {Diamonds = true, Tutorial = true, LastSpin = true, XP = true, Rank = true} -- публикуются атрибутами игрока
 local LOCK_TTL = 180   -- сек.: замок старше этого считается брошенным (сервер упал)
 local LOCK_WAIT = 60   -- сек.: столько ждём освобождения чужого замка при входе
@@ -52,7 +59,8 @@ local ADOPT_POLL = 10  -- сек.: как часто пробуем забрат
 local REFRESH = 90     -- сек.: продление замка, даже если данные не менялись
 
 local function defaults()
-	return {Gold = Config.Economy.StartGold, Kills = 0, Deaths = 0, PlaySec = 0, QuestKills = 0, QuestDone = 0, Diamonds = 0, Tutorial = 0, LastSpin = 0, XP = 0, Rank = 1}
+	return {Gold = Config.Economy.StartGold, Kills = 0, Deaths = 0, PlaySec = 0, QuestKills = 0, QuestDone = 0, Diamonds = 0, Tutorial = 0, LastSpin = 0, XP = 0, Rank = 1,
+		DQDay = 0, DQ1 = 0, DQ2 = 0, DQ3 = 0, DQDone = 0, Streak = 0, StreakLast = 0, GiftDay = 0, GiftSec = 0, GiftDone = 0, Flags = 0, Invites = 0}
 end
 
 local function key(player)
@@ -179,9 +187,9 @@ local function adoptLater(player, p)
 				-- сохранённое + заработанное без сохранения (покупки в это время были запрещены)
 				local stored = readFields(res)
 				for _, f in ipairs(FIELDS) do
-					if f == "QuestDone" then
+					if BIT_FIELDS[f] then
 						stored[f] = bit32.bor(stored[f], p.data[f]) -- флаги объединяем, а не складываем
-					elseif f == "Tutorial" or f == "LastSpin" or f == "Rank" then
+					elseif MAX_FIELDS[f] then
 						stored[f] = math.max(stored[f], p.data[f]) -- шаг обучения и ранг — дальний из двух; спин — поздний
 					else
 						stored[f] += math.max(0, p.data[f] - p.base[f])
@@ -429,6 +437,35 @@ function DataService.completeQuest(player, bit, reward)
 	syncStat(player, "QuestDone")
 	syncStat(player, "Gold")
 	return true
+end
+
+-- награды RewardsService: fn(data) без yield правит поля наград прямо в data и возвращает {Gold =, Diamonds =} —
+-- что начислить (можно пустую таблицу), или nil, причина — отказ (тогда data не трогать).
+-- Проверка и начисление одним шагом: дважды не получить. claim = true — это забор награды: пока профиль
+-- грузится с другого сервера (adopting), нельзя (там награда могла быть уже получена). Золото — без множителя VIP.
+local REWARD_FIELDS = {"DQDay", "DQ1", "DQ2", "DQ3", "DQDone", "Streak", "StreakLast", "GiftDay", "GiftSec", "GiftDone", "Flags", "Invites"}
+function DataService.apply(player, fn, claim)
+	local p = profiles[player]
+	if not p then return nil, "NoData" end
+	if claim and p.adopting then return nil, "Syncing" end
+	local res, why = fn(p.data)
+	if type(res) ~= "table" then return nil, why end
+	if validAmount(res.Gold) then p.data.Gold = math.min(Config.Economy.MaxGold, p.data.Gold + res.Gold) end
+	if validAmount(res.Diamonds) then p.data.Diamonds = math.min(Config.Diamonds.Max, p.data.Diamonds + res.Diamonds) end
+	p.dirty = true
+	if res.Gold then syncStat(player, "Gold") end
+	if res.Diamonds then syncStat(player, "Diamonds") end
+	return res
+end
+
+-- только чтение полей наград (копия)
+function DataService.rewardData(player)
+	local p = profiles[player]
+	if not p then return nil end
+	local t = {}
+	for _, f in ipairs(REWARD_FIELDS) do t[f] = p.data[f] end
+	t.PlaySec = p.data.PlaySec
+	return t
 end
 
 -- одна запись в DataStore (вызывается только из save, строго по очереди)

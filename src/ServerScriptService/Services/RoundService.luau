@@ -5,6 +5,8 @@
 --  • Награда: WinDiamonds каждому игроку победившей команды, который сейчас в ней
 --    и отыграл за неё в этом раунде не меньше MinPlaySec (в бою, не в лобби).
 --  • После конца — перерыв Intermission (баннер), затем острова сбрасываются и идёт новый раунд.
+--  • Итоги: личная статистика за раунд (RankService.Action — убийства, самолёты, корабли, захваты, очки = опыт
+--    за действия) и звания (Config.Round.Awards: MVP, Ace, Captain, Conqueror) с золотом — на экран итогов.
 -- Состояние для клиентов — атрибуты GameState (Round_*), итог — Remotes.RoundResult.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -18,6 +20,7 @@ local CaptureService = require(Services.CaptureService)
 local CombatService = require(Services.CombatService)
 local Notifier = require(Services.Notifier)
 local RankService = require(Services.RankService)
+local BadgesService = require(Services.BadgesService)
 
 local RoundService = {}
 local R = Config.Round
@@ -27,6 +30,12 @@ local GameState = ReplicatedStorage:WaitForChild("GameState")
 local score = {Blue = 0, Red = 0}
 local kills = {Blue = 0, Red = 0}
 local played = {} -- [игрок] = {Blue = сек, Red = сек} в бою за каждую команду в этом раунде
+local stats = {}  -- [игрок] = {kills, planes, sinks, caps, score} за этот раунд
+-- какие действия идут в какую графу итогов (очки — за все, кроме служебных)
+local STAT_OF = {Kill = "kills", BotKill = "kills", PlaneKill = "planes", Sink = "sinks", CarrierKill = "sinks", CargoKill = "sinks",
+	Capture = "caps", Neutralize = "caps"}
+local NO_SCORE = {PlayMinute = true, RoundWin = true, RoundLoss = true, Quest = true, Tutorial = true}
+local TITLES = {{"MVP", "score"}, {"Ace", "planes"}, {"Captain", "sinks"}, {"Conqueror", "caps"}}
 local roundNo = 0
 local active = false
 local endsAt = 0
@@ -42,6 +51,7 @@ local function startRound()
 	roundNo += 1
 	for _, t in ipairs(TEAMS) do score[t], kills[t] = 0, 0 end
 	played = {}
+	stats = {}
 	RankService.newRound()
 	CaptureService.resetAll()
 	active = true
@@ -69,6 +79,38 @@ local function endRound()
 	GameState:SetAttribute("Round_EndsAt", endsAt)
 	GameState:SetAttribute("Round_LastWinner", winner or "Draw")
 	local remote = ReplicatedStorage.Remotes:FindFirstChild("RoundResult")
+
+	-- звания: у кого больше всех в графе (хотя бы 1), с золотом
+	local titles, bonus = {}, {}
+	for _, t in ipairs(TITLES) do
+		local top, best = nil, 0
+		for p, st in pairs(stats) do
+			if p.Parent and st[t[2]] > best then top, best = p, st[t[2]] end
+		end
+		if top then
+			local gold = R.Awards and R.Awards[t[1]] or 0
+			if gold > 0 then DataService.addGold(top, gold) end
+			bonus[top] = (bonus[top] or 0) + gold
+			table.insert(titles, {key = t[1], name = top.DisplayName, team = TeamService.getTeamName(top), value = best, gold = gold, userId = top.UserId})
+			if t[1] == "MVP" then BadgesService.award(top, "MVP") end
+		end
+	end
+	-- таблица лучших по очкам
+	local order = {}
+	for p, st in pairs(stats) do
+		if p.Parent then table.insert(order, {p = p, st = st}) end
+	end
+	table.sort(order, function(a, b) return a.st.score > b.st.score end)
+	local board, place = {}, {}
+	for i, e in ipairs(order) do
+		place[e.p] = i
+		if i <= (R.BoardSize or 5) then
+			local st = e.st
+			table.insert(board, {name = e.p.DisplayName, team = TeamService.getTeamName(e.p), userId = e.p.UserId,
+				kills = st.kills, planes = st.planes, sinks = st.sinks, caps = st.caps, score = st.score})
+		end
+	end
+
 	for _, p in ipairs(Players:GetPlayers()) do
 		local sec = winner and played[p] and played[p][winner] or 0
 		local got = 0
@@ -87,6 +129,9 @@ local function endRound()
 			remote:FireClient(p, {
 				winner = winner, blue = score.Blue, red = score.Red, killsBlue = kills.Blue, killsRed = kills.Red,
 				diamonds = got, team = TeamService.getTeamName(p), playedSec = math.floor(sec), needSec = R.MinPlaySec,
+				board = board, titles = titles, players = #order,
+				me = stats[p] and {kills = stats[p].kills, planes = stats[p].planes, sinks = stats[p].sinks, caps = stats[p].caps,
+					score = stats[p].score, place = place[p], bonus = bonus[p] or 0} or nil,
 			})
 		end
 	end
@@ -115,7 +160,23 @@ function RoundService.init()
 		if t and kills[t] then kills[t] += 1 end
 	end
 
-	Players.PlayerRemoving:Connect(function(p) played[p] = nil end)
+	-- личная статистика раунда
+	RankService.Action.Event:Connect(function(p, key, xp)
+		if not active then return end
+		local st = stats[p]
+		if not st then
+			st = {kills = 0, planes = 0, sinks = 0, caps = 0, score = 0}
+			stats[p] = st
+		end
+		local f = STAT_OF[key]
+		if f then st[f] += 1 end
+		if not NO_SCORE[key] then st.score += xp or 0 end
+	end)
+
+	Players.PlayerRemoving:Connect(function(p)
+		played[p] = nil
+		stats[p] = nil
+	end)
 
 	startRound()
 	task.spawn(function()

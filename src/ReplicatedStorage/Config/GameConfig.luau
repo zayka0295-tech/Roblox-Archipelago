@@ -121,6 +121,8 @@ Config.RateLimits = {
 	ReturnToLobby = 2,
 	Quests = 0.3,
 	QuestsGet = 1,
+	Rewards = 0.3,
+	RewardsGet = 0.5,
 	BuyPlane = 1,
 }
 
@@ -160,11 +162,15 @@ Config.Diamonds = {
 -- Ничья по очкам — решают убийства за раунд; и тут ничья — никто не получает диаманты.
 Config.Round = {
 	Duration = 30 * 60,   -- сек.
-	Intermission = 15,    -- сек. между раундами (баннер победителя)
+	Intermission = 20,    -- сек. между раундами (экран итогов)
 	ScoreTick = 5,
 	PointsPerIsland = 1,
 	WinDiamonds = 10,     -- каждому игроку победившей команды
 	MinPlaySec = 5 * 60,  -- столько надо отыграть за победившую команду в этом раунде (не зайти в конце)
+	-- звания по итогам раунда (экран итогов) и золото за них: MVP — больше всех очков (опыт за действия в раунде),
+	-- Ace — больше всех сбитых самолётов, Captain — потопленных кораблей, Conqueror — захватов островов
+	Awards = {MVP = 400, Ace = 200, Captain = 200, Conqueror = 200},
+	BoardSize = 5,        -- сколько лучших игроков показывать на экране итогов
 }
 
 -- Обучение у Капитана (стоит у доски заданий): полёт → море → передача должности.
@@ -466,6 +472,75 @@ Config.Quests = {
 		{Id = "play", Bit = 2, Reward = 200, Goal = 20 * 60}, -- секунд в игре (суммарно, можно за несколько заходов)
 		{Id = "kills", Bit = 4, Reward = 1000, Goal = 10},  -- убийств с момента появления задания
 	},
+}
+
+-- Ежедневные задания (RewardsService, окно REWARDS): каждый день — по одному заданию из каждого уровня (свой набор
+-- у каждого игрока, выбирается по дню и UserId), новый набор — в полночь UTC. Events — ключи RankService.Action,
+-- за которые идёт прогресс (сколько добавить за одно действие). Text — с %d вместо цели.
+-- Id не менять у существующих заданий: по ним выбирается набор дня. Выполнил все три — BonusDiamonds.
+Config.Daily = {
+	BonusDiamonds = 10,
+	Tiers = {
+		{ -- лёгкие
+			{Id = "battle10", Text = "Spend %d minutes in battle", Events = {PlayMinute = 1}, Goal = 10, Reward = 250},
+			{Id = "enemies5", Text = "Defeat %d enemies (players or bots)", Events = {Kill = 1, BotKill = 1}, Goal = 5, Reward = 250},
+			{Id = "deliver1", Text = "Deliver %d cargo for your team", Events = {Delivery = 1}, Goal = 1, Reward = 250},
+		},
+		{ -- средние
+			{Id = "planes2", Text = "Shoot down %d planes", Events = {PlaneKill = 1}, Goal = 2, Reward = 500},
+			{Id = "capture2", Text = "Take part in %d island captures", Events = {Capture = 1, Neutralize = 1}, Goal = 2, Reward = 500},
+			{Id = "enemies15", Text = "Defeat %d enemies (players or bots)", Events = {Kill = 1, BotKill = 1}, Goal = 15, Reward = 500},
+			{Id = "cargo2", Text = "Destroy %d enemy cargo ships or trucks", Events = {CargoKill = 1, TruckKill = 1}, Goal = 2, Reward = 500},
+		},
+		{ -- трудные
+			{Id = "sink3", Text = "Sink %d enemy ships", Events = {Sink = 1, CarrierKill = 1}, Goal = 3, Reward = 900},
+			{Id = "win1", Text = "Win %d round with your team", Events = {RoundWin = 1}, Goal = 1, Reward = 900},
+			{Id = "battle30", Text = "Spend %d minutes in battle", Events = {PlayMinute = 1}, Goal = 30, Reward = 900},
+			{Id = "planes5", Text = "Shoot down %d planes", Events = {PlaneKill = 1}, Goal = 5, Reward = 900},
+		},
+	},
+}
+
+-- Серия входов: награда за каждый день подряд (забирается кнопкой в окне REWARDS). Пропустил день — серия
+-- начинается с первого дня. После 7-го дня круг повторяется.
+Config.Streak = {
+	Rewards = {
+		{Gold = 200}, {Gold = 350}, {Diamonds = 5}, {Gold = 600}, {Gold = 900}, {Diamonds = 15}, {Gold = 1500, Diamonds = 30},
+	},
+}
+
+-- Сундуки за время в игре сегодня (минуты; считается всё время на сервере, сбрасывается в полночь UTC)
+Config.Gifts = {
+	List = {
+		{Min = 5, Gold = 150}, {Min = 15, Gold = 300}, {Min = 30, Diamonds = 5}, {Min = 60, Gold = 800, Diamonds = 10},
+	},
+}
+
+-- Пригласить друга (кнопка INVITE): новичок, пришедший по приглашению, получает NewPlayerGold, а пригласивший,
+-- если он на том же сервере, — FriendGold (не больше MaxRewarded друзей за всё время). Новичок — кто наиграл
+-- меньше NewPlayerMaxSec.
+Config.Invite = {
+	FriendGold = 500,
+	NewPlayerGold = 500,
+	MaxRewarded = 50,
+	NewPlayerMaxSec = 300,
+}
+
+-- Значки Roblox (BadgesService): ID из Creator Dashboard (Монетизация → Badges / «Значки»). 0 — значок ещё не создан,
+-- выдача пропускается.
+Config.Badges = {
+	Welcome = 0,       -- первый вход в игру
+	FirstKill = 0,     -- первое убийство (игрок или бот)
+	FirstPlane = 0,    -- первый сбитый самолёт
+	FirstSink = 0,     -- первый потопленный корабль
+	FirstCapture = 0,  -- первый захват острова
+	RoundWin = 0,      -- первая победа в раунде
+	DailyAll = 0,      -- все три ежедневных задания за день
+	Streak7 = 0,       -- 7 дней подряд
+	InviteFriend = 0,  -- друг пришёл по приглашению
+	Officer = 0,       -- ранг уровня OfficerTier и выше
+	MVP = 0,           -- MVP раунда
+	OfficerTier = 4,
 }
 
 -- Воздушная тревога на базах: сирена воет, пока живой вражеский самолёт над островом базы

@@ -2,6 +2,8 @@
 -- здесь же — опыт за время в бою. Когда опыта хватает на следующий ранг, кнопка ранга у игрока
 -- загорается (считает клиент по атрибутам XP / Rank), повышение он подтверждает — Remotes.Rank("confirm").
 -- Remotes.XPGain(сколько, за что) — всплывающее «+100 XP» у кнопки.
+-- RankService.Action (игрок, ключ, опыт без VIP, sub) — каждое засчитанное действие (и минута в бою, PlayMinute):
+-- на него подписаны ежедневные задания, значки и статистика раунда.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Config.GameConfig)
@@ -12,6 +14,7 @@ local Notifier = require(Services.Notifier)
 local Guard = require(Services.RemoteGuard)
 
 local RankService = {}
+RankService.Action = Instance.new("BindableEvent")
 local RC = Config.Ranks
 local REASON = {
 	Kill = "Enemy eliminated", BotKill = "Bot eliminated", PlaneKill = "Plane shot down", Sink = "Ship sunk",
@@ -33,6 +36,7 @@ function RankService.award(player, key, mult, sub)
 	if type(base) == "table" then base = base[sub] end
 	local n = math.floor((base or 0) * (mult or 1) + 0.5)
 	if n <= 0 then return end
+	RankService.Action:Fire(player, key, n, sub)
 	if DataService.addXP(player, n) then
 		-- DataService уже умножил для VIP — показываем итоговую цифру
 		local vip = player:GetAttribute("VIP") == true
@@ -94,6 +98,7 @@ function RankService.init()
 					if inBattle[p] >= 60 then
 						inBattle[p] -= 60
 						DataService.addXP(p, RC.XP.PlayMinute or 0)
+						RankService.Action:Fire(p, "PlayMinute", RC.XP.PlayMinute or 0)
 					end
 				end
 			end
