@@ -448,8 +448,16 @@ return function(ctx)
 		right = right.Unit
 		local up = right:Cross(newFwd).Unit
 		local bankedUp = CFrame.fromAxisAngle(newFwd, -bank) * up
-		if flying.ao then flying.ao.CFrame = CFrame.lookAt(Vector3.zero, newFwd, bankedUp) end
-		if flying.lv then flying.lv.VectorVelocity = vel end
+		-- турбулентность в грозовом облаке (StormService ставит самолёту атрибут InStorm): рывки по крену,
+		-- тангажу и вверх-вниз
+		local turb, bump = CFrame.identity, Vector3.zero
+		if flying.model:GetAttribute("InStorm") then
+			local t = os.clock()
+			turb = CFrame.Angles(math.noise(t * 2.3, 1.7) * 0.35, math.noise(t * 1.9, 4.1) * 0.2, math.noise(t * 2.8, 7.3) * 0.55)
+			bump = Vector3.new(0, math.noise(t * 3.1, 9.9) * 35, 0)
+		end
+		if flying.ao then flying.ao.CFrame = CFrame.lookAt(Vector3.zero, newFwd, bankedUp) * turb end
+		if flying.lv then flying.lv.VectorVelocity = vel + bump end
 
 		-- камера за самолётом, смотрит по курсу
 		local cam = workspace.CurrentCamera
