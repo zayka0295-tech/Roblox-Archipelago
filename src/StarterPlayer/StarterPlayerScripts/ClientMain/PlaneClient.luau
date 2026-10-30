@@ -38,8 +38,8 @@ return function(ctx)
 
 	------------------------------------------------------------ HUD
 	-- как у кораблей (ShipControlUI): две маленькие плашки у нижнего края по бокам от слота рюкзака:
-	-- слева скорость · высота и газ, справа корпус · бомбы. На ПК клавиши — строкой над ними первые HINT_TIME сек.
-	local SLOT_GAP, BOTTOM, HINT_TIME = 32, -6, 8
+	-- слева скорость · высота и газ, справа корпус · бомбы. На ПК клавиши — панель UI.controls слева внизу.
+	local SLOT_GAP, BOTTOM = 32, -6
 	local function plate(name, anchorX, xOff, barColor)
 		local p = UI.panel(gui, {Name = name, AnchorPoint = Vector2.new(anchorX, 1), Position = UDim2.new(0.5, xOff, 1, BOTTOM),
 			Size = UDim2.fromOffset(190, 34), Visible = false})
@@ -55,12 +55,6 @@ return function(ctx)
 	end
 	local panel, flightLbl, thrBar = plate("Panel", 1, -SLOT_GAP, T.Gold)
 	local statusPanel, statusLbl, hpBar = plate("StatusPanel", 0, SLOT_GAP, T.Good)
-	local keysLbl = UI.label(gui, "", {
-		AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -40), Size = UDim2.fromOffset(760, 18),
-		TextSize = 13, Font = UI.Medium, TextColor3 = T.Text, TextStrokeTransparency = 0.4,
-		TextXAlignment = Enum.TextXAlignment.Center, Visible = false,
-	})
-	local seatedAt
 	local warn = UI.label(gui, "", {AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 120), Size = UDim2.fromOffset(400, 30),
 		TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = T.Bad, TextSize = 24, TextStrokeTransparency = 0.4, Visible = false})
 
@@ -170,9 +164,20 @@ return function(ctx)
 		local root = model:FindFirstChild("Root")
 		if not root then return end
 		P = Config.Planes[model:GetAttribute("PlaneType") or "Fighter"] or Config.Planes.Fighter
-		seatedAt = os.clock()
-		keysLbl.Text = P.DisplayName .. " · mouse — heading · W/S — throttle · LMB — fire"
-			.. ((P.Bombs or 0) > 0 and " · E — drop bomb · Z — bomb sight" or "") .. " · Space — exit"
+		local rows = {
+			{"Mouse", "Fly where you look"},
+			{"W / S", "Throttle up / down"},
+			{"A / D", "Turn left / right"},
+			{"Arrows", "Turn / nose up-down"},
+			{"LMB", "Machine guns"},
+			{"RMB", "Zoom"},
+		}
+		if (P.Bombs or 0) > 0 then
+			table.insert(rows, {"E", "Drop bomb"})
+			table.insert(rows, {"Z", "Bomb sight"})
+		end
+		table.insert(rows, {"Space", "Leave the plane"})
+		UI.controls("plane", rows)
 		flying = {model = model, root = root, ao = root:FindFirstChild("FlightAlign"), lv = root:FindFirstChild("FlightDrive"), seat = seat, hum = hum, muzzles = {}, shotN = 0, lastShot = 0,
 			bay = model:FindFirstChild("BombBay"), impact = nil}
 		for _, d in ipairs(model:GetChildren()) do
@@ -196,7 +201,6 @@ return function(ctx)
 				table.insert(flying.faded, p)
 			end
 		end
-		keysLbl.Visible = not touchOnly
 		showTouch(touchOnly)
 		aimMark.Visible, noseMark.Visible = true, true
 	end
@@ -230,7 +234,8 @@ return function(ctx)
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
 		if hum then cam.CameraSubject = hum end
 		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-		panel.Visible, statusPanel.Visible, warn.Visible, keysLbl.Visible = false, false, false, false
+		panel.Visible, statusPanel.Visible, warn.Visible = false, false, false
+		UI.controls("plane", nil)
 		showTouch(false)
 		aimMark.Visible, noseMark.Visible, bombMark.Visible = false, false, false
 		if lastFiring then
@@ -505,14 +510,6 @@ return function(ctx)
 		hpBar.BackgroundColor3 = hp > 0.5 and T.Good or (hp > 0.25 and T.Gold or T.Bad)
 		local hullTxt = hp > 0.25 and ("Hull %d%%"):format(math.floor(hp * 100 + 0.5)) or ('<font color="#eb554b">Hull %d%%</font>'):format(math.floor(hp * 100 + 0.5))
 		statusLbl.Text = maxBombs > 0 and ("%s · %s"):format(hullTxt, bombs > 0 and ("Bombs %d/%d"):format(bombs, maxBombs) or '<font color="#9aa3b2">Bombs 0 — land to rearm</font>') or hullTxt
-		-- ПК: подсказка с клавишами тает через HINT_TIME сек.
-		if keysLbl.Visible then
-			local age = os.clock() - (seatedAt or 0)
-			local fade = math.clamp(age - (HINT_TIME - 1), 0, 1)
-			keysLbl.TextTransparency = fade
-			keysLbl.TextStrokeTransparency = 0.4 + 0.6 * fade
-			if age > HINT_TIME then keysLbl.Visible = false end
-		end
 		if stalled then
 			warn.Text, warn.Visible = "STALL — nose down, add throttle", true
 		elseif limitMsg then

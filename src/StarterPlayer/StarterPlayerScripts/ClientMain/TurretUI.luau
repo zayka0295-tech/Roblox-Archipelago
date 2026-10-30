@@ -40,16 +40,13 @@ return function(ctx)
 	local gui = UI.screen("TurretUI", 15)
 	local touchOnly = UI.touchOnly
 
-	local panel = UI.panel(gui, {
-		Name = "Panel", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -16),
-		Size = UDim2.fromOffset(460, 70), Visible = false,
-	})
-	UI.scale(panel)
-	UI.padding(panel, 14)
-	UI.label(panel, "TURRET", {TextSize = 16, TextColor3 = T.Accent})
-	UI.label(panel, "Mouse — aim · LMB — fire · RMB / Z — zoom · Space — leave", {
-		Position = UDim2.fromOffset(0, 24), TextSize = 13, Font = UI.Medium, TextColor3 = T.Muted, TextWrapped = true, Size = UDim2.new(1, 0, 0, 18),
-	})
+	-- ПК: клавиши — в общей панели UI.controls слева внизу (у штурвала катера её показывает ShipControlUI)
+	local TURRET_KEYS = {
+		{"Mouse", "Aim"},
+		{"LMB", "Fire"},
+		{"RMB / Z", "Zoom"},
+		{"Space", "Leave the turret"},
+	}
 	local fireBtn = touchOnly and UI.roundButton(gui, "main", "FIRE", T.Bad) or nil
 
 	-- приближение для стрелка: маленькая кнопка на телефоне; на ПК — пока зажата ПКМ (как у оружия) или Z
@@ -261,7 +258,7 @@ return function(ctx)
 	RunService.RenderStepped:Connect(function(dt)
 		local seat, hum, char = turretSeat()
 		local aimOnly = seat ~= nil and seat:GetAttribute("AimTurret") ~= nil
-		panel.Visible = seat ~= nil and not aimOnly and not touchOnly
+		UI.controls("turret", (seat ~= nil and not aimOnly) and TURRET_KEYS or nil)
 		if fireBtn then fireBtn.Visible = seat ~= nil end
 		if zoomBtn then zoomBtn.Visible = seat ~= nil end
 		local cam = workspace.CurrentCamera

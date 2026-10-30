@@ -1,7 +1,7 @@
 -- Панель капитана: появляется, когда игрок сидит у штурвала.
 -- Ввод: клавиатура, геймпад, на телефоне — джойстик техники слева (вперёд/назад — ход, вбок — руль).
--- Везде — две маленькие плашки у нижнего края (ход / оружие). На ПК над ними на HINT_TIME сек. после посадки
--- строка с клавишами; на телефоне — круглые кнопки вокруг прыжка
+-- Везде — две маленькие плашки у нижнего края (ход / оружие). На ПК клавиши — панель UI.controls слева внизу;
+-- на телефоне — круглые кнопки вокруг прыжка
 -- (оружие, погружение); выход из рубки — сам прыжок, стоп — джойстик в центр.
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -19,7 +19,6 @@ return function(ctx)
 	-- две маленькие плашки у нижнего края по бокам от слота оружия (и на ПК, и на телефоне):
 	-- слева ход, справа оружие корабля. Верх экрана и море остаются свободными
 	local compact = true
-	local HINT_TIME = 8
 	local PANEL_W, PANEL_H = compact and 190 or 500, compact and 34 or 128
 	local SLOT_GAP, BOTTOM = 32, -6 -- полширины слота рюкзака Roblox + зазор; отступ от низа
 	local panel = UI.panel(gui, {
@@ -43,13 +42,6 @@ return function(ctx)
 		Position = UDim2.fromOffset(0, 70), TextSize = 13, Font = UI.Medium, TextColor3 = T.Muted, Size = UDim2.new(1, 0, 0, 30),
 		TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, Visible = not compact,
 	})
-	-- ПК: клавиши одной строкой над плашками, первые HINT_TIME сек. после посадки, потом тает
-	local keysLbl = UI.label(gui, "", {
-		AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -40), Size = UDim2.fromOffset(700, 18),
-		TextSize = 13, Font = UI.Medium, TextColor3 = T.Text, TextStrokeTransparency = 0.4,
-		TextXAlignment = Enum.TextXAlignment.Center, Visible = false,
-	})
-	local seatedAt = nil
 
 	-- оружие корабля: торпеды подлодки / глубинные бомбы катера (строка состояния над панелью)
 	local weaponPanel = UI.panel(gui, {Name = "WeaponPanel",
@@ -146,8 +138,7 @@ return function(ctx)
 		local seat = helm()
 		panel.Visible = seat ~= nil
 		if not seat then
-			seatedAt = nil
-			keysLbl.Visible = false
+			UI.controls("ship", nil)
 			showTouch(false)
 			weaponPanel.Visible = false
 			weaponKind = nil
@@ -170,13 +161,21 @@ return function(ctx)
 			local noZoom = stype == "Battleship" or (model and model:GetAttribute("IsCarrier"))
 			local base = noZoom and BASE_HINT:gsub(" · RMB — zoom", "") or BASE_HINT -- у штурвала линкора и авианосца зума нет
 			hintLbl.Text = base .. extra
-			keysLbl.Text = hintLbl.Text
-			seatedAt = seatedAt or os.clock()
-			local age = os.clock() - seatedAt
-			keysLbl.Visible = compact and age < HINT_TIME
-			local fade = math.clamp(age - (HINT_TIME - 1), 0, 1) -- последняя секунда — тает
-			keysLbl.TextTransparency = fade
-			keysLbl.TextStrokeTransparency = 0.4 + 0.6 * fade
+			local rows = {
+				{"W / S", "Ahead / astern"},
+				{"A / D", "Steer left / right"},
+				{"X", "Full stop"},
+			}
+			if canDive then table.insert(rows, {"Q / F", "Dive / surface"}) end
+			if weaponKind == "torpedo" then
+				table.insert(rows, {"LMB / T", "Fire torpedo"})
+			elseif weaponKind == "depthcharge" then
+				table.insert(rows, {"G", "Drop depth charge"})
+				table.insert(rows, {"Wheel in", "Bow gun view"})
+			end
+			if not noZoom then table.insert(rows, {"RMB", "Zoom"}) end
+			table.insert(rows, {"Space", "Leave the helm"})
+			UI.controls("ship", rows)
 		end
 		if weaponKind == "torpedo" then
 			local torps = model:GetAttribute("Torpedoes") or 2

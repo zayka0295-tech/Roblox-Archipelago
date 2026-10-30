@@ -527,4 +527,62 @@ function UI.toast(text, kind, title)
 	end
 end
 
+------------------------------------------------------------------ подсказка по управлению техникой (ПК)
+-- Одна общая панель в левом нижнем углу, пока игрок в технике: строки {клавиши, действие}.
+-- UI.controls(owner, rows) — показать (owner — кто показал: самолёт / корабль / турель),
+-- UI.controls(owner, nil) — убрать, если сейчас показана этим owner. H — свернуть / развернуть.
+local ctlGui, ctlPanel, ctlList, ctlTitle
+local ctlOwner, ctlKey, ctlCollapsed = nil, nil, false
+local CTL_W, CTL_KEY_W, CTL_ROW = 270, 84, 20
+local function ctlRefresh()
+	if not ctlPanel then return end
+	ctlList.Visible = not ctlCollapsed
+	ctlTitle.Text = ctlCollapsed and "CONTROLS  ·  H — show" or "CONTROLS  ·  H — hide"
+	local n = 0
+	for _, r in ipairs(ctlList:GetChildren()) do
+		if r:IsA("Frame") then n += 1 end
+	end
+	ctlPanel.Size = UDim2.fromOffset(CTL_W, 30 + (ctlCollapsed and 0 or n * CTL_ROW + 4))
+end
+function UI.controls(owner, rows)
+	if UI.touchOnly then return end
+	if not rows then
+		if ctlOwner == owner and ctlPanel then
+			ctlPanel.Visible = false
+			ctlOwner, ctlKey = nil, nil
+		end
+		return
+	end
+	if not ctlGui then
+		ctlGui = UI.screen("ControlsHint", 14)
+		ctlPanel = UI.panel(ctlGui, {Name = "Panel", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -16), Visible = false})
+		ctlPanel.BackgroundTransparency = 0.3
+		UI.scale(ctlPanel, 0.75)
+		ctlTitle = UI.label(ctlPanel, "", {Position = UDim2.fromOffset(12, 8), Size = UDim2.new(1, -24, 0, 16), TextSize = 13, TextColor3 = UI.T.Accent})
+		ctlList = UI.new("Frame", {Position = UDim2.fromOffset(12, 28), Size = UDim2.new(1, -24, 1, -30), BackgroundTransparency = 1}, ctlPanel)
+		UI.new("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder}, ctlList)
+		UserInputService.InputBegan:Connect(function(input, processed)
+			if processed or input.KeyCode ~= Enum.KeyCode.H or not ctlOwner then return end
+			ctlCollapsed = not ctlCollapsed
+			ctlRefresh()
+		end)
+	end
+	-- перестраиваем строки, только если набор поменялся (вызывают каждый кадр)
+	local key = owner
+	for _, r in ipairs(rows) do key ..= "\0" .. r[1] .. "\1" .. r[2] end
+	ctlOwner = owner
+	ctlPanel.Visible = true
+	if key == ctlKey then return end
+	ctlKey = key
+	for _, r in ipairs(ctlList:GetChildren()) do
+		if r:IsA("Frame") then r:Destroy() end
+	end
+	for i, r in ipairs(rows) do
+		local row = UI.new("Frame", {Size = UDim2.new(1, 0, 0, CTL_ROW), BackgroundTransparency = 1, LayoutOrder = i}, ctlList)
+		UI.label(row, r[1], {Size = UDim2.new(0, CTL_KEY_W, 1, 0), TextSize = 13, TextColor3 = UI.T.Gold})
+		UI.label(row, r[2], {Position = UDim2.fromOffset(CTL_KEY_W, 0), Size = UDim2.new(1, -CTL_KEY_W, 1, 0), TextSize = 13, Font = UI.Medium, TextTruncate = Enum.TextTruncate.AtEnd})
+	end
+	ctlRefresh()
+end
+
 return UI
