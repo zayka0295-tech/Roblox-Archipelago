@@ -3,6 +3,7 @@
 -- Исключения — карточки выбора точки появления: настоящие острова — Terrain, который ViewportFrame не показывает,
 -- поэтому строим игрушечные модели из деталей: Base — база команды, CentralIsland — центральный форт
 -- с аэродромом (детали TeamPaint клиент красит в цвет команды). Island — прежний игрушечный остров.
+-- Parachute — купол-крыло с ранцем для военного базара (BazaarUI).
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 local Config = require(ReplicatedStorage.Config.GameConfig)
@@ -210,6 +211,40 @@ local function buildCentral()
 	return m
 end
 
+-- парашют для витрины базара: купол-крыло (секции по дуге, через одну — цвет команды), стропы, ранец с лямками
+local function buildParachute()
+	local m = Instance.new("Model")
+	m.Name = "Parachute"
+	local p = maker(m)
+	local white, dark = Color3.fromRGB(236, 236, 230), Color3.fromRGB(25, 25, 25)
+	local CELLS, SPAN, CHORD, R, TOP = 9, 19, 6.5, 15, 15
+	local step = SPAN / CELLS / R
+	local left, right = Vector3.new(-1.1, 4.2, 0), Vector3.new(1.1, 4.2, 0)
+	local function line(a, b, color, w)
+		p({Name = "Line", Size = Vector3.new(w or 0.08, w or 0.08, (b - a).Magnitude), CFrame = CFrame.lookAt((a + b) / 2, b), Color = color or Color3.fromRGB(210, 210, 205)})
+	end
+	for i = 1, CELLS do
+		local a = (i - (CELLS + 1) / 2) * step
+		local cell = CFrame.new(math.sin(a) * R, TOP + math.cos(a) * R - R, 0) * CFrame.Angles(0, 0, -a)
+		p({Name = "Cell", Size = Vector3.new(SPAN / CELLS + 0.08, 0.9, CHORD), CFrame = cell, Color = white, Material = Enum.Material.Fabric}, i % 2 == 1)
+		p({Name = "Intake", Size = Vector3.new(SPAN / CELLS - 0.25, 0.55, 0.12), CFrame = cell * CFrame.new(0, -0.05, -CHORD / 2 - 0.02), Color = dark})
+		local riser = a < 0 and left or right
+		line((cell * CFrame.new(0, -0.45, -CHORD / 2 + 0.6)).Position, riser)
+		line((cell * CFrame.new(0, -0.45, CHORD / 2 - 0.8)).Position, riser)
+	end
+	-- ранец: контейнер, клапан, вытяжное кольцо, лямки; свободные концы от плеч к стропам
+	local olive = Color3.fromRGB(74, 82, 60)
+	p({Name = "Container", Size = Vector3.new(1.9, 2.1, 0.9), CFrame = CFrame.new(0, 0.4, 0.5), Color = olive, Material = Enum.Material.Fabric})
+	p({Name = "Flap", Size = Vector3.new(1.95, 0.5, 0.95), CFrame = CFrame.new(0, 1.25, 0.52), Color = olive:Lerp(Color3.new(0, 0, 0), 0.25), Material = Enum.Material.Fabric})
+	p({Name = "Ripcord", Size = Vector3.new(0.3, 0.3, 0.2), CFrame = CFrame.new(0.75, -0.2, 1), Color = Color3.fromRGB(220, 60, 40)})
+	for _, s in ipairs({-1, 1}) do
+		p({Name = "Strap", Size = Vector3.new(0.22, 2.2, 0.12), CFrame = CFrame.new(s * 0.55, 0.4, -0.1), Color = Color3.fromRGB(35, 35, 35)})
+		line(Vector3.new(s * 0.75, 1.5, 0.1), s < 0 and left or right, Color3.fromRGB(40, 40, 40), 0.22)
+		p({Name = "Toggle", Size = Vector3.new(0.35, 0.5, 0.35), CFrame = CFrame.new(s * 1.15, 3.6, -0.15), Color = Color3.fromRGB(230, 120, 30)})
+	end
+	return m
+end
+
 function PreviewService.init()
 	local folder = Instance.new("Folder")
 	folder.Name = "VehiclePreviews"
@@ -226,6 +261,7 @@ function PreviewService.init()
 	buildIsland().Parent = folder
 	buildBase().Parent = folder
 	buildCentral().Parent = folder
+	buildParachute().Parent = folder
 	folder.Parent = ReplicatedStorage
 end
 

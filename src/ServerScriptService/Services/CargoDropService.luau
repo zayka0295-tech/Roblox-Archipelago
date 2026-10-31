@@ -9,6 +9,7 @@
 --  • Парашют раскрывает сервер на OpenHeight над землёй/водой: купол на персонаже + LinearVelocity по вертикали
 --    (спуск DescentSpeed, вбок рулится как обычно). Медленный спуск — без урона от падения (FallDamageService).
 --    Состояние для интерфейса — атрибут игрока Parachute ("fall" / "open" / nil).
+--  • Тот же парашют — при прыжке из любого самолёта (bailOut из PlaneService), если он куплен на военном базаре.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -19,6 +20,7 @@ local TeamService = require(Services.TeamService)
 local SpawnService = require(Services.SpawnService)
 local MonetizationService = require(Services.MonetizationService)
 local Notifier = require(Services.Notifier)
+local DataService = require(Services.DataService)
 
 local CargoDropService = {}
 local PD = Config.ParachuteDrop
@@ -262,7 +264,8 @@ local function stepChutes()
 			if c.att then c.att:Destroy() end
 			clearChute(player)
 		else
-			groundParams.FilterDescendantsInstances = {char, folder}
+			local planes = workspace.Map:FindFirstChild("Planes") -- выпрыгнул из самолёта: он ещё под ногами
+			groundParams.FilterDescendantsInstances = planes and {char, folder, planes} or {char, folder}
 			local hit = workspace:Raycast(hrp.Position, Vector3.new(0, -3000, 0), groundParams)
 			local height = hit and (hrp.Position.Y - hit.Position.Y) or math.huge
 			local feet = hum.HipHeight + hrp.Size.Y / 2
@@ -387,6 +390,29 @@ function CargoDropService.drop(player, team)
 		Notifier.send(player, "Parachute drop! Press JUMP to bail out — the chute opens by itself", "success")
 	end)
 	return ok
+end
+
+-- игрок выпрыгнул из самолёта (PlaneService): парашют, если он куплен на базаре (Config.Bazaar) и до земли
+-- не меньше BailMinHeight — дальше всё как у десанта
+local function bazaarBit(id)
+	for _, it in ipairs(Config.Bazaar.Items) do
+		if it.Id == id then return it.Bit end
+	end
+	return nil
+end
+function CargoDropService.bailOut(player)
+	local bit = bazaarBit("Parachute")
+	if not bit or not DataService.hasItem(player, bit) or chutes[player] then return false end
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hum or hum.Health <= 0 or not hrp then return false end
+	local planes = workspace.Map:FindFirstChild("Planes")
+	groundParams.FilterDescendantsInstances = planes and {char, folder, planes} or {char, folder}
+	local hit = workspace:Raycast(hrp.Position, Vector3.new(0, -3000, 0), groundParams)
+	if hit and hrp.Position.Y - hit.Position.Y < Config.Bazaar.BailMinHeight then return false end
+	startChute(player)
+	return true
 end
 
 function CargoDropService.setPendingTeam(player, team)

@@ -55,6 +55,7 @@ local VipService = require(Services.VipService)
 local BadgesService = require(Services.BadgesService)
 local RewardsService = require(Services.RewardsService)
 local CareerService = require(Services.CareerService)
+local BazaarService = require(Services.BazaarService)
 
 DataService.init()
 CarrierService.init()
@@ -90,6 +91,7 @@ VipService.init()
 BadgesService.init()
 RewardsService.init() -- ежедневные задания, серия входов, сундуки, приглашения
 CareerService.init() -- карьерные достижения (статуя на базе)
+BazaarService.init() -- военный базар на площади: магазин за диаманты
 AntiCheatService.init()
 BotService.init()
 
@@ -135,6 +137,9 @@ if game:GetService("RunService"):IsStudio() then
 		elseif cmd == "errorFlush" then
 			ErrorLogService.flush() -- записать собранные ошибки сразу, а не через 5 мин
 			return ErrorLogService.read()
+		elseif cmd == "plane" then
+			-- самолёт на старте своей базы и сразу в кресло (amount = тип, по умолчанию Fighter)
+			return PlaneService.requestSpawn(player, player.Team and player.Team.Name, "Base", nil, amount or "Fighter")
 		elseif cmd == "drop" then
 			task.spawn(CargoDropService.drop, player, amount or "Blue") -- десант без покупки, amount = команда
 			return true

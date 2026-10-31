@@ -2,6 +2,7 @@
 -- после прыжка — подсказка по атрибуту игрока Parachute ("fall" / "open").
 -- Персонажем управляет клиент, поэтому на выходе из самолёта скорость самолёта гасим здесь:
 -- чуть вперёд и вниз (иначе летел бы вбок на скорости самолёта, и античит вернул бы назад).
+-- Так же — при прыжке из боевого самолёта, если куплен парашют военного базара (бит в атрибуте Items).
 local RunService = game:GetService("RunService")
 
 return function(ctx)
@@ -56,11 +57,24 @@ return function(ctx)
 		end
 	end
 
+	local chuteBit = 0
+	for _, it in ipairs(ctx.Config.Bazaar.Items) do
+		if it.Id == "Parachute" then chuteBit = it.Bit end
+	end
+	-- кресло самолёта (пилот / стрелок), из которого прыгаем с парашютом базара
+	local function planeSeat(seat)
+		if bit32.band(player:GetAttribute("Items") or 0, chuteBit) == 0 then return false end
+		local m = seat:FindFirstAncestorWhichIsA("Model")
+		while m and not m:GetAttribute("IsPlane") do m = m.Parent and m.Parent:FindFirstAncestorWhichIsA("Model") end
+		return m ~= nil
+	end
+
 	local inCargo, look = false, Vector3.zero
 	RunService.RenderStepped:Connect(function()
 		local hum, hrp = humanoid()
 		local seat = hum and hum.SeatPart
-		local now = seat ~= nil and seat:GetAttribute("CargoSeat") == true
+		local cargo = seat ~= nil and seat:GetAttribute("CargoSeat") == true
+		local now = cargo or (seat ~= nil and planeSeat(seat))
 		if now then
 			local l = seat.CFrame.LookVector
 			look = Vector3.new(l.X, 0, l.Z)
@@ -78,7 +92,7 @@ return function(ctx)
 			end)
 		end
 		inCargo = now
-		box.Visible = now
+		box.Visible = cargo
 		if player:GetAttribute("State") ~= "Deployed" then animateShows(os.clock()) end
 		local chute = player:GetAttribute("Parachute")
 		-- сопротивление воздуха: быстрее FALL_SPEED не падаем (иначе с высоты купол раскрывался бы слишком низко)
@@ -87,8 +101,12 @@ return function(ctx)
 			if v.Y < -FALL_SPEED then hrp.AssemblyLinearVelocity = Vector3.new(v.X, -FALL_SPEED, v.Z) end
 		end
 		if chute == "fall" and hrp and os.clock() - asked > 0.5 then
+			local ignore = {player.Character}
 			local drops = workspace:FindFirstChild("CargoDrops")
-			ray.FilterDescendantsInstances = drops and {player.Character, drops} or {player.Character}
+			local planes = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Planes") -- свой самолёт ещё под ногами
+			if drops then table.insert(ignore, drops) end
+			if planes then table.insert(ignore, planes) end
+			ray.FilterDescendantsInstances = ignore
 			local hit = workspace:Raycast(hrp.Position, Vector3.new(0, -OPEN_AT, 0), ray)
 			if hit then
 				asked = os.clock()

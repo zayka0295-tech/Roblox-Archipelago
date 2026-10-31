@@ -4,8 +4,8 @@
 -- DQ1..DQ3 — прогресс, DQDone — биты забранных + бонус), серия входов (Streak, StreakLast — день последней награды),
 -- сундуки за время (GiftDay, GiftSec, GiftDone — биты), Flags (биты разовых событий), Invites (приглашённые друзья)
 -- Starter (биты сделанных шагов «Пути новичка», QuestService), карьера (CareerService): счётчики C* за всё время
--- и CareerDone — биты забранных уровней.
--- Diamonds, Tutorial, XP и Rank не в leaderstats — клиенты читают их из атрибутов игрока (Rank — и чужие, для значка над головой).
+-- и CareerDone — биты забранных уровней, Items — биты купленных предметов военного базара (Config.Bazaar).
+-- Diamonds, Tutorial, XP, Rank и Items не в leaderstats — клиенты читают их из атрибутов игрока (Rank — и чужие, для значка над головой).
 -- Все изменения только через этот модуль.
 --
 -- Защита от потери данных при переходе между серверами: профиль в DataStore помечается замком сессии
@@ -49,12 +49,12 @@ DataService.KillsStore = killsStore
 
 local FIELDS = {"Gold", "Kills", "Deaths", "PlaySec", "QuestKills", "QuestDone", "Diamonds", "Tutorial", "LastSpin", "XP", "Rank",
 	"DQDay", "DQ1", "DQ2", "DQ3", "DQDone", "Streak", "StreakLast", "GiftDay", "GiftSec", "GiftDone", "Flags", "Invites", "Starter",
-	"CPlanes", "CShips", "CIslands", "CWins", "CCargo", "CEnemies", "CareerDone"}
+	"CPlanes", "CShips", "CIslands", "CWins", "CCargo", "CEnemies", "CareerDone", "Items"}
 -- при слиянии с профилем, забранным позже (adoptLater): битовые поля объединяем, дни и счётчики наград — берём больший
-local BIT_FIELDS = {QuestDone = true, DQDone = true, GiftDone = true, Flags = true, Starter = true, CareerDone = true}
+local BIT_FIELDS = {QuestDone = true, DQDone = true, GiftDone = true, Flags = true, Starter = true, CareerDone = true, Items = true}
 local MAX_FIELDS = {Tutorial = true, LastSpin = true, Rank = true, DQDay = true, DQ1 = true, DQ2 = true, DQ3 = true,
 	Streak = true, StreakLast = true, GiftDay = true, GiftSec = true, Invites = true}
-local ATTR_FIELDS = {Diamonds = true, Tutorial = true, LastSpin = true, XP = true, Rank = true} -- публикуются атрибутами игрока
+local ATTR_FIELDS = {Diamonds = true, Tutorial = true, LastSpin = true, XP = true, Rank = true, Items = true} -- публикуются атрибутами игрока
 local LOCK_TTL = 180   -- сек.: замок старше этого считается брошенным (сервер упал)
 local LOCK_WAIT = 60   -- сек.: столько ждём освобождения чужого замка при входе
 local LOCK_POLL = 5    -- сек.: как часто проверяем при входе
@@ -64,7 +64,7 @@ local REFRESH = 90     -- сек.: продление замка, даже ес�
 local function defaults()
 	return {Gold = Config.Economy.StartGold, Kills = 0, Deaths = 0, PlaySec = 0, QuestKills = 0, QuestDone = 0, Diamonds = 0, Tutorial = 0, LastSpin = 0, XP = 0, Rank = 1,
 		DQDay = 0, DQ1 = 0, DQ2 = 0, DQ3 = 0, DQDone = 0, Streak = 0, StreakLast = 0, GiftDay = 0, GiftSec = 0, GiftDone = 0, Flags = 0, Invites = 0, Starter = 0,
-		CPlanes = 0, CShips = 0, CIslands = 0, CWins = 0, CCargo = 0, CEnemies = 0, CareerDone = 0}
+		CPlanes = 0, CShips = 0, CIslands = 0, CWins = 0, CCargo = 0, CEnemies = 0, CareerDone = 0, Items = 0}
 end
 
 local function key(player)
@@ -406,6 +406,28 @@ function DataService.spendGold(player, amount)
 	p.dirty = true
 	syncStat(player, "Gold")
 	return true
+end
+
+-- покупка предмета базара за диаманты: проверка, списание и отметка одним шагом без yield (дважды не купить).
+-- Пока профиль грузится с другого сервера (adopting) — нельзя, как и любые траты.
+function DataService.buyItem(player, bit, price)
+	if not validAmount(bit) or not validAmount(price) then return false, "Invalid" end
+	local p = profiles[player]
+	if not p then return false, "NoData" end
+	if p.adopting then return false, "Syncing" end
+	if bit32.band(p.data.Items, bit) ~= 0 then return false, "Owned" end
+	if p.data.Diamonds < price then return false, "NotEnough" end
+	p.data.Diamonds -= price
+	p.data.Items = bit32.bor(p.data.Items, bit)
+	p.dirty = true
+	syncStat(player, "Diamonds")
+	syncStat(player, "Items")
+	return true
+end
+
+function DataService.hasItem(player, bit)
+	local p = profiles[player]
+	return p ~= nil and bit32.band(p.data.Items, bit) ~= 0
 end
 
 function DataService.increment(player, field)

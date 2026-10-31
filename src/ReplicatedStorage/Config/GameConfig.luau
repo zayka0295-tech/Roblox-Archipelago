@@ -124,6 +124,7 @@ Config.RateLimits = {
 	Rewards = 0.3,
 	RewardsGet = 0.5,
 	BuyPlane = 1,
+	Bazaar = 0.5,
 }
 
 
@@ -221,6 +222,18 @@ Config.ParachuteDrop = {
 	OpenHeight = 180,       -- клиент просит раскрыть (на деле купол тормозит на пинг ниже)
 	ServerOpenHeight = 90,  -- запасной вариант, если клиент не прислал
 	DescentSpeed = 16,
+}
+
+-- Военный базар на площади базы (BazaarService, BazaarUI): E у прилавка — магазин, покупки за диаманты навсегда.
+-- Bit — бит предмета в поле сохранения Items (у существующих не менять), Preview — мини-модель в VehiclePreviews.
+--  • Parachute: прыжок из любого самолёта в воздухе — парашют как у десанта (Config.ParachuteDrop), если до земли
+--    хотя бы BailMinHeight; ниже — обычный прыжок.
+Config.Bazaar = {
+	Items = {
+		{Id = "Parachute", Bit = 1, Price = 60, Name = "Parachute", Preview = "Parachute",
+			Description = "Jump out of any plane in the air — the chute opens by itself, just like in the cargo drop"},
+	},
+	BailMinHeight = 40,
 }
 
 -- Урон от падения: по скорости удара (студ/с, гравитация 196.2). До SafeSpeed — без урона (падение ~14 студов),
@@ -420,7 +433,7 @@ Config.Helis = {
 Config.Storms = {
 	Count = 3,             -- три облака бродят по всей карте
 	Radius = 340,          -- радиус облака (и зоны молний под ним)
-	Height = 300,          -- высота середины облака
+	Height = 520,          -- высота середины облака (над слоем облаков Map.CloudLayer на 400)
 	Thickness = 150,       -- толщина: самолёт на высоте Height ± Thickness/2 — внутри
 	Speed = 20,            -- студов/с
 	Bounds = {X = 1900, Z = 1800}, -- где бродит центр облака (край облака до баз не достаёт)

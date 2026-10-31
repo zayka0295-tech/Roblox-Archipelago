@@ -323,6 +323,22 @@ local function makePlane(ownerActor, team, cf, kind)
 	planes[model] = st
 	byOwner[ownerActor] = model
 	setupSeat(model, st)
+	-- выпрыгнул в воздухе (пилот или стрелок) — парашют военного базара, если куплен
+	for _, s in ipairs(model:GetDescendants()) do
+		if s:IsA("Seat") or s:IsA("VehicleSeat") then
+			local last
+			s:GetPropertyChangedSignal("Occupant"):Connect(function()
+				local hum = s.Occupant
+				if hum then
+					last = Players:GetPlayerFromCharacter(hum.Parent)
+				elseif last then
+					local p = last
+					last = nil
+					if not st.dead and p.Parent then require(script.Parent.CargoDropService).bailOut(p) end
+				end
+			end)
+		end
+	end
 	-- турель стрелка (бомбардировщик) — как башни кораблей
 	TurretService.attachShip(model)
 
