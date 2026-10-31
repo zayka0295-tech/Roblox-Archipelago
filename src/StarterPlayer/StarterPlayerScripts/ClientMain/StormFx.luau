@@ -1,4 +1,5 @@
--- Грозовые облака (StormService): облако из тёмных клубов с тенью и дождём плывёт за позицией с сервера
+-- Грозовые облака (StormService): туча из тёмных мешей облаков (меш из тулбокса «storm clouds») с тенью и
+-- дождём плывёт за позицией с сервера
 -- (GameState Storm<i>_Pos), молния (Remotes.StormStrike) — ломаная неоновая линия от облака до земли,
 -- вспышка, гром с задержкой по расстоянию, рядом — тряска камеры. Всё только у этого клиента.
 local RunService = game:GetService("RunService")
@@ -6,7 +7,9 @@ local Lighting = game:GetService("Lighting")
 local TweenService = game:GetService("TweenService")
 local SoundFx = require(script.Parent:WaitForChild("SoundFx"))
 
-local PUFFS = 44
+local PUFFS = 16
+local CLOUD_MESH = "rbxassetid://111820358"
+local MESH_SCALE = Vector3.new(408, 168, 341) -- размер одного клуба при Radius = 340
 
 return function(ctx)
 	local S = ctx.Config.Storms
@@ -28,19 +31,23 @@ return function(ctx)
 
 	local function buildCloud(i)
 		local rng = Random.new(i * 7919)
-		local k = S.Radius / 170 -- клубы растут вместе с облаком
+		local k = S.Radius / 340 -- клубы растут вместе с облаком
 		local c = {puffs = {}, pos = nil}
 		for n = 1, PUFFS do
-			local a, r = rng:NextNumber() * math.pi * 2, math.sqrt(rng:NextNumber()) * S.Radius * 0.85
-			local size = rng:NextNumber(70, 150) * k
-			local top = n > PUFFS * 0.65
-			local off = Vector3.new(math.cos(a) * r, (top and rng:NextNumber(10, 35) or rng:NextNumber(-25, 5)) * k, math.sin(a) * r)
+			local a, r = rng:NextNumber() * math.pi * 2, math.sqrt(rng:NextNumber()) * S.Radius * 0.8
+			local top = n > PUFFS * 0.6 -- верхний ярус светлее, низ — почти чёрный
+			local off = Vector3.new(math.cos(a) * r, (top and rng:NextNumber(20, 50) or rng:NextNumber(-20, 10)) * k, math.sin(a) * r)
 			local p = part({
-				Name = "Puff", Shape = Enum.PartType.Ball, Size = Vector3.new(size, size * 0.6, size),
-				Color = top and Color3.fromRGB(118, 122, 132) or Color3.fromRGB(62, 66, 76),
-				Material = Enum.Material.SmoothPlastic, Transparency = top and 0.2 or 0.1, CastShadow = true,
+				Name = "Puff", Size = Vector3.new(1, 1, 1),
+				Color = top and Color3.fromRGB(78, 82, 92) or Color3.fromRGB(38, 40, 48),
+				Material = Enum.Material.Fabric, CastShadow = true,
 			})
-			table.insert(c.puffs, {part = p, off = off, bob = rng:NextNumber() * 10})
+			local mesh = Instance.new("SpecialMesh")
+			mesh.MeshType = Enum.MeshType.FileMesh
+			mesh.MeshId = CLOUD_MESH
+			mesh.Scale = MESH_SCALE * k * rng:NextNumber(0.8, 1.25)
+			mesh.Parent = p
+			table.insert(c.puffs, {part = p, off = off, bob = rng:NextNumber() * 10, yaw = CFrame.Angles(0, rng:NextNumber() * math.pi * 2, 0)})
 		end
 		-- дождь из-под облака
 		local rain = part({Name = "Rain", Size = Vector3.new(S.Radius * 1.6, 1, S.Radius * 1.6), Transparency = 1})
@@ -131,7 +138,7 @@ return function(ctx)
 				local c = clouds[i] or buildCloud(i)
 				c.pos = c.pos and c.pos:Lerp(target, math.min(1, dt * 2)) or target
 				for _, p in ipairs(c.puffs) do
-					p.part.CFrame = CFrame.new(c.pos + p.off + Vector3.new(0, math.sin(t * 0.4 + p.bob) * 2, 0))
+					p.part.CFrame = CFrame.new(c.pos + p.off + Vector3.new(0, math.sin(t * 0.4 + p.bob) * 2, 0)) * p.yaw
 				end
 				c.rain.CFrame = CFrame.new(c.pos - Vector3.new(0, S.Thickness / 2, 0))
 			end
