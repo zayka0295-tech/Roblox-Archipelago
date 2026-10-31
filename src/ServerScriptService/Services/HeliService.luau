@@ -482,6 +482,25 @@ function HeliService.init()
 			end
 		end
 	end
+	-- модель грузового вертолёта на стоянке у площадки базы (DisplayPad): просто для вида, не груз и не цель
+	for _, team in ipairs(Config.TeamOrder) do
+		local base = workspace.Map.Teams:FindFirstChild(team .. "Base")
+		local helipad = base and base.Decor:FindFirstChild("Helipad")
+		local pad = helipad and helipad:FindFirstChild("DisplayPad")
+		if pad then
+			local m, parts = buildHeli(team)
+			m.Name = "ParkedCargoHeli"
+			m.ModelStreamingMode = Enum.ModelStreamingMode.Default
+			for _, k in ipairs({"IsCargo", "Team", "CargoType", "MaxHealth", "Health"}) do m:SetAttribute(k, nil) end
+			local cf = CFrame.new(pad.Position + Vector3.new(0, pad.Size.Y / 2 + 7.25, 0)) * pad.CFrame.Rotation -- колёса на площадке
+			for _, p in ipairs(parts) do
+				local off = p.offset
+				if p.spin then off = off * CFrame.Angles(0, math.rad(p.spin.angle) * p.spin.dir, 0) * CFrame.new(p.spin.radial, 0, 0) end
+				p.part.CFrame = cf * off
+			end
+			m.Parent = helipad
+		end
+	end
 	-- урон по вертолётам — через тот же вызов, что и по грузовым судам
 	local prev = CombatService.onCargoHit
 	CombatService.onCargoHit = function(model, amount, attacker)

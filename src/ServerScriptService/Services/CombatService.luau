@@ -87,6 +87,14 @@ function CombatService.tracer(a, b, skipUserId, weaponClass)
 	shotQueue[n + 4] = weaponClass or ""
 end
 
+-- из своей безопасной зоны можно бить только врагов, забежавших в эту же зону (защищённым стрелять наружу нельзя)
+local function shotFromOwnZone(attacker, at, victimPos)
+	local char = isPlayer(attacker) and attacker.Character or attacker
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	local az = hrp and CombatService.zoneAt(hrp.Position)
+	return az ~= nil and az == at and CombatService.zoneAt(victimPos) ~= az
+end
+
 -- attacker: игрок или бот (модель с атрибутами Team и State)
 function CombatService.damagePlayer(attacker, victim, amount)
 	if attacker == victim then return false end
@@ -100,6 +108,7 @@ function CombatService.damagePlayer(attacker, victim, amount)
 	if not hum or not hrp or hum.Health <= 0 then return false end
 	if char:FindFirstChildOfClass("ForceField") then return false end
 	if protectedZone(CombatService.zoneAt(hrp.Position), vt) then return false end
+	if shotFromOwnZone(attacker, at, hrp.Position) then return false end
 
 	local t = os.clock()
 	lastHit[victim] = {attacker = attacker, t = t}
@@ -117,6 +126,8 @@ function CombatService.damageBot(attacker, bot, amount)
 	if at == vt and not Config.Combat.FriendlyFire then return false end
 	local hum = bot:FindFirstChildOfClass("Humanoid")
 	if not hum or hum.Health <= 0 or bot:FindFirstChildOfClass("ForceField") then return false end
+	local bhrp = bot:FindFirstChild("HumanoidRootPart")
+	if bhrp and shotFromOwnZone(attacker, at, bhrp.Position) then return false end
 	lastHit[bot] = {attacker = attacker, t = os.clock()}
 	if isPlayer(attacker) then lastCombat[attacker] = os.clock() end
 	hum:TakeDamage(amount)

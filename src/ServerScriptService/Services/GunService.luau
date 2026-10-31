@@ -24,10 +24,6 @@ local function gunOf(tool)
 	return tool and Config.Guns[tool:GetAttribute("Gun") or tool.Name]
 end
 
-local function protectedZone(zone, team)
-	return zone ~= nil and (zone == "Lobby" or zone == "Any" or zone == team)
-end
-
 -- с оружием в руках всегда первое лицо (GunClient), и персонаж повёрнут туда же, куда камера.
 -- Выстрел вбок или назад от того, куда он смотрит, — чит («стрельба на 360°»). Запас на касание края
 -- экрана на телефоне и на то, что поворот тела доходит до сервера с небольшой задержкой.
@@ -83,8 +79,9 @@ local function onFire(player, target, hitPart)
 	if tool:GetAttribute("Reloading") then return end
 	local ammo = tool:GetAttribute("Ammo") or 0
 	if ammo <= 0 then return end
-	local team = TeamService.getTeamName(player)
-	if protectedZone(CombatService.zoneAt(head.Position), team) then -- из безопасной зоны стрелять нельзя
+	-- в лобби оружие выключено; на своей базе стрелять можно, но урон пройдёт только по врагам внутри зоны (CombatService)
+	local zone = CombatService.zoneAt(head.Position)
+	if zone == "Lobby" or zone == "Any" then
 		if not safeWarned[player] or t - safeWarned[player] > 4 then
 			safeWarned[player] = t
 			Notifier.send(player, "You're protected here — weapons are disabled", "safe")

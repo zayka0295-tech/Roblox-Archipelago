@@ -35,6 +35,8 @@ local CATALOG = {
 		 group = "Explosions", volume = 0.9, pitch = {0.95, 1.05}, near = 50, range = 1600, len = 6},
 	ExplosionLarge = {id = 9114224354, -- Earthquake Explosion 1 (ProSoundEffects)
 		 group = "Explosions", volume = 1, pitch = {0.75, 0.85}, near = 80, range = 2600, len = 8},
+	Thunder        = {id = 9114224354, -- тот же звук ниже тоном: гром молнии, слышен только поблизости
+		 group = "Explosions", volume = 0.75, pitch = {0.55, 0.65}, near = 40, range = 700, len = 9},
 	Splash         = {id = 9125703162, -- Mud Puddle Splash (ProSoundEffects)
 		 group = "Explosions", volume = 0.6, pitch = {0.9, 1.1}, near = 25, range = 700, len = 2},
 	SplashBig      = {id = 9120585252, -- Water Splash Big (ProSoundEffects)

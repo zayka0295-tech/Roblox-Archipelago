@@ -1,6 +1,6 @@
 -- Грозовые облака (Config.Storms): Count облаков бродят по карте между базами (над базами не бывают),
--- каждое — от точки к случайной точке. Под облаком бьют молнии: в землю или море, часть ударов — прицельно
--- в игроков и ботов под облаком; урон — тем, кто рядом с местом удара. Самолёт внутри облака теряет здоровье,
+-- каждое — от точки к случайной точке. Под облаком бьют молнии: если под ним кто-то есть — часто и в основном
+-- прицельно в игроков и ботов, если никого — редко и куда попало; урон — тем, кто рядом с местом удара. Самолёт внутри облака теряет здоровье,
 -- ему ставится атрибут InStorm — клиент пилота (PlaneClient) трясёт его турбулентностью.
 -- Положение облаков — атрибуты GameState Storm<i>_Pos (клиент StormFx рисует облако), удары — Remotes.StormStrike.
 local Players = game:GetService("Players")
@@ -45,6 +45,7 @@ local function targets()
 	return list
 end
 
+-- удар молнии; true — под облаком были цели (тогда следующий удар скоро)
 local function strike(i, st)
 	-- куда: иногда — в того, кто под облаком, иначе — в случайную точку под ним
 	local point
@@ -72,6 +73,7 @@ local function strike(i, st)
 			if t[3] then Notifier.send(t[3], ("Struck by lightning! −%d HP"):format(dmg), "error") end
 		end
 	end
+	return #under > 0
 end
 
 -- самолёты внутри облака: урон и турбулентность (атрибут InStorm читает клиент пилота)
@@ -129,9 +131,10 @@ function StormService.init()
 				st.pos += d.Unit * math.min(d.Magnitude, S.Speed * step)
 			end
 			if now >= st.nextStrike then
-				st.nextStrike = now + S.StrikeEvery[1] + math.random() * (S.StrikeEvery[2] - S.StrikeEvery[1])
-				local ok, err = pcall(strike, i, st)
-				if not ok then warn("[StormService] " .. tostring(err)) end
+				local ok, busy = pcall(strike, i, st)
+				if not ok then warn("[StormService] " .. tostring(busy)) end
+				local every = (ok and busy) and S.StrikeEvery or S.EmptyStrikeEvery
+				st.nextStrike = now + every[1] + math.random() * (every[2] - every[1])
 			end
 		end
 		if pub >= 0.25 then

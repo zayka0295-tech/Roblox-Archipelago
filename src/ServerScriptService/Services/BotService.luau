@@ -368,8 +368,47 @@ end
 local SHIP_ROUTES = {
 	Battleship = {Vector3.new(-1215, 0, -94), Vector3.new(-756, 0, -351), Vector3.new(-513, 0, 270), Vector3.new(-945, 0, 405)},
 	Submarine = {Vector3.new(-1282, 0, 243), Vector3.new(-878, 0, 581), Vector3.new(-567, 0, 0), Vector3.new(-878, 0, -580), Vector3.new(-1282, 0, -243)},
-	Gunboat = {Vector3.new(-1215, 0, 162), Vector3.new(-607, 0, 513), Vector3.new(-473, 0, -513), Vector3.new(-1080, 0, -270)},
+	-- катера ходят кругом по всей карте открытой водой (в обход островов и нефтяных платформ)
+	Gunboat = {Vector3.new(-1900, 0, 400), Vector3.new(-800, 0, 1200), Vector3.new(700, 0, 1150), Vector3.new(1700, 0, 300),
+		Vector3.new(1700, 0, -400), Vector3.new(700, 0, -1150), Vector3.new(-800, 0, -1200), Vector3.new(-1900, 0, -400)},
 }
+
+-- препятствия для кораблей: суша (Terrain выше воды) и опоры нефтяных платформ
+local shoreParams = RaycastParams.new()
+shoreParams.FilterType = Enum.RaycastFilterType.Include
+shoreParams.IgnoreWater = true
+local function refreshShore()
+	local list = {workspace.Terrain}
+	local neutral = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Neutral")
+	for _, rig in ipairs(neutral and neutral:GetChildren() or {}) do
+		local hull = rig:FindFirstChild("Hull")
+		if hull then table.insert(list, hull) end
+	end
+	shoreParams.FilterDescendantsInstances = list
+end
+local function blocked(pos, dir, len)
+	return workspace:Raycast(Vector3.new(pos.X, 6, pos.Z), dir * len, shoreParams) ~= nil
+end
+-- между точками суша? (стрелять сквозь остров бессмысленно)
+local function landBetween(a, b)
+	local d = Vector3.new(b.X - a.X, 0, b.Z - a.Z)
+	return d.Magnitude > 1 and blocked(a, d.Unit, d.Magnitude) or false
+end
+-- куда плыть, если впереди берег: ближайший к цели свободный сектор (nil — путь свободен)
+local AVOID_ANGLES = {25, -25, 50, -50, 80, -80, 115, -115, 150, -150}
+local function avoidDirection(pos, fwd, toGoal, speed)
+	local look = 70 + math.abs(speed) * 2.5
+	if not blocked(pos, fwd, look) then return nil end
+	local best, bestScore
+	for _, deg in ipairs(AVOID_ANGLES) do
+		local dir = CFrame.Angles(0, math.rad(deg), 0):VectorToWorldSpace(fwd)
+		if not blocked(pos, dir, look * 1.3) then
+			local score = dir:Dot(toGoal) - math.abs(deg) / 400 -- ближе к цели и меньше поворот
+			if not bestScore or score > bestScore then best, bestScore = dir, score end
+		end
+	end
+	return best
+end
 local function mirror(team, v)
 	if team == "Blue" then return v end
 	return Vector3.new(-v.X, 0, -v.Z)
@@ -385,6 +424,12 @@ local function driveToward(st, sst, goal, cruise, now, vertical)
 	local dist = to.Magnitude
 	if dist < 1 then return dist end
 	local fwd = CFrame.Angles(0, sst.yaw, 0):VectorToWorldSpace(Vector3.zAxis)
+	-- берег впереди: отворачиваем заранее (лучи раз в 0.3 с), а не упираемся носом в остров
+	if not st.avoidT or now - st.avoidT > 0.3 then
+		st.avoidT = now
+		st.avoidDir = avoidDirection(pos, fwd, to.Unit, sst.speed or 0)
+	end
+	if st.avoidDir then to = st.avoidDir * dist end
 	local a = math.atan2(fwd:Cross(to.Unit).Y, fwd:Dot(to.Unit)) -- > 0: цель слева
 	local steer = -math.clamp(a * 2, -1, 1)
 	local desired = math.abs(a) > 0.9 and cruise * 0.55 or cruise
@@ -452,7 +497,8 @@ local function thinkShip(st, foes, now)
 	if not sst or sst.dead or sst.driver ~= st.model then return end
 	if harborExit(st, sst, kind, now) then return end
 	local route = SHIP_ROUTES[kind]
-	st.wp = st.wp or 1
+	-- у каждого катера свой старт на круге — расходятся по карте, а не идут колонной
+	st.wp = st.wp or (kind == "Gunboat" and rng:NextInteger(1, #route) or 1)
 	if st.skipWp then
 		st.wp = st.wp % #route + 1
 		st.skipWp = nil
@@ -495,7 +541,7 @@ local function thinkShip(st, foes, now)
 				local aim = target.pos + (target.vel or Vector3.zero) * t + Vector3.new(0, 0.5 * W.Gravity * t * t, 0)
 				local miss = d * math.tan(math.rad(1.2))
 				aim += Vector3.new(rng:NextNumber(-miss, miss), 0, rng:NextNumber(-miss, miss))
-				TurretService.botAim(sst.aimTurret, aim, d < 1200)
+				TurretService.botAim(sst.aimTurret, aim, d < 1200 and not landBetween(pos, target.pos))
 			end
 			return
 		elseif sst.aimTurret then
@@ -973,6 +1019,7 @@ end
 function BotService.init()
 	if not B or not B.Enabled then return end
 	if B.StudioOnly and not RunService:IsStudio() then return end
+	refreshShore()
 	folder = Instance.new("Folder")
 	-- игрок занял место бота: убрать его сразу, а не на следующем такте
 	local function requota() task.defer(applyQuota, os.clock()) end

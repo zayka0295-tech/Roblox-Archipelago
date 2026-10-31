@@ -2,7 +2,8 @@
 -- Команду игрок получает автоматически (SpawnService), плиты — за неё.
 --  • Deploy (зелёная, под таблицей лидеров): встал — открывается выбор, где появиться (база / авианосец).
 --  • Judge (фиолетовая): встал — окно голосования за изгнание игрока (JudgeService).
---  • Drop (парашют): встал — окно покупки десанта за свою команду (не чаще PROMPT_COOLDOWN).
+--  • Drop (парашют): встал — окно покупки десанта за свою команду (не чаще PROMPT_COOLDOWN; вернулся на плиту
+--    раньше — окно откроется, как только пауза кончится, если игрок ещё стоит на плите).
 --  • Battleship / Carrier: так же, покупка корабля за донат (DonateShipService) — если его сейчас можно спустить.
 --  • VIP (золотая, с короной): окно покупки геймпасса VIP (VipService).
 -- Кто на какой плите — считает сервер по позиции (не Touched: тот не скажет, что игрок ушёл с плиты).
@@ -21,7 +22,7 @@ local VipService = require(Services.VipService)
 
 local LobbyPadService = {}
 local TICK = 0.15
-local PROMPT_COOLDOWN = 4
+local PROMPT_COOLDOWN = 1.5
 
 local pads = {}     -- {part, kind}
 local on = {}       -- [игрок] = плита, на которой стоит
@@ -36,6 +37,7 @@ local function padAt(pos)
 	return nil
 end
 
+-- false — окно покупки пока нельзя (пауза): плиту попробуем снова на следующем шаге
 local function onEnter(player, p)
 	local team = TeamService.getTeamName(player)
 	if not team then return end
@@ -48,7 +50,7 @@ local function onEnter(player, p)
 	end
 	if CargoDropService.isBusy(player) then return end -- уже выбирает маршрут / летит
 	local t = os.clock()
-	if prompted[player] and t - prompted[player] < PROMPT_COOLDOWN then return end
+	if prompted[player] and t - prompted[player] < PROMPT_COOLDOWN then return false end
 	prompted[player] = t
 	if not DataService.isLoaded(player) then
 		Notifier.send(player, "Data is still loading…", "error")
@@ -78,7 +80,7 @@ local function step()
 		local p = hrp and player:GetAttribute("State") == "Lobby" and padAt(hrp.Position) or nil
 		if on[player] ~= p then
 			on[player] = p
-			if p then onEnter(player, p) end
+			if p and onEnter(player, p) == false then on[player] = nil end
 		end
 	end
 end

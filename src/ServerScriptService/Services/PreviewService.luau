@@ -1,7 +1,8 @@
 -- Мини-модели техники для меню ангара и верфи (ViewportFrame на клиенте): копии шаблонов
 -- из ServerStorage без скриптов, связей и света — в ReplicatedStorage.VehiclePreviews[тип].
--- Исключение — Island (карточка BASE в выборе точки появления): настоящий остров — Terrain, который
--- ViewportFrame не показывает, поэтому строим игрушечную базу из деталей (флаг — TeamPaint, клиент красит).
+-- Исключения — карточки выбора точки появления: настоящие острова — Terrain, который ViewportFrame не показывает,
+-- поэтому строим игрушечные модели из деталей: Base — база команды, CentralIsland — центральный форт
+-- с аэродромом (детали TeamPaint клиент красит в цвет команды). Island — прежний игрушечный остров.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 local Config = require(ReplicatedStorage.Config.GameConfig)
@@ -95,6 +96,120 @@ local function buildIsland()
 	return m
 end
 
+-- общая «лепка» игрушечных моделей
+local function maker(m)
+	local function p(props, teamPaint)
+		local x = Instance.new("Part")
+		x.Anchored, x.CanCollide, x.CanQuery, x.CanTouch = true, false, false, false
+		x.TopSurface, x.BottomSurface = Enum.SurfaceType.Smooth, Enum.SurfaceType.Smooth
+		x.Material = Enum.Material.SmoothPlastic
+		for k, v in pairs(props) do x[k] = v end
+		if teamPaint then x:SetAttribute("TeamPaint", true) end
+		x.Parent = m
+		return x
+	end
+	return p
+end
+local UP = CFrame.Angles(0, 0, math.rad(90)) -- цилиндр осью вверх
+local function tree(p, x, z, top)
+	p({Name = "Trunk", Size = Vector3.new(0.8, 4, 0.8), CFrame = CFrame.new(x, top + 2, z), Color = Color3.fromRGB(110, 76, 44)})
+	p({Name = "Leaves", Shape = Enum.PartType.Ball, Size = Vector3.new(4.5, 4.5, 4.5), CFrame = CFrame.new(x, top + 5, z), Color = Color3.fromRGB(60, 130, 56)})
+end
+local function plane(p, cf)
+	local grey = Color3.fromRGB(200, 205, 215)
+	p({Name = "PlaneBody", Size = Vector3.new(1.4, 1.2, 7), CFrame = cf, Color = grey})
+	p({Name = "PlaneWing", Size = Vector3.new(9, 0.3, 2), CFrame = cf * CFrame.new(0, 0, 0.5), Color = grey}, true)
+	p({Name = "PlaneTail", Size = Vector3.new(3.5, 0.3, 1.2), CFrame = cf * CFrame.new(0, 0, 3), Color = grey})
+	p({Name = "PlaneFin", Size = Vector3.new(0.3, 1.8, 1.2), CFrame = cf * CFrame.new(0, 1, 3), Color = grey}, true)
+end
+
+-- мини-база команды: суша с полосой, площадь с эмблемой, казармы, ангар, вышки, забор, флаг
+local function buildBase()
+	local m = Instance.new("Model")
+	m.Name = "Base"
+	local p = maker(m)
+	local top = 1
+	p({Name = "Water", Size = Vector3.new(120, 1, 90), CFrame = CFrame.new(0, -0.6, 0), Color = Color3.fromRGB(40, 110, 170)})
+	p({Name = "Sand", Size = Vector3.new(104, 1.4, 76), CFrame = CFrame.new(0, 0, 0), Color = Color3.fromRGB(226, 205, 150)})
+	p({Name = "Grass", Size = Vector3.new(98, 1.6, 70), CFrame = CFrame.new(0, 0.2, 0), Color = Color3.fromRGB(96, 160, 72)})
+	-- площадь и эмблема команды
+	p({Name = "Plaza", Size = Vector3.new(26, 0.3, 26), CFrame = CFrame.new(10, top + 0.15, 0), Color = Color3.fromRGB(150, 154, 162)})
+	p({Name = "Emblem", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.35, 9, 9), CFrame = CFrame.new(10, top + 0.32, 0) * UP, Color = Color3.fromRGB(200, 200, 200)}, true)
+	for _, z in ipairs({-8, 8}) do
+		for _, x in ipairs({2, 10, 18}) do
+			p({Name = "SpawnPad", Size = Vector3.new(2.4, 0.35, 2.4), CFrame = CFrame.new(x, top + 0.33, z), Color = Color3.fromRGB(200, 200, 200)}, true)
+		end
+	end
+	-- казармы: четыре корпуса с полосой цвета команды
+	for _, b in ipairs({{12, -24}, {28, -24}, {12, 24}, {28, 24}}) do
+		p({Name = "Barracks", Size = Vector3.new(13, 4, 6), CFrame = CFrame.new(b[1], top + 2, b[2]), Color = Color3.fromRGB(80, 96, 88)})
+		p({Name = "BarracksRoof", Size = Vector3.new(13.6, 0.5, 6.6), CFrame = CFrame.new(b[1], top + 4.25, b[2]), Color = Color3.fromRGB(46, 52, 62)})
+		p({Name = "BarracksStripe", Size = Vector3.new(13.7, 0.5, 6.7), CFrame = CFrame.new(b[1], top + 3.7, b[2]), Color = Color3.fromRGB(200, 200, 200)}, true)
+	end
+	-- большой ангар техники
+	p({Name = "Hangar", Size = Vector3.new(12, 7, 22), CFrame = CFrame.new(-30, top + 3.5, 4), Color = Color3.fromRGB(70, 82, 100)})
+	p({Name = "HangarRoof", Size = Vector3.new(13, 0.6, 23), CFrame = CFrame.new(-30, top + 7.3, 4), Color = Color3.fromRGB(46, 52, 62)})
+	p({Name = "HangarStripe", Size = Vector3.new(13.1, 0.6, 23.1), CFrame = CFrame.new(-30, top + 6.6, 4), Color = Color3.fromRGB(200, 200, 200)}, true)
+	-- взлётная полоса с самолётом
+	p({Name = "Runway", Size = Vector3.new(70, 0.3, 8), CFrame = CFrame.new(-8, top + 0.15, -30), Color = Color3.fromRGB(58, 62, 70)})
+	for i = -5, 5 do
+		p({Name = "Stripe", Size = Vector3.new(3, 0.32, 0.6), CFrame = CFrame.new(-8 + i * 6, top + 0.17, -30), Color = Color3.new(1, 1, 1)})
+	end
+	plane(p, CFrame.new(-30, top + 1.2, -30) * CFrame.Angles(0, math.rad(-90), 0))
+	-- вышки по углам и забор
+	for _, w in ipairs({{-44, -32}, {44, -32}, {-44, 32}, {44, 32}}) do
+		p({Name = "Tower", Size = Vector3.new(0.6, 9, 0.6), CFrame = CFrame.new(w[1], top + 4.5, w[2]), Color = Color3.fromRGB(46, 52, 62)})
+		p({Name = "TowerCab", Size = Vector3.new(3.4, 2, 3.4), CFrame = CFrame.new(w[1], top + 9.6, w[2]), Color = Color3.fromRGB(60, 70, 66)})
+	end
+	for _, f in ipairs({{0, -33.5, 88, 0.3}, {0, 33.5, 88, 0.3}, {-44.5, 0, 0.3, 67}, {44.5, 0, 0.3, 67}}) do
+		p({Name = "Fence", Size = Vector3.new(f[3], 2, f[4]), CFrame = CFrame.new(f[1], top + 1, f[2]), Color = Color3.fromRGB(150, 160, 170), Transparency = 0.4})
+	end
+	for _, t in ipairs({{-14, 22}, {-20, 26}, {40, -4}, {38, 8}}) do tree(p, t[1], t[2], top) end
+	p({Name = "FlagPole", Size = Vector3.new(0.4, 13, 0.4), CFrame = CFrame.new(10, top + 6.5, 0), Color = Color3.fromRGB(230, 230, 230)})
+	p({Name = "Flag", Size = Vector3.new(0.2, 3, 5), CFrame = CFrame.new(10, top + 11.5, 2.6), Color = Color3.fromRGB(200, 200, 200)}, true)
+	return m
+end
+
+-- мини-центральный остров: форт со стенами и башней, аэродром с двумя полукруглыми ангарами, контейнеры
+local function buildCentral()
+	local m = Instance.new("Model")
+	m.Name = "CentralIsland"
+	local p = maker(m)
+	local function disc(name, y, h, d, color)
+		return p({Name = name, Shape = Enum.PartType.Cylinder, Size = Vector3.new(h, d, d), CFrame = CFrame.new(0, y, 0) * UP, Color = color})
+	end
+	disc("Water", -1, 1, 124, Color3.fromRGB(40, 110, 170))
+	disc("Shallows", -0.6, 1, 96, Color3.fromRGB(70, 170, 200))
+	disc("Sand", 0, 2, 84, Color3.fromRGB(226, 205, 150))
+	disc("Grass", 0.6, 2, 76, Color3.fromRGB(96, 160, 72))
+	local top = 1.6
+	-- форт: восьмиугольник стен, двор, башня
+	disc("FortYard", top + 0.1, 0.3, 30, Color3.fromRGB(160, 164, 172))
+	for i = 0, 7 do
+		local a = math.rad(i * 45 + 22.5)
+		p({Name = "Wall", Size = Vector3.new(13, 3, 1.2), CFrame = CFrame.new(math.cos(a) * 16, top + 1.5, math.sin(a) * 16 - 4) * CFrame.Angles(0, -a + math.pi / 2, 0), Color = Color3.fromRGB(130, 134, 142)})
+	end
+	p({Name = "Tower", Size = Vector3.new(3, 12, 3), CFrame = CFrame.new(-3, top + 6, -4), Color = Color3.fromRGB(80, 90, 104)})
+	p({Name = "TowerCab", Size = Vector3.new(6, 2.4, 6), CFrame = CFrame.new(-3, top + 13, -4), Color = Color3.fromRGB(40, 48, 60)})
+	p({Name = "TowerGlass", Size = Vector3.new(6.2, 1, 6.2), CFrame = CFrame.new(-3, top + 13, -4), Color = Color3.fromRGB(90, 180, 230), Material = Enum.Material.Glass})
+	p({Name = "FlagPole", Size = Vector3.new(0.4, 10, 0.4), CFrame = CFrame.new(4, top + 5, -4), Color = Color3.fromRGB(230, 230, 230)})
+	p({Name = "Flag", Size = Vector3.new(0.2, 2.6, 4.4), CFrame = CFrame.new(4, top + 8.8, -1.8), Color = Color3.fromRGB(200, 200, 200)}, true)
+	for i, c in ipairs({Color3.fromRGB(150, 60, 50), Color3.fromRGB(60, 90, 120), Color3.fromRGB(70, 110, 70)}) do
+		p({Name = "Container", Size = Vector3.new(2.2, 2.2, 5), CFrame = CFrame.new(-10 + i * 2.4, top + 1.1, 4), Color = c})
+	end
+	-- аэродром у южного берега
+	p({Name = "Runway", Size = Vector3.new(56, 0.3, 7), CFrame = CFrame.new(0, top + 0.15, 22), Color = Color3.fromRGB(58, 62, 70)})
+	for i = -4, 4 do
+		p({Name = "Stripe", Size = Vector3.new(3, 0.32, 0.5), CFrame = CFrame.new(i * 6, top + 0.17, 22), Color = Color3.new(1, 1, 1)})
+	end
+	plane(p, CFrame.new(-20, top + 1.2, 22) * CFrame.Angles(0, math.rad(-90), 0))
+	for _, x in ipairs({-22, -14}) do
+		p({Name = "Hangar", Shape = Enum.PartType.Cylinder, Size = Vector3.new(7, 7, 7), CFrame = CFrame.new(x, top, 13) * CFrame.Angles(0, math.rad(90), 0), Color = Color3.fromRGB(215, 218, 222)})
+	end
+	for _, t in ipairs({{-28, -10}, {-24, -18}, {26, -12}, {30, 2}, {22, -22}}) do tree(p, t[1], t[2], top) end
+	return m
+end
+
 function PreviewService.init()
 	local folder = Instance.new("Folder")
 	folder.Name = "VehiclePreviews"
@@ -109,6 +224,8 @@ function PreviewService.init()
 		if template then strip(template, kind).Parent = folder end
 	end
 	buildIsland().Parent = folder
+	buildBase().Parent = folder
+	buildCentral().Parent = folder
 	folder.Parent = ReplicatedStorage
 end
 

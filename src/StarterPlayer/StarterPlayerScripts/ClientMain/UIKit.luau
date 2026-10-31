@@ -406,9 +406,11 @@ end
 -- Награда — переливающаяся золотая рамка, ошибка — короткая встряска. Соседние карточки раздвигаются
 -- и смыкаются плавно (у каждой своя обёртка, высота которой анимируется). Тот же текст повторно
 -- не плодит копии — карточка подпрыгивает, на ней счётчик «×2», таймер начинается заново.
+-- На экране — по одной карточке (TOAST_VISIBLE): остальные ждут в очереди; когда очередь длинная, каждая висит меньше.
 -- Виды: success, error, info, safe (безопасная зона), reward (награда золотом).
 local TextService = game:GetService("TextService")
 local TOAST_W, TOAST_TIME, TOAST_MAX, TOAST_GAP = 440, 4, 4, 8
+local TOAST_VISIBLE, TOAST_TIME_BUSY = 1, 2.5 -- сколько карточек сразу; сколько висит, если в очереди ещё 2+
 local TOAST_KINDS = {
 	success = {color = Color3.fromRGB(80, 215, 130), icon = "check", title = "DONE"},
 	error = {color = Color3.fromRGB(255, 95, 80), icon = "!", title = "HEADS UP", shake = true},
@@ -419,6 +421,8 @@ local TOAST_KINDS = {
 local toastHolder
 local toastN = 0
 local toastByKey = {}
+local toastQueue = {} -- {text, kind, title} ждут своей очереди
+local toastShown = 0
 local function tween(obj, t, props, style, dir)
 	local tw = TweenService:Create(obj, TweenInfo.new(t, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out), props)
 	tw:Play()
@@ -478,6 +482,16 @@ function UI.toast(text, kind, title)
 		old.restart(true)
 		return
 	end
+	-- занято: в очередь (такое же сообщение там уже есть — второе не нужно)
+	if #toastHolder:GetChildren() <= 1 then toastShown = 0 end -- карточек нет (кроме UIListLayout) — счётчик не врёт
+	if toastShown >= TOAST_VISIBLE then
+		for _, q in ipairs(toastQueue) do
+			if q[1] == text and q[3] == title then return end
+		end
+		table.insert(toastQueue, {text, kind, title})
+		return
+	end
+	toastShown += 1
 
 	local textW = TOAST_W - 72 - 18
 	local msgH = TextService:GetTextSize(text, 16, UI.Medium, Vector2.new(textW, 1000)).Y
@@ -551,6 +565,12 @@ function UI.toast(text, kind, title)
 		if toastByKey[key] == entry then toastByKey[key] = nil end
 		if closing or not wrap.Parent then return end
 		closing = true
+		-- место освободилось: следующая из очереди
+		task.delay(0.3, function()
+			toastShown -= 1
+			local nextOne = table.remove(toastQueue, 1)
+			if nextOne then UI.toast(nextOne[1], nextOne[2], nextOne[3]) end
+		end)
 		-- уезжает вверх и тает, потом обёртка схлопывается — соседи плавно подтягиваются
 		tween(card, 0.25, {GroupTransparency = 1})
 		tween(shadow, 0.25, {BackgroundTransparency = 1})
@@ -578,9 +598,10 @@ function UI.toast(text, kind, title)
 			playIcon()
 			sweep()
 		end
+		local life = #toastQueue >= 2 and TOAST_TIME_BUSY or TOAST_TIME
 		bar.Size = UDim2.new(1, -24, 0, 3)
-		tween(bar, TOAST_TIME, {Size = UDim2.new(0, 0, 0, 3)}, Enum.EasingStyle.Linear)
-		task.delay(TOAST_TIME, function()
+		tween(bar, life, {Size = UDim2.new(0, 0, 0, 3)}, Enum.EasingStyle.Linear)
+		task.delay(life, function()
 			if entry.token == tok then close() end
 		end)
 	end

@@ -1,9 +1,13 @@
 -- Ранг над головой других игроков (и своих, и врагов): значок + название в цвете ранга, над стандартным именем.
 -- Высокие ранги крупнее и видны дальше. В технике значок скрыт (не загораживает обзор). Ранг — атрибут Rank игрока.
 -- VIP (атрибут VIP) — ещё золотая плашка «👑 VIP» перед значком, заметна издалека.
+-- Табличка в пикселях, поэтому с расстоянием уменьшается (UIScale): издалека не закрывает маленького персонажа.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+
+local FULL_SIZE_DIST = 25 -- ближе — табличка в полный размер, дальше — пропорционально меньше
+local MIN_SCALE = 0.3
 
 return function(ctx)
 	local Config = ctx.Config
@@ -36,6 +40,8 @@ return function(ctx)
 		row.BackgroundTransparency = 1
 		row.Size = UDim2.fromScale(1, 1)
 		row.Parent = bb
+		local scale = Instance.new("UIScale")
+		scale.Parent = row
 		local layout = Instance.new("UIListLayout")
 		layout.FillDirection = Enum.FillDirection.Horizontal
 		layout.SortOrder = Enum.SortOrder.LayoutOrder -- VIP → значок → название
@@ -93,15 +99,21 @@ return function(ctx)
 			shine.Parent = name
 		end
 		bb.Parent = head
-		tags[p] = {bb = bb, rank = r, char = char, shine = shine, vip = vip}
+		tags[p] = {bb = bb, rank = r, char = char, shine = shine, vip = vip, scale = scale, head = head}
 	end
 
 	Players.PlayerRemoving:Connect(remove)
 
 	RunService.RenderStepped:Connect(function()
 		local x = (os.clock() * 0.6) % 2.6 - 1.3
+		local cam = workspace.CurrentCamera
+		local camPos = cam and cam.CFrame.Position
 		for _, t in pairs(tags) do
 			if t.shine then t.shine.Offset = Vector2.new(x, 0) end
+			if camPos and t.head.Parent then
+				local d = (t.head.Position - camPos).Magnitude
+				t.scale.Scale = math.clamp(FULL_SIZE_DIST / math.max(d, 1), MIN_SCALE, 1)
+			end
 		end
 	end)
 

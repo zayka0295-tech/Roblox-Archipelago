@@ -6,7 +6,7 @@ local Lighting = game:GetService("Lighting")
 local TweenService = game:GetService("TweenService")
 local SoundFx = require(script.Parent:WaitForChild("SoundFx"))
 
-local PUFFS = 24
+local PUFFS = 44
 
 return function(ctx)
 	local S = ctx.Config.Storms
@@ -28,12 +28,13 @@ return function(ctx)
 
 	local function buildCloud(i)
 		local rng = Random.new(i * 7919)
+		local k = S.Radius / 170 -- клубы растут вместе с облаком
 		local c = {puffs = {}, pos = nil}
 		for n = 1, PUFFS do
 			local a, r = rng:NextNumber() * math.pi * 2, math.sqrt(rng:NextNumber()) * S.Radius * 0.85
-			local size = rng:NextNumber(70, 150)
+			local size = rng:NextNumber(70, 150) * k
 			local top = n > PUFFS * 0.65
-			local off = Vector3.new(math.cos(a) * r, (top and rng:NextNumber(10, 35) or rng:NextNumber(-25, 5)), math.sin(a) * r)
+			local off = Vector3.new(math.cos(a) * r, (top and rng:NextNumber(10, 35) or rng:NextNumber(-25, 5)) * k, math.sin(a) * r)
 			local p = part({
 				Name = "Puff", Shape = Enum.PartType.Ball, Size = Vector3.new(size, size * 0.6, size),
 				Color = top and Color3.fromRGB(118, 122, 132) or Color3.fromRGB(62, 66, 76),
@@ -45,7 +46,7 @@ return function(ctx)
 		local rain = part({Name = "Rain", Size = Vector3.new(S.Radius * 1.6, 1, S.Radius * 1.6), Transparency = 1})
 		local e = Instance.new("ParticleEmitter")
 		e.EmissionDirection = Enum.NormalId.Bottom
-		e.Rate = 260
+		e.Rate = 520
 		e.Lifetime = NumberRange.new(2.2, 2.8)
 		e.Speed = NumberRange.new(110, 130)
 		e.Size = NumberSequence.new(0.35)
@@ -115,9 +116,11 @@ return function(ctx)
 			shakeUntil = os.clock() + 0.5
 			shakePower = (1 - dist / 260) * 1.2
 		end
-		task.delay(math.min(dist / 1100, 4), function()
-			SoundFx.play("ExplosionLarge", impact)
-		end)
+		if dist < 700 then
+			task.delay(dist / 1100, function()
+				SoundFx.play("Thunder", impact)
+			end)
+		end
 	end)
 
 	RunService.RenderStepped:Connect(function(dt)
