@@ -2,7 +2,8 @@
 -- после прыжка — подсказка по атрибуту игрока Parachute ("fall" / "open").
 -- Персонажем управляет клиент, поэтому на выходе из самолёта скорость самолёта гасим здесь:
 -- чуть вперёд и вниз (иначе летел бы вбок на скорости самолёта, и античит вернул бы назад).
--- Так же — при прыжке из боевого самолёта, если куплен парашют военного базара (бит в атрибуте Items).
+-- Из боевого самолёта с парашютом военного базара (бит в атрибуте Items) — катапульта: подбрасывает вверх
+-- (EJECT_UP) с облачком дыма, купол раскрывается, только когда пошли вниз (не раньше EJECT_HOLD сек.).
 local RunService = game:GetService("RunService")
 
 return function(ctx)
@@ -69,7 +70,39 @@ return function(ctx)
 		return m ~= nil
 	end
 
-	local inCargo, look = false, Vector3.zero
+	local EJECT_UP, EJECT_HOLD = 95, 0.9 -- скорость вверх (≈ +23 студа), раньше купол не раскрываем
+	local ejectT = 0
+	local function groundBelow(hrp, len)
+		local ignore = {player.Character}
+		local drops = workspace:FindFirstChild("CargoDrops")
+		local planes = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Planes") -- свой самолёт ещё под ногами
+		if drops then table.insert(ignore, drops) end
+		if planes then table.insert(ignore, planes) end
+		ray.FilterDescendantsInstances = ignore
+		return workspace:Raycast(hrp.Position, Vector3.new(0, -len, 0), ray)
+	end
+	-- облачко дыма от катапульты (только у себя)
+	local function puff(pos)
+		local p = Instance.new("Part")
+		p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch, p.Transparency = true, false, false, false, 1
+		p.Size = Vector3.one
+		p.Position = pos
+		local e = Instance.new("ParticleEmitter")
+		e.Texture = "rbxasset://textures/particles/smoke_main.dds"
+		e.Color = ColorSequence.new(Color3.fromRGB(225, 225, 225))
+		e.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 2), NumberSequenceKeypoint.new(1, 7)})
+		e.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 1)})
+		e.Lifetime = NumberRange.new(0.8, 1.4)
+		e.Speed = NumberRange.new(6, 14)
+		e.SpreadAngle = Vector2.new(180, 180)
+		e.Rate = 0
+		e.Parent = p
+		p.Parent = workspace
+		e:Emit(18)
+		game:GetService("Debris"):AddItem(p, 2)
+	end
+
+	local inCargo, fromPlane, look = false, false, Vector3.zero
 	RunService.RenderStepped:Connect(function()
 		local hum, hrp = humanoid()
 		local seat = hum and hum.SeatPart
@@ -78,9 +111,18 @@ return function(ctx)
 		if now then
 			local l = seat.CFrame.LookVector
 			look = Vector3.new(l.X, 0, l.Z)
+			fromPlane = not cargo
 		elseif inCargo and hrp then
 			-- только что выпрыгнул
-			hrp.AssemblyLinearVelocity = (look.Magnitude > 0 and look.Unit * 14 or Vector3.zero) + Vector3.new(0, -6, 0)
+			local fwd = look.Magnitude > 0 and look.Unit or Vector3.zero
+			if fromPlane and groundBelow(hrp, ctx.Config.Bazaar.BailMinHeight + 5) == nil then
+				-- катапульта из боевого самолёта
+				hrp.AssemblyLinearVelocity = fwd * 20 + Vector3.new(0, EJECT_UP, 0)
+				ejectT = os.clock()
+				puff(hrp.Position - Vector3.new(0, 2, 0))
+			else
+				hrp.AssemblyLinearVelocity = fwd * 14 + Vector3.new(0, -6, 0)
+			end
 			-- в самолёте камера была далеко (CamMinZoom кресла) — после прыжка подтягиваем её к игроку
 			-- (с задержкой: сначала SeatCamera должен вернуть минимум, иначе он держит камеру далеко)
 			task.delay(0.1, function()
@@ -100,21 +142,17 @@ return function(ctx)
 			local v = hrp.AssemblyLinearVelocity
 			if v.Y < -FALL_SPEED then hrp.AssemblyLinearVelocity = Vector3.new(v.X, -FALL_SPEED, v.Z) end
 		end
-		if chute == "fall" and hrp and os.clock() - asked > 0.5 then
-			local ignore = {player.Character}
-			local drops = workspace:FindFirstChild("CargoDrops")
-			local planes = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Planes") -- свой самолёт ещё под ногами
-			if drops then table.insert(ignore, drops) end
-			if planes then table.insert(ignore, planes) end
-			ray.FilterDescendantsInstances = ignore
-			local hit = workspace:Raycast(hrp.Position, Vector3.new(0, -OPEN_AT, 0), ray)
+		-- после катапульты купол — только когда полетели вниз
+		local ejecting = os.clock() - ejectT < 6 and (os.clock() - ejectT < EJECT_HOLD or (hrp and hrp.AssemblyLinearVelocity.Y > 0))
+		if chute == "fall" and hrp and not ejecting and os.clock() - asked > 0.5 then
+			local hit = groundBelow(hrp, OPEN_AT)
 			if hit then
 				asked = os.clock()
 				ChuteOpen:FireServer()
 			end
 		end
 		if chute == "fall" then
-			status.Text = "Free fall! The parachute opens automatically"
+			status.Text = ejecting and "Ejected!" or "Free fall! The parachute opens automatically"
 		elseif chute == "open" then
 			status.Text = UI.touchOnly and "Parachute open · steer with the joystick" or "Parachute open · steer with WASD"
 		end

@@ -247,9 +247,11 @@ local function openChute(player, c, char, hrp)
 	player:SetAttribute("Parachute", "open")
 end
 
-local function startChute(player)
+-- eject — катапульта из боевого самолёта: клиент сначала подбрасывает вверх, запасное раскрытие сервера ждёт EJECT_WAIT
+local EJECT_WAIT = 2
+local function startChute(player, eject)
 	clearChute(player)
-	local c = {state = "fall", t = os.clock()}
+	local c = {state = "fall", t = os.clock(), eject = eject}
 	c.pack = player.Character and wearPack(player.Character)
 	chutes[player] = c
 	player:SetAttribute("Parachute", "fall")
@@ -271,7 +273,7 @@ local function stepChutes()
 			local feet = hum.HipHeight + hrp.Size.Y / 2
 			if c.state == "fall" then
 				-- обычно раскрыть просит клиент (Remotes.ChuteOpen); это — запасной вариант
-				if height < PD.ServerOpenHeight then openChute(player, c, char, hrp) end
+				if height < PD.ServerOpenHeight and (not c.eject or os.clock() - c.t > EJECT_WAIT) then openChute(player, c, char, hrp) end
 			elseif height < feet + 1.5 then
 				-- приземлился (или в воду) — купол снимаем
 				if c.att then c.att:Destroy() end
@@ -411,7 +413,7 @@ function CargoDropService.bailOut(player)
 	groundParams.FilterDescendantsInstances = planes and {char, folder, planes} or {char, folder}
 	local hit = workspace:Raycast(hrp.Position, Vector3.new(0, -3000, 0), groundParams)
 	if hit and hrp.Position.Y - hit.Position.Y < Config.Bazaar.BailMinHeight then return false end
-	startChute(player)
+	startChute(player, true)
 	return true
 end
 
