@@ -50,7 +50,7 @@ return function(ctx)
 	local SPIN_ON, SPIN_OFF = Color3.fromRGB(255, 160, 40), Color3.fromRGB(80, 92, 112)
 	local hb = UI.hudButton(frame, UI.Icons.Spin, "DAILY SPIN", SPIN_ON, {
 		Name = "SpinButton", AnchorPoint = Vector2.new(1, 0),
-		Position = UI.touchOnly and UDim2.new(1, 8, 1, 6) or UDim2.new(1, -6, 1, 12),
+		Position = UI.touchOnly and UDim2.new(1, -16, 1, 6) or UDim2.new(1, -6, 1, 12),
 	})
 	local btn, btnScale = hb.btn, hb.scale
 	-- бейдж FREE

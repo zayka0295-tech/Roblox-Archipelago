@@ -31,9 +31,9 @@ return function(ctx)
 	local hudGui = UI.screen("RankButton", 6)
 	local frame = UI.new("Frame", {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 12), Size = UDim2.fromOffset(250, 92), BackgroundTransparency = 1}, hudGui)
 	UI.scale(frame)
-	-- на телефоне — ближе к краю и вплотную под рулеткой (её позиция в DailySpinUI)
+	-- на телефоне — вплотную под рулеткой (её позиция в DailySpinUI)
 	local btnX, btnY = -6, 122
-	if UI.touchOnly then btnX, btnY = 8, 96 end
+	if UI.touchOnly then btnX, btnY = -16, 96 end
 	-- значок ранга — картинка из RankBadge внутри диска (своей картинки у кнопки нет)
 	local hb = UI.hudButton(frame, nil, "RANK", Color3.fromRGB(60, 90, 150), {
 		Name = "RankButton", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, btnX, 1, btnY),

@@ -39,6 +39,9 @@ return function(ctx)
 		local row = Instance.new("Frame")
 		row.BackgroundTransparency = 1
 		row.Size = UDim2.fromScale(1, 1)
+		-- привязка по центру: UIScale сжимает вокруг AnchorPoint — иначе издалека табличка уезжает влево
+		row.AnchorPoint = Vector2.new(0.5, 0.5)
+		row.Position = UDim2.fromScale(0.5, 0.5)
 		row.Parent = bb
 		local scale = Instance.new("UIScale")
 		scale.Parent = row

@@ -35,7 +35,7 @@ return function(ctx)
 	UI.scale(frame)
 	-- на телефоне — ближе к краю и вплотную под кнопкой ранга (как сдвинуты кнопки в DailySpinUI / RankUI)
 	local btnX, btnY = -6, 232
-	if UI.touchOnly then btnX, btnY = 8, 186 end
+	if UI.touchOnly then btnX, btnY = -16, 186 end
 	local hb = UI.hudButton(frame, UI.Icons.Rewards, "REWARDS", Color3.fromRGB(60, 190, 110), {
 		Name = "RewardsButton", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, btnX, 1, btnY),
 	})
