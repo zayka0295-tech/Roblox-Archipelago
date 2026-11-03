@@ -11,12 +11,10 @@ local CarrierService = require(Services.CarrierService)
 local Notifier = require(Services.Notifier)
 
 local CombatService = {}
-local Rifle = Config.Combat.Rifle
 local ShotFx = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ShotFx")
 local DamageNumbers = ReplicatedStorage.Remotes:WaitForChild("DamageNumbers")
 local lastHit = {}     -- [жертва (игрок или бот)] = {attacker, t}
 local lastCombat = {}  -- [игрок] = время последнего боя
-local lastShot = {}
 
 local fxFolder = workspace:FindFirstChild("Effects") or Instance.new("Folder")
 fxFolder.Name = "Effects"
@@ -273,12 +271,26 @@ local function rewardKill(killer, victimName, victimTeam, victimIsBot, victim)
 	if not isPlayer(killer) or not killer.Parent then return end
 	local kt = TeamService.getTeamName(killer)
 	if not kt or kt == victimTeam then return end
-	local reward = victimIsBot and (Config.Economy.BotKillReward or 5) or Config.Economy.KillReward
-	if not victimIsBot then DataService.increment(killer, "Kills") end
-	DataService.addGold(killer, reward)
-	if not victimIsBot and CombatService.onKill then CombatService.onKill(killer) end -- задания (QuestService), раунд (RoundService)
-	require(script.Parent.RankService).onKill(killer, victim, victimIsBot) -- опыт для ранга
-	Notifier.send(killer, ("Enemy %s eliminated · +%d gold"):format(victimName, reward), "success")
+	local E = Config.Economy
+	-- опыт для ранга; n — какое по счёту убийство (ботов за раунд / этого игрока за 5 мин.)
+	local n = require(script.Parent.RankService).onKill(killer, victim, victimIsBot) or 1
+	local reward, counts = 0, true
+	if victimIsBot then
+		-- за ботов золото до лимита за раунд (иначе фарм ботов)
+		reward = n <= (Config.Ranks.BotKillCap or 50) and (E.BotKillReward or 5) or 0
+	elseif n >= (E.RepeatKillNoReward or 5) then
+		-- один и тот же игрок раз за разом — похоже на фарм со второго аккаунта: без золота и без килла в рейтинге
+		counts = false
+	else
+		reward = n >= 3 and math.floor(E.KillReward * (E.RepeatKillGoldMult or 0.25)) or E.KillReward
+	end
+	if not victimIsBot and counts then
+		DataService.increment(killer, "Kills")
+		if CombatService.onKill then CombatService.onKill(killer) end -- задания (QuestService), раунд (RoundService)
+	end
+	if reward > 0 then DataService.addGold(killer, reward) end
+	Notifier.send(killer, reward > 0 and ("Enemy %s eliminated · +%d gold"):format(victimName, reward)
+		or ("Enemy %s eliminated"):format(victimName), "success")
 end
 
 -- вызывается SpawnService для каждого нового персонажа игрока
@@ -353,7 +365,6 @@ function CombatService.init()
 	Players.PlayerRemoving:Connect(function(p)
 		lastHit[p] = nil
 		lastCombat[p] = nil
-		lastShot[p] = nil
 	end)
 end
 

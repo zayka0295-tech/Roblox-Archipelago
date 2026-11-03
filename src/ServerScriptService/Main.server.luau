@@ -75,7 +75,7 @@ NavalWeaponsService.init()
 AirRaidService.init()
 GunService.init()
 QuestService.init()
-RoundService.init() -- после QuestService: дополняет его CombatService.onKill
+RoundService.init() -- считает убийства за раунд через CombatService.onKill
 TutorialService.init()
 DailySpinService.init()
 FallDamageService.init()

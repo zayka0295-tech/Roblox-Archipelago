@@ -156,6 +156,7 @@ local function clearChute(player)
 	if player.Parent then player:SetAttribute("Parachute", nil) end
 	if c and c.gear then c.gear:Destroy() end
 	if c and c.pack then c.pack:Destroy() end
+	if c and c.att then c.att:Destroy() end -- сила торможения купола (иначе остаётся на персонаже)
 end
 
 local function weldedPart(parent, weldTo, name, size, cfw, color, material)

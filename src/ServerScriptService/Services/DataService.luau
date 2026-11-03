@@ -549,6 +549,13 @@ function DataService.save(player, release)
 	if not release and not p.dirty and os.clock() - (p.lockRefresh or 0) < REFRESH then return true end
 	p.saving = true
 	local ok, res = pcall(write, player, p, release)
+	-- финальная запись не прошла (DataStore сбоит): ещё несколько попыток с паузой — иначе пропадёт
+	-- всё с последнего автосохранения
+	for _ = 1, (release and 3 or 0) do
+		if (ok and res) or not p.canSave then break end
+		task.wait(4)
+		ok, res = pcall(write, player, p, release)
+	end
 	p.saving = false
 	if release then p.closed = true end
 	if not ok then

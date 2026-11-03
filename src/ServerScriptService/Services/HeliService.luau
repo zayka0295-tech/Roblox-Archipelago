@@ -191,7 +191,10 @@ local function baseHelipad(team)
 end
 
 -- выплата за доставленный контейнер — как у грузовых судов
-local function payout(route, team)
+local epoch = 0 -- номер раунда для выплат: контейнер, сброшенный в прошлом раунде, не платит в новом
+
+local function payout(route, team, ep)
+	if ep and ep ~= epoch then return end
 	TreasuryService.add(team, H.Reward, nil)
 	for _, p in ipairs(Players:GetPlayers()) do
 		if TeamService.getTeamName(p) == team then
@@ -425,8 +428,8 @@ local function step(route, dt)
 		if drop then spot, yaw = dropSpot(drop) else spot = padTop(bpad) end
 		-- над зоной выгрузки: сброс на ходу, с высоты перелёта, и сразу обратно
 		if flyTo(h, spot, dt, nil, H.Altitude - spot.Y - HANG, true) then
-			local team = h.team
-			dropContainer(h, drop, spot, yaw, function() payout(route, team) end)
+			local team, ep = h.team, epoch
+			dropContainer(h, drop, spot, yaw, function() payout(route, team, ep) end)
 			h.phase = "ToRig"
 			CaptureService.setExtraStatus(def.Id, "Helicopter returning")
 		end
@@ -459,10 +462,19 @@ local function hookLadders(rig)
 				local hrp = char and char:FindFirstChild("HumanoidRootPart")
 				if not hum or hum.Health <= 0 or not hrp or hum.SeatPart then return end
 				if (hrp.Position - plat.Position).Magnitude > 18 then return end
-				AntiCheat.grace(player)
-				char:PivotTo(plat.CFrame * CFrame.new(offset))
+				AntiCheat.moveTo(player, char, plat.CFrame * CFrame.new(offset), plat)
 			end)
 		end
+	end
+end
+
+-- новый раунд: вертолёты с грузом убираем, выплаты за уже сброшенные контейнеры отменяем
+function HeliService.resetAll()
+	epoch += 1
+	for _, route in pairs(routes) do
+		removeHeli(route)
+		route.nextAt = 0
+		CaptureService.setExtraStatus(route.def.Id, "")
 	end
 end
 

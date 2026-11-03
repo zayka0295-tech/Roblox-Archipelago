@@ -32,9 +32,17 @@ local pending = {} -- ещё не записанные: [текст] = запи�
 local pendingCount = 0
 local sent = {} -- [игрок] = сколько ошибок прислал
 
+-- обрезка до MAX_LEN байт без разрыва UTF-8 (битый UTF-8 DataStore не примет — и весь журнал перестанет писаться)
 local function clip(s)
 	s = tostring(s or "")
-	return #s > MAX_LEN and s:sub(1, MAX_LEN) or s
+	if not utf8.len(s) then s = s:gsub("[\128-\255]", "?") end
+	if #s <= MAX_LEN then return s end
+	s = s:sub(1, MAX_LEN)
+	for _ = 1, 3 do
+		if utf8.len(s) then break end
+		s = s:sub(1, -2)
+	end
+	return s
 end
 
 local function add(kind, msg, trace, src)

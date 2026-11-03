@@ -354,7 +354,7 @@ local function makePlane(ownerActor, team, cf, kind)
 	prompt.Parent = model:FindFirstChild("Fuselage") or st.root
 	st.prompt = prompt
 	prompt.Triggered:Connect(function(player)
-		if st.dead or not planes[model] then return end
+		if st.dead or not planes[model] or not AntiCheat.atPrompt(player, prompt) then return end
 		if not canPilot(st, player) then
 			Notifier.send(player, TeamService.getTeamName(player) ~= st.team and "This is an enemy plane" or "This is someone else's plane", "error")
 			return
@@ -432,11 +432,16 @@ function PlaneService.requestSpawn(player, team, where, carrier, kind)
 end
 
 -- самолёт для бота-пилота (бесплатно); true если вызван
--- живые самолёты команды (кроме своего — его заменит новый); kind — только этого типа
+-- живые самолёты команды (кроме своего — его заменит новый); kind — только этого типа.
+-- Свой не считаем, только если его правда заменят: на нём летает союзник — makePlane его не тронет,
+-- и он занимает место в лимите (иначе «купил, отдал другу, купил ещё» — сверх лимита команды)
 function PlaneService.teamCount(team, exceptOwner, kind)
+	local skip = exceptOwner and byOwner[exceptOwner]
+	local sst = skip and planes[skip]
+	if sst and sst.pilot and sst.pilot ~= exceptOwner then skip = nil end
 	local n = 0
 	for model, st in pairs(planes) do
-		if model.Parent and not st.dead and st.team == team and st.owner ~= exceptOwner and (not kind or st.kind == kind) then n += 1 end
+		if model.Parent and not st.dead and st.team == team and model ~= skip and (not kind or st.kind == kind) then n += 1 end
 	end
 	return n
 end
@@ -761,7 +766,8 @@ function PlaneService.dropBomb(actor, origin, vel)
 	local from = bay and bay.Position or root.Position - root.CFrame.UpVector * 3
 	local v = root.AssemblyLinearVelocity
 	local sv = v.Magnitude
-	if finiteVec(origin) and (origin - from).Magnitude < 25 + sv * 0.4 then from = origin end
+	-- точка сброса глазами пилота (у него самолёт впереди на пинг); запас — не больше ~0,25 с полёта
+	if finiteVec(origin) and (origin - from).Magnitude < 15 + sv * 0.25 then from = origin end
 	if finiteVec(vel) and (vel - v).Magnitude < 40 and vel.Magnitude < st.cfg.MaxSpeed * 1.5 then v = vel end
 	st.lastBomb = now
 	setBombs(st, st.bombs - 1)

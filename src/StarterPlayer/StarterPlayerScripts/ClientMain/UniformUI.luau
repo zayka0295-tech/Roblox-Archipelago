@@ -4,13 +4,15 @@ return function(ctx)
 	local player = ctx.player
 	local gui = UI.screen("UniformUI", 12)
 	local btn = UI.button(gui, "", T.Panel2, {
-		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -16), Size = UDim2.fromOffset(190, 46), TextSize = 15,
+		-- на телефоне внизу слева джойстик — кнопка выше, у левого края
+		AnchorPoint = Vector2.new(0, 1), Position = UI.touchOnly and UDim2.new(0, 16, 0.55, 0) or UDim2.new(0, 16, 1, -16),
+		Size = UDim2.fromOffset(190, 46), TextSize = 15,
 	})
 	UI.scale(btn, 0.8)
 	UI.stroke(btn)
 
 	local function refresh()
-		btn.Text = player:GetAttribute("UniformOff") and "🪖 WEAR UNIFORM" or "👕 TAKE OFF UNIFORM"
+		btn.Text = player:GetAttribute("UniformOff") and "WEAR UNIFORM" or "TAKE OFF UNIFORM"
 	end
 	local busy = false
 	btn.Activated:Connect(function()

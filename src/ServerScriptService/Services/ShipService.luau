@@ -243,7 +243,7 @@ local function setupHelm(st)
 		st.boardPrompt = prompt
 	end
 	prompt.Triggered:Connect(function(player)
-		if st.dead then return end
+		if st.dead or not AntiCheat.atPrompt(player, prompt) then return end
 		if TeamService.getTeamName(player) ~= st.team then
 			Notifier.send(player, "This is an enemy ship", "error")
 			return
@@ -262,7 +262,9 @@ local function setupHelm(st)
 				return
 			end
 		end
-		if player:GetAttribute("State") ~= "Deployed" then return end
+		-- после ожидания всё могло измениться: корабль потоплен, место занято, игрок ушёл
+		if st.dead or seat.Occupant or player:GetAttribute("State") ~= "Deployed" then return end
+		if TeamService.getTeamName(player) ~= st.team then return end
 		sitAt(seat, player)
 	end)
 end
@@ -327,8 +329,7 @@ local function spawnShip(kind, team, owner, donor)
 				local hrp = char and char:FindFirstChild("HumanoidRootPart")
 				if not hum or hum.Health <= 0 or not hrp or hum.SeatPart then return end
 				if (hrp.Position - plat.Position).Magnitude > 18 then return end
-				AntiCheat.grace(player)
-				char:PivotTo(m:GetPivot() * CFrame.new(target))
+				AntiCheat.moveTo(player, char, m:GetPivot() * CFrame.new(target), plat)
 			end)
 		end
 	end
@@ -349,6 +350,8 @@ local function spawnShip(kind, team, owner, donor)
 end
 
 ------------------------------------------------------------------ покупка
+local teamBuyT = {} -- [UserId] = os.clock() последней покупки командного корабля из казны (переживает перезаход)
+
 function ShipService.requestPurchase(player, kind)
 	local cfg = Config.Ships[kind]
 	if not cfg then return fail("Unknown ship") end
@@ -365,6 +368,16 @@ function ShipService.requestPurchase(player, kind)
 
 	local tslot
 	if cfg.Team then
+		local vip = player:GetAttribute("VIP") == true
+		local rank = player:GetAttribute("Rank") or 1
+		if cfg.MinRank and not vip and rank < cfg.MinRank then
+			local need = Config.Ranks.List[cfg.MinRank]
+			return fail(("%s from the treasury: %s rank or VIP required"):format(cfg.DisplayName, need and need.Name or ("rank " .. cfg.MinRank)))
+		end
+		local last = teamBuyT[player.UserId]
+		if cfg.BuyCooldown and last and os.clock() - last < cfg.BuyCooldown then
+			return fail(("You can buy another %s from the treasury in %d s"):format(cfg.DisplayName:lower(), math.ceil(cfg.BuyCooldown - (os.clock() - last))))
+		end
 		tslot = slotOf(kind, team)
 		if tslot.busy then return fail("Purchase already in progress") end
 		if reservedByOther(tslot, player) then return fail("The berth is reserved for a bonus ship being purchased — try again in a minute") end
@@ -414,6 +427,7 @@ function ShipService.requestPurchase(player, kind)
 		return fail("Construction failed, money refunded")
 	end
 	if cfg.Team then
+		teamBuyT[player.UserId] = os.clock()
 		Notifier.team(team, ("%s bought a %s from the treasury (−%d)! Captain to the bridge, gunners to the turrets."):format(player.DisplayName, cfg.DisplayName:lower(), cfg.Price), "success")
 	else
 		task.spawn(DataService.save, player)
@@ -862,6 +876,28 @@ end
 
 function ShipService.getAll()
 	return ships
+end
+
+-- командные корабли (из казны, не за донат), которые уберёт новый раунд — живые и тонущие
+function ShipService.roundResetModels()
+	local list = {}
+	for m, st in pairs(ships) do
+		if st.cfg.Team and not st.donor then table.insert(list, m) end
+	end
+	return list
+end
+
+-- новый раунд: командные корабли из казны убираем сразу (без взрывов и наград). Донатные остаются.
+-- Игроков с палубы RoundService уже перенёс на базу.
+function ShipService.resetTeamShips()
+	for m, st in pairs(ships) do
+		if st.cfg.Team and not st.donor then
+			st.dead = true
+			if st.aimTurret then TurretService.clearGunner(st.aimTurret) end
+			forget(st)
+			if m.Parent then m:Destroy() end
+		end
+	end
 end
 
 function ShipService.init()

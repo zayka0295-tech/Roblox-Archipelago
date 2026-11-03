@@ -33,14 +33,18 @@ local function ownerSign(owner)
 end
 
 ------------------------------------------------------------------ кто в зоне
+-- живой, пешком (не в технике) и в зоне острова, не выше MaxHeightAboveGround: и для захвата, и для награды
+local function inCaptureZone(isl, hrp, hum)
+	if not hrp or not hum or hum.Health <= 0 or hum.SeatPart then return false end
+	local p, center = hrp.Position, isl.center
+	local dx, dz = p.X - center.X, p.Z - center.Z
+	return dx * dx + dz * dz <= isl.radius * isl.radius and p.Y - center.Y <= (C.MaxHeightAboveGround or 25) and p.Y >= center.Y - 10
+end
+
 local function countInZone(isl)
 	local blue, red = 0, 0
-	local center, r2, maxH = isl.center, isl.radius * isl.radius, C.MaxHeightAboveGround or 25
 	local function consider(team, hrp, hum)
-		if not hrp or not hum or hum.Health <= 0 or hum.SeatPart then return end
-		local p = hrp.Position
-		local dx, dz = p.X - center.X, p.Z - center.Z
-		if dx * dx + dz * dz > r2 or p.Y - center.Y > maxH or p.Y < center.Y - 10 then return end
+		if not inCaptureZone(isl, hrp, hum) then return end
 		if team == "Blue" then blue += 1 elseif team == "Red" then red += 1 end
 	end
 	for _, p in ipairs(Players:GetPlayers()) do
@@ -115,15 +119,14 @@ local function setOwner(isl, owner)
 	isl.outpost:SetAttribute("Owner", owner)
 	publishCounts()
 	updateVisuals(isl)
-	-- игроки команды team, которые сейчас в зоне острова
+	-- игроки команды team, которые сейчас в зоне острова (по тем же правилам, что и захват)
 	local function inZone(team)
 		local list = {}
 		for _, p in ipairs(Players:GetPlayers()) do
 			local char = p.Character
-			local hrp = char and char:FindFirstChild("HumanoidRootPart")
-			if hrp and TeamService.getTeamName(p) == team and p:GetAttribute("State") == "Deployed" then
-				local d = Vector3.new(hrp.Position.X - isl.center.X, 0, hrp.Position.Z - isl.center.Z).Magnitude
-				if d <= isl.radius then table.insert(list, p) end
+			if TeamService.getTeamName(p) == team and p:GetAttribute("State") == "Deployed"
+				and inCaptureZone(isl, char and char:FindFirstChild("HumanoidRootPart"), char and char:FindFirstChildOfClass("Humanoid")) then
+				table.insert(list, p)
 			end
 		end
 		return list
@@ -212,13 +215,12 @@ function CaptureService.init()
 			local isl = {
 				id = def.Id, name = def.Name, def = def, outpost = outpost, point = point,
 				center = point.Position - Vector3.new(0, 1, 0),
-				radius = point:GetAttribute("Radius") or C.Radius,
+				radius = point:GetAttribute("Radius") or (def.IsCenter and C.CenterRadius) or C.Radius,
 				owner = "Neutral", control = 0, contested = false, capturing = nil,
 				flag = outpost:FindFirstChild("Flag"),
 				ring = cap:FindFirstChild("ZoneRing"), edge = cap:FindFirstChild("ZoneEdge"),
 				gui = cap:FindFirstChild("LabelAnchor") and cap.LabelAnchor:FindFirstChild("CaptureGui"),
 				badge = cap:FindFirstChild("LabelAnchor") and cap.LabelAnchor:FindFirstChild("IslandBadge"),
-				lastVisual = 0,
 			}
 			point:SetAttribute("Owner", "Neutral")
 			point:SetAttribute("Control", 0)
@@ -282,8 +284,10 @@ function CaptureService.init()
 				isl.point:SetAttribute("Contested", isl.contested)
 				GameState:SetAttribute("Island_" .. isl.id .. "_Contested", isl.contested)
 			end
-			if isl.capturing ~= prevCap then GameState:SetAttribute("Island_" .. isl.id .. "_Capturing", isl.capturing or "") end
-			if isl.capturing ~= prevCap then isl.point:SetAttribute("Capturing", isl.capturing or "") end
+			if isl.capturing ~= prevCap then
+				GameState:SetAttribute("Island_" .. isl.id .. "_Capturing", isl.capturing or "")
+				isl.point:SetAttribute("Capturing", isl.capturing or "")
+			end
 			if isl.control ~= prevC or isl.contested ~= prevContested or isl.capturing ~= prevCap then
 				updateVisuals(isl)
 			end

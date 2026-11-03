@@ -47,7 +47,7 @@ return function(ctx)
 	local panel = UI.panel(gui, {
 		Name = "Panel", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(500, 520),
 	})
-	UI.scale(panel, 0.8) -- на телефоне кнопки не сжимаются до крошечных
+	UI.scale(panel, 0.7) -- на телефоне не мельче 0.7 (так окно 520 ещё влезает в 390 по высоте вместе с кнопкой X)
 	UI.padding(panel, 16)
 	UI.label(panel, "FIRST STEPS", {TextSize = 22, TextColor3 = T.Gold})
 	UI.label(panel, "Learn the ropes · one-time gold rewards", {

@@ -160,13 +160,12 @@ local function setupHelm(team, model)
 				if (hrp.Position - plat.Position).Magnitude > 16 then return end
 				local hull = model:FindFirstChild("Hull")
 				if not hull then return end
-				AntiCheat.grace(player)
-				char:PivotTo(hull.CFrame * CFrame.new(sx * 36, 20, -110) * CFrame.Angles(0, sx > 0 and math.pi / 2 or -math.pi / 2, 0))
+				AntiCheat.moveTo(player, char, hull.CFrame * CFrame.new(sx * 36, 20, -110) * CFrame.Angles(0, sx > 0 and math.pi / 2 or -math.pi / 2, 0), hull)
 			end)
 		end
 	end
 	prompt.Triggered:Connect(function(player)
-		if s.model ~= model or s.state ~= "Active" then return end
+		if s.model ~= model or s.state ~= "Active" or not AntiCheat.atPrompt(player, prompt) then return end
 		if TeamService.getTeamName(player) ~= team then
 			Notifier.send(player, "This is the enemy carrier", "error")
 			return
@@ -182,9 +181,11 @@ local function setupHelm(team, model)
 				return
 			end
 		end
+		-- после ожидания всё могло измениться: авианосец потоплен, штурвал занят, игрок сменил команду
+		if s.model ~= model or s.state ~= "Active" or seat.Occupant or TeamService.getTeamName(player) ~= team then return end
 		local char = player.Character
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
-		if not hum or hum.Health <= 0 or hum.SeatPart then return end
+		if not hum or hum.Health <= 0 or hum.SeatPart or player:GetAttribute("State") ~= "Deployed" then return end
 		AntiCheat.grace(player)
 		char:PivotTo(seat.CFrame + Vector3.new(0, 3, 0))
 		seat:Sit(hum)
@@ -269,6 +270,8 @@ function CarrierService.requestPurchase(player)
 	if s.state == "Sinking" or s.state == "Destroyed" then
 		return fail("The carrier is still sinking — buy a new one once it goes down")
 	end
+	local wait = (s.cooldownEnd or 0) - os.time()
+	if wait > 0 then return fail(("The shipyard can build a new carrier in %d s"):format(wait)) end
 
 	local price = Config.Economy.CarrierPrice
 	s.busy = true
@@ -289,6 +292,7 @@ function CarrierService.requestPurchase(player)
 	s.state = "Active"
 	s.health = C.MaxHealth
 	s.busy = false
+	s.donated = false
 	setupHelm(team, model)
 	publish(team)
 	Notifier.team(team, ("%s bought a carrier from the treasury (−%d)! You can spawn on its deck; the captain takes the helm on the bridge."):format(player.DisplayName, price), "success")
@@ -315,7 +319,7 @@ function CarrierService.destroy(team, attacker)
 	s.state = "Sinking"
 	s.model, s.points, s.ctrl = nil, nil, nil
 	s.health = 0
-	s.cooldownEnd = 0
+	s.cooldownEnd = os.time() + (C.RebuyCooldown or 0) -- новый — не раньше чем через RebuyCooldown после гибели
 	publish(team)
 
 	for _, p in ipairs(Players:GetPlayers()) do
@@ -348,6 +352,7 @@ function CarrierService.destroy(team, attacker)
 	end
 	model:SetAttribute("IsCarrier", false)
 	model:SetAttribute("Sinking", true)
+	s.sinkModel = model
 	-- экипаж в креслах гибнет вместе с кораблём
 	local CombatService = require(Services.CombatService)
 	for _, seat in ipairs(model:GetDescendants()) do
@@ -386,10 +391,52 @@ function CarrierService.destroy(team, attacker)
 			end
 		end
 		if model.Parent then model:Destroy() end
+		-- новый раунд мог уже убрать его и спустить новый — тогда состояние не трогаем
+		if s.sinkModel ~= model then return end
+		s.sinkModel = nil
 		s.state = "None"
 		publish(team)
 		Notifier.team(team, "The carrier has sunk — the shipyard can build a new one.", "info")
 	end)
+end
+
+-- модели авианосцев, которые уберёт новый раунд (живые не за донат и тонущие)
+function CarrierService.roundResetModels()
+	local list = {}
+	for _, s in pairs(states) do
+		if s.model and not s.donated then table.insert(list, s.model) end
+		if s.sinkModel then table.insert(list, s.sinkModel) end
+	end
+	return list
+end
+
+-- новый раунд: авианосцы из казны убираем сразу (без взрывов и наград), кулдаун сбрасываем.
+-- Купленный за Robux остаётся. Игроков с палубы RoundService уже перенёс на базу.
+function CarrierService.resetAll()
+	for team, s in pairs(states) do
+		if s.model and not s.donated then
+			local model = s.model
+			s.driver, s.driverHum = nil, nil
+			s.model, s.points, s.ctrl = nil, nil, nil
+			s.state, s.health = "None", 0
+			model:Destroy()
+		end
+		if s.sinkModel then
+			local m = s.sinkModel
+			s.sinkModel = nil
+			if m.Parent then m:Destroy() end
+			if s.state ~= "Active" then s.state, s.health = "None", 0 end
+		end
+		s.cooldownEnd = 0
+		publish(team)
+		if s.state ~= "Active" then
+			for _, p in ipairs(Players:GetPlayers()) do
+				if TeamService.getTeamName(p) == team and p:GetAttribute("SpawnChoice") == "Carrier" then
+					p:SetAttribute("SpawnChoice", "Base")
+				end
+			end
+		end
+	end
 end
 
 ------------------------------------------------------------------ для ботов
@@ -441,6 +488,7 @@ function CarrierService.donateSpawn(player, team)
 	s.model, s.points, s.ctrl = model, points, ctrl
 	s.state = "Active"
 	s.health = C.MaxHealth
+	s.donated = true -- куплен за Robux: новый раунд его не убирает
 	CarrierService.releaseDonate(team, player)
 	setupHelm(team, model)
 	publish(team)

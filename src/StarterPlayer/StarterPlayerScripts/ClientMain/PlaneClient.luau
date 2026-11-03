@@ -558,15 +558,39 @@ return function(ctx)
 		end
 	end)
 
-	-- винты всех самолётов с работающим мотором крутятся (визуально, у каждого клиента)
-	local angle = 0
+	-- винты всех самолётов с работающим мотором крутятся (визуально, у каждого клиента) — каждый кадр;
+	-- кнопки и шасси — 5 раз в секунду (перебор деталей каждый кадр ни к чему)
+	local angle, slowAcc = 0, 0
+	local motorCache = setmetatable({}, {__mode = "k"}) -- [самолёт] = {{мотор, исходный C0}}
+	local function motorsOf(plane)
+		local list = motorCache[plane]
+		if list then return list end
+		local root = plane:FindFirstChild("Root")
+		if not root then return {} end
+		list = {}
+		for _, motor in ipairs(root:GetChildren()) do
+			if motor:IsA("Motor6D") and motor.Name:sub(1, 9) == "PropMotor" then
+				local base = motor:GetAttribute("BaseC0")
+				table.insert(list, {motor, typeof(base) == "CFrame" and base or CFrame.new(0, 0, -9.5)})
+			end
+		end
+		motorCache[plane] = list
+		return list
+	end
 	RunService.RenderStepped:Connect(function(dt)
 		angle = (angle + dt * 40) % (math.pi * 2)
+		slowAcc += dt
+		local slow = slowAcc >= 0.2
+		if slow then slowAcc = 0 end
 		local f = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Planes")
 		if not f then return end
 		local myHum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 		local meSeated = myHum ~= nil and myHum.SeatPart ~= nil
 		for _, plane in ipairs(f:GetChildren()) do
+			if plane:GetAttribute("EngineOn") then
+				for _, m in ipairs(motorsOf(plane)) do m[1].C0 = m[2] * CFrame.Angles(0, 0, angle) end
+			end
+			if not slow then continue end
 			-- кнопка «сесть стрелком» бомбардировщика: не для пилота этого самолёта и не когда место занято (только у меня)
 			local tur = plane:FindFirstChild("TailTurret")
 			local ped = tur and tur:FindFirstChild("Pedestal")
@@ -598,17 +622,6 @@ return function(ctx)
 				for _, d in ipairs(plane:GetChildren()) do
 					if d:IsA("BasePart") and (d.Name == "Wheel" or d.Name == "GearStrut" or d.Name == "GearDoor" or d.Name == "TailWheel" or d.Name == "TailStrut") then
 						d.LocalTransparencyModifier = gearUp and 1 or 0
-					end
-				end
-			end
-			if plane:GetAttribute("EngineOn") then
-				-- все винты самолёта (у бомбардировщика два): PropMotor* с исходным положением в атрибуте BaseC0
-				local root = plane:FindFirstChild("Root")
-				for _, motor in ipairs(root and root:GetChildren() or {}) do
-					if motor:IsA("Motor6D") and motor.Name:sub(1, 9) == "PropMotor" then
-						local base = motor:GetAttribute("BaseC0")
-						if typeof(base) ~= "CFrame" then base = CFrame.new(0, 0, -9.5) end
-						motor.C0 = base * CFrame.Angles(0, 0, angle)
 					end
 				end
 			end

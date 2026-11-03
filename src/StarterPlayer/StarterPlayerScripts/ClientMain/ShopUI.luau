@@ -73,6 +73,8 @@ return function(ctx)
 				UI.setEnabled(r.buy, false, T.Good, "LIMIT")
 			elseif st == "Sinking" or st == "Destroyed" then
 				UI.setEnabled(r.buy, false, T.Good, "SINKING")
+			elseif st == "Cooldown" then
+				UI.setEnabled(r.buy, false, T.Good, "REBUILDING")
 			else
 				local funds = d.team and treasury or gold
 				UI.setEnabled(r.buy, true, funds >= d.price and T.Good or T.Panel2, d.team and ("TREASURY · ◆%d"):format(d.price) or ("BUY · ◆%d"):format(d.price))
@@ -122,7 +124,7 @@ return function(ctx)
 	end
 
 	close.Activated:Connect(api.close)
-	ctx.Remotes.OpenShop.OnClientEvent:Connect(api.open)
+	ctx.Remotes:WaitForChild("OpenShop").OnClientEvent:Connect(api.open)
 	GameState.AttributeChanged:Connect(refresh)
 	player.AttributeChanged:Connect(refresh)
 	task.spawn(function()

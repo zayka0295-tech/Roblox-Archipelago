@@ -44,6 +44,8 @@ function ctx.carrierStatus(team)
 	elseif st == "Sinking" or st == "Destroyed" then
 		return false, "Sinking · a new one once it goes down", "Sinking"
 	end
+	local wait = (GameState:GetAttribute("Carrier_" .. team .. "_CooldownEnd") or 0) - os.time()
+	if wait > 0 then return false, ("Shipyard rebuilding · %d s"):format(wait), "Cooldown" end
 	return false, ("Not purchased · %d from treasury at the shipyard"):format(Config.Economy.CarrierPrice), st
 end
 

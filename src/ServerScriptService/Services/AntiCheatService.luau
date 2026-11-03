@@ -12,7 +12,8 @@
 -- на лестнице (Climbing), на парашюте (атрибут Parachute) и SEAT_GRACE сек. после кресла.
 -- После кресла скорость проверяется сразу, но с запасом на скорость техники (прыжок из летящего самолёта):
 -- иначе можно сесть в зенитку, встать и 5 секунд телепортироваться без проверки.
--- Серверные перемещения персонажа (трап, посадка в кресло) перед PivotTo вызывают AntiCheat.grace(player).
+-- Серверные перемещения персонажа: трапы — AntiCheat.moveTo (персонаж обязан остаться у точки переноса),
+-- посадка в кресло — AntiCheat.grace перед PivotTo. «Сидит», но далеко от кресла — снимаем с кресла.
 local Players = game:GetService("Players")
 
 local AntiCheat = {}
@@ -28,6 +29,8 @@ local HOVER_TIME = 1.5     -- сек. без опоры...
 local HOVER_DROP = 2       -- ...и не снизился хотя бы на столько — висит в воздухе
 local NOCLIP_STEP = 0.1    -- сек. между проверками пути сквозь стены
 local NOCLIP_RAYS = {-1, 0, 1.5} -- высоты лучей от корня: перепрыгнул перила — верхний свободен
+local SEAT_MAX_DIST = 12   -- студов от кресла: дальше — «сидит» только на сервере (сварку удалили у себя)
+local DEST_SLACK = 12      -- студов запаса у точки серверного переноса (персонаж оседает на палубу)
 
 local track = {} -- [игрок] = {last = CFrame, graceUntil, floor, strikes, ground*, air*, nc}
 local rayParams = RaycastParams.new()
@@ -58,7 +61,33 @@ function AntiCheat.grace(player, seconds)
 	s.movedUntil = math.max(s.movedUntil or 0, os.clock() + (seconds or 2)) -- только серверные переносы (без льготы после кресла)
 	s.last = nil
 	s.nc = nil
+	s.dest = nil
 	s.groundY, s.airT, s.highT = nil, nil, nil
+end
+
+-- серверный перенос персонажа в точку cf (трап, лестница). ref — деталь, с которой точка движется
+-- (корпус идущего корабля). Пока идёт льгота, персонаж должен оставаться у точки переноса:
+-- иначе любой трап — телепорт куда угодно (льгота сбрасывает последнюю честную точку).
+function AntiCheat.moveTo(player, char, cf, ref)
+	AntiCheat.grace(player)
+	local s = stateOf(player)
+	s.dest = {cf = cf, part = ref, off = ref and ref.CFrame:ToObjectSpace(cf), t = os.clock()}
+	char:PivotTo(cf)
+end
+
+-- игрок не дальше dist от точки pos (кресла и кнопки: ProximityPrompt читом жмут с любого расстояния)
+function AntiCheat.near(player, pos, dist)
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	return hrp ~= nil and (hrp.Position - pos).Magnitude <= dist
+end
+
+-- игрок у кнопки prompt (её дальность + запас на лаг и движение палубы)
+function AntiCheat.atPrompt(player, prompt)
+	local p = prompt.Parent
+	local pos = p and (p:IsA("Attachment") and p.WorldPosition or p:IsA("BasePart") and p.Position)
+	if not pos then return false end
+	return AntiCheat.near(player, pos, prompt.MaxActivationDistance + 12)
 end
 
 -- идёт ли сейчас серверный перенос / возврат персонажа (резкая остановка — не падение)
@@ -163,7 +192,8 @@ local function checkNoclip(player, s, now)
 	local char = player.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
-	if not hum or not hrp or hum.Health <= 0 or hum.SeatPart or player:GetAttribute("State") ~= "Deployed" or now < s.graceUntil then
+	local seated = hum and hrp and hum.SeatPart and (hrp.Position - hum.SeatPart.Position).Magnitude <= SEAT_MAX_DIST
+	if not hum or not hrp or hum.Health <= 0 or seated or player:GetAttribute("State") ~= "Deployed" or now < s.graceUntil then
 		s.nc = nil
 		return
 	end
@@ -196,9 +226,20 @@ local function check(player, s, now)
 		s.last = nil
 		return
 	end
-	if hum.SeatPart then
+	local seatPart = hum.SeatPart
+	if seatPart and (hrp.Position - seatPart.Position).Magnitude > SEAT_MAX_DIST then
+		-- «сидит», но далеко от кресла: клиент удалил сварку у себя — снимаем с кресла и возвращаем к нему
+		local w = seatPart:FindFirstChild("SeatWeld")
+		if w then w:Destroy() end
+		hum.Sit = false
+		s.dest = nil
+		pull(player, s, char, hrp, seatPart.CFrame + Vector3.new(0, 4, 0), "away from the seat while seated")
+		return
+	end
+	if seatPart then
+		s.dest = nil
 		-- запоминаем скорость техники: выпрыгнув, персонаж ещё летит по инерции
-		local v = hum.SeatPart.AssemblyLinearVelocity
+		local v = seatPart.AssemblyLinearVelocity
 		s.seatH = Vector3.new(v.X, 0, v.Z).Magnitude
 		s.seatUp = math.max(0, v.Y)
 		s.seatUntil = now + SEAT_GRACE
@@ -207,6 +248,19 @@ local function check(player, s, now)
 	end
 	local fv = floorVelocity(char, hrp)
 	s.floor = math.max(Vector3.new(fv.X, 0, fv.Z).Magnitude, s.floor * FLOOR_DECAY)
+	local dest = s.dest
+	if dest then
+		-- после переноса трапом персонаж обязан быть у точки переноса (с учётом бега за прошедшее время)
+		local cf = dest.part and dest.part.Parent and dest.part.CFrame * dest.off or dest.cf
+		local allow = hum.WalkSpeed * SPEED_MARGIN * (now - dest.t) + EXTRA + DEST_SLACK
+		if (hrp.Position - cf.Position).Magnitude > allow then
+			s.dest = nil
+			pull(player, s, char, hrp, cf, "moved away from the ladder top")
+			return
+		end
+		if now < s.graceUntil then return end
+		s.dest = nil
+	end
 	if now < s.graceUntil or not s.last then
 		s.last, s.lastT = hrp.CFrame, now
 		s.groundY, s.airT, s.highT = nil, nil, nil

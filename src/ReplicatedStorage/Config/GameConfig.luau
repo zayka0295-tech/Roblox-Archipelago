@@ -6,7 +6,9 @@ Config.GameName = "ISLAND WAR"
 Config.Economy = {
 	StartGold = 500,       -- стартовый личный баланс нового игрока
 	KillReward = 40,       -- личная награда за убийство игрока
-	BotKillReward = 5,     -- за убийство бота (чтобы не фармили ботов)
+	BotKillReward = 5,     -- за убийство бота (чтобы не фармили ботов); золото — не больше Ranks.BotKillCap ботов за раунд
+	RepeatKillGoldMult = 0.25, -- 3-е и 4-е убийство одного игрока за Ranks.RepeatKillWindow — столько от KillReward…
+	RepeatKillNoReward = 5,    -- …а с 5-го — без золота и без килла в рейтинге (фарм со второго аккаунта)
 	CarrierPrice = 2500,   -- цена авианосца (из командной казны)
 	CarrierDestroyReward = 500, -- личная награда за уничтожение вражеского авианосца
 	MaxGold = 1000000000,
@@ -124,6 +126,8 @@ Config.RateLimits = {
 	Rewards = 0.3,
 	RewardsGet = 0.5,
 	BuyPlane = 1,
+	BuyShip = 1,
+	Rank = 0.5,
 	Bazaar = 0.5,
 }
 
@@ -132,6 +136,9 @@ Config.RateLimits = {
 Config.Ships = {
 	Battleship = {
 		DisplayName = "Battleship", Price = 1200, Team = true, TeamLimit = 3,
+		-- покупка из казны команды: с ранга MinRank (Sergeant) или VIP, и одному игроку — не чаще раза в BuyCooldown сек.
+		-- (иначе один игрок покупает, бросает — через 2 мин. линкор взрывается — и так до пустой казны)
+		MinRank = 6, BuyCooldown = 600,
 		Description = "Two triple-gun main battery turrets. A captain on the bridge and a gunner in each turret.",
 		MaxHealth = 4000, MaxSpeed = 30, MaxReverseSpeed = 10, Acceleration = 5, TurnRate = 9, MinTurnFactor = 0.35,
 		Length = 200, Beam = 34, Draft = 9,
@@ -380,7 +387,7 @@ Config.Bots = {
 -- Только для тестов в Studio (в опубликованной игре не действует)
 Config.Dev = {
 	StudioGold = 1000000,
-	StudioTreasury = 1000000, -- только в Studio: казна каждой команды на старте -- золото при каждом запуске Play в Studio; 0 = выключить
+	StudioTreasury = 1000000, -- только в Studio: казна каждой команды на старте раунда; 0 = выключить
 	StudioWalkSpeed = 0, -- скорость бега в Studio; 0 = обычная
 }
 

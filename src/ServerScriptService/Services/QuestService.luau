@@ -11,7 +11,6 @@ local Config = require(ReplicatedStorage.Config.GameConfig)
 
 local Services = script.Parent
 local DataService = require(Services.DataService)
-local CombatService = require(Services.CombatService)
 local Notifier = require(Services.Notifier)
 local Guard = require(Services.RemoteGuard)
 local RankService = require(Services.RankService)
@@ -149,12 +148,6 @@ local function watchSeats(player, char)
 end
 
 function QuestService.init()
-	-- убийства для задания (CombatService зовёт при каждом засчитанном убийстве игроком)
-	CombatService.onKill = function(killer)
-		DataService.addProgress(killer, "QuestKills", 1)
-		checkReady(killer, "kills")
-	end
-
 	ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Quests").OnServerInvoke = function(player, action, id)
 		-- отдельные лимиты: автообновление окна не должно мешать нажатию CLAIM
 		if not Guard.allow(player, action == "claim" and "Quests" or "QuestsGet") then return {ok = false, msg = "Too fast, please wait"} end

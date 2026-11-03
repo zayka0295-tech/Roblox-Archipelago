@@ -23,7 +23,7 @@ local CHECK = 0.5 -- сек.: шаг проверки полёта/заплыв�
 -- считаем телепортом и в прогресс не засчитываем
 local MAX_STEP = 250 * CHECK
 
-local progress = {}  -- [игрок] = {step, start = Vector3, done = bool}
+local progress = {}  -- [игрок] = {step, dist = пройдено студов, last = Vector3, done = bool}
 local lastTalk = {}  -- [игрок] = os.clock()
 
 local function stepOf(player)
@@ -34,7 +34,7 @@ local function stateFor(player)
 	local step = stepOf(player)
 	local pr = progress[player]
 	if not pr or pr.step ~= step then
-		pr = {step = step, start = nil, done = false}
+		pr = {step = step, dist = 0, done = false}
 		progress[player] = pr
 		player:SetAttribute("TutProgress", 0)
 		player:SetAttribute("TutReady", false)
@@ -135,7 +135,9 @@ function TutorialService.init()
 		end
 	end
 
-	-- полёт / заплыв: считаем расстояние по горизонтали от места, где сел за штурвал
+	-- полёт / заплыв: считаем пройденный путь по горизонтали (сумму шагов за штурвалом). Скачки больше MAX_STEP
+	-- (появление на другом аэродроме, перенос) не считаются; вышел из техники — путь сохраняется, но
+	-- точка отсчёта сбрасывается (иначе «сел на базе, встал, появился на острове» — сразу выполнено)
 	task.spawn(function()
 		while true do
 			task.wait(CHECK)
@@ -147,13 +149,12 @@ function TutorialService.init()
 						if not seat then pr.last = nil end
 						if seat then
 							local pos = seat.Position
-							pr.start = pr.start or pos
 							if pr.last then
-								local jump = Vector3.new(pos.X - pr.last.X, 0, pos.Z - pr.last.Z)
-								if jump.Magnitude > MAX_STEP then pr.start += jump end -- сдвигаем старт вслед за скачком
+								local stepLen = Vector3.new(pos.X - pr.last.X, 0, pos.Z - pr.last.Z).Magnitude
+								if stepLen <= MAX_STEP then pr.dist = (pr.dist or 0) + stepLen end
 							end
 							pr.last = pos
-							local d = Vector3.new(pos.X - pr.start.X, 0, pos.Z - pr.start.Z).Magnitude
+							local d = pr.dist or 0
 							if d > (p:GetAttribute("TutProgress") or 0) then p:SetAttribute("TutProgress", math.floor(d)) end
 							if d >= goalOf(step) then
 								pr.done = true

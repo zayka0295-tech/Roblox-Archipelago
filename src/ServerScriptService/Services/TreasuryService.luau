@@ -53,12 +53,23 @@ function TreasuryService.devSet(team, amount)
 	end
 end
 
-function TreasuryService.init()
+-- стартовая казна (Studio: Config.Dev.StudioTreasury, 0 — выключено)
+local function startAmount()
+	local studio = game:GetService("RunService"):IsStudio() and Config.Dev and Config.Dev.StudioTreasury
+	if studio and studio > 0 then return studio end
+	return T.Start or 0
+end
+
+-- новый раунд (RoundService): казна каждой команды — снова стартовая
+function TreasuryService.reset()
 	for _, team in ipairs(Config.TeamOrder) do
-		local studio = game:GetService("RunService"):IsStudio() and Config.Dev and Config.Dev.StudioTreasury
-		balance[team] = studio or T.Start or 0
+		balance[team] = startAmount()
 		publish(team)
 	end
+end
+
+function TreasuryService.init()
+	TreasuryService.reset()
 	local every = T.PassiveInterval or 30
 	local amount = T.PassiveAmount or 0
 	if amount > 0 then

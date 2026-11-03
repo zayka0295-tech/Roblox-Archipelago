@@ -4,7 +4,9 @@
 --  • Конец: больше очков — победа; равно — решают убийства игроков за раунд; и тут равно — ничья.
 --  • Награда: WinDiamonds каждому игроку победившей команды, который сейчас в ней
 --    и отыграл за неё в этом раунде не меньше MinPlaySec (в бою, не в лобби).
---  • После конца — перерыв Intermission (баннер), затем острова сбрасываются и идёт новый раунд.
+--  • После конца — перерыв Intermission (баннер), затем новый раунд с нуля: острова нейтральные, казна стартовая,
+--    авианосцы и линкоры из казны, грузовые суда, грузовики и вертолёты с грузом убираются (купленное за Robux
+--    и личная техника игроков остаются). Игроков с убираемых кораблей переносим на базу.
 --  • Итоги: личная статистика за раунд (RankService.Action — убийства, самолёты, корабли, захваты, очки = опыт
 --    за действия) и звания (Config.Round.Awards: MVP, Ace, Captain, Conqueror) с золотом — на экран итогов.
 -- Состояние для клиентов — атрибуты GameState (Round_*), итог — Remotes.RoundResult.
@@ -21,6 +23,11 @@ local CombatService = require(Services.CombatService)
 local Notifier = require(Services.Notifier)
 local RankService = require(Services.RankService)
 local BadgesService = require(Services.BadgesService)
+local TreasuryService = require(Services.TreasuryService)
+local CarrierService = require(Services.CarrierService)
+local ShipService = require(Services.ShipService)
+local LogisticsService = require(Services.LogisticsService)
+local HeliService = require(Services.HeliService)
 
 local RoundService = {}
 local R = Config.Round
@@ -47,8 +54,44 @@ local function publish()
 	GameState:SetAttribute("Round_Score_Red", score.Red)
 end
 
+-- игрок на борту одной из моделей (в кресле или на палубе)
+local function aboard(char, models)
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if not hum or not hrp or hum.Health <= 0 then return false end
+	for _, m in ipairs(models) do
+		if hum.SeatPart and hum.SeatPart:IsDescendantOf(m) then return true end
+		local cf, size = m:GetBoundingBox()
+		local lp = cf:PointToObjectSpace(hrp.Position)
+		if math.abs(lp.X) <= size.X / 2 + 4 and math.abs(lp.Z) <= size.Z / 2 + 4 and lp.Y <= size.Y / 2 + 20 and lp.Y >= -size.Y / 2 - 4 then
+			return true
+		end
+	end
+	return false
+end
+
+-- всё, что команды накопили за раунд (кроме островов — их сбрасывает CaptureService.resetAll)
+local function resetWorld()
+	local models = CarrierService.roundResetModels()
+	for _, m in ipairs(ShipService.roundResetModels()) do table.insert(models, m) end
+	if #models > 0 then
+		for _, p in ipairs(Players:GetPlayers()) do
+			local char = p.Character
+			if char and p:GetAttribute("State") == "Deployed" and aboard(char, models) then
+				if p:GetAttribute("SpawnChoice") == "Carrier" then p:SetAttribute("SpawnChoice", "Base") end
+				task.spawn(function() p:LoadCharacter() end)
+			end
+		end
+	end
+	for _, f in ipairs({CarrierService.resetAll, ShipService.resetTeamShips, LogisticsService.resetAll, HeliService.resetAll, TreasuryService.reset}) do
+		local ok, err = pcall(f)
+		if not ok then warn("[RoundService] reset: " .. tostring(err)) end
+	end
+end
+
 local function startRound()
 	roundNo += 1
+	if roundNo > 1 then resetWorld() end
 	for _, t in ipairs(TEAMS) do score[t], kills[t] = 0, 0 end
 	played = {}
 	stats = {}

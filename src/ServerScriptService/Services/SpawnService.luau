@@ -38,7 +38,16 @@ local function spawnsIn(folder)
 end
 
 local function pick(list)
+	if #list == 0 then return nil end
 	return list[math.random(1, #list)]
+end
+
+-- запасная точка, если в карте нет нужных (сломанная карта не должна ронять появление)
+local function anySpawn()
+	local s = workspace:FindFirstChildWhichIsA("SpawnLocation", true)
+	if s then return s end
+	warn("[SpawnService] no spawn points found")
+	return workspace.Terrain:FindFirstChildWhichIsA("BasePart") or workspace:FindFirstChildWhichIsA("BasePart", true)
 end
 
 -- у каждой команды своё лобби: Map.Lobby / Map.LobbyRed (атрибут LobbyTeam)
@@ -94,7 +103,14 @@ function SpawnService.islandStatus(team)
 end
 
 -- куда ставить персонажа: Lobby / Base / Carrier / Island (с откатом на базу)
+local resolveRaw
 function SpawnService.resolve(player)
+	local point, kind = resolveRaw(player)
+	if not point then return anySpawn(), "Lobby" end
+	return point, kind
+end
+
+function resolveRaw(player)
 	local team = TeamService.getTeamName(player)
 	if player:GetAttribute("State") ~= "Deployed" or not team then
 		return pick(SpawnService.lobbyPoints(team)), "Lobby"
@@ -108,9 +124,8 @@ function SpawnService.resolve(player)
 		Notifier.send(player, "Carrier unavailable — spawning at base", "error")
 	end
 	if player:GetAttribute("SpawnChoice") == "Island" then
-		if SpawnService.islandStatus(team) then
-			return pick(islandPads()), "Island"
-		end
+		local pad = SpawnService.islandStatus(team) and pick(islandPads())
+		if pad then return pad, "Island" end
 		player:SetAttribute("SpawnChoice", "Base")
 		Notifier.send(player, "Your team lost the island — spawning at base", "error")
 	end

@@ -13,7 +13,7 @@ return function(ctx)
 	UI.new("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.4}, gui)
 	local panel = UI.panel(gui, {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(MAP_W + 32, MAP_H + 150)})
 	UI.scale(panel, 0.5)
-	UI.label(panel, "🪂 CHOOSE YOUR DROP ROUTE", {Position = UDim2.fromOffset(0, 12), Size = UDim2.new(1, 0, 0, 30), TextSize = 26, TextColor3 = T.Gold, TextXAlignment = Enum.TextXAlignment.Center})
+	UI.label(panel, "CHOOSE YOUR DROP ROUTE", {Position = UDim2.fromOffset(0, 12), Size = UDim2.new(1, 0, 0, 30), TextSize = 26, TextColor3 = T.Gold, TextXAlignment = Enum.TextXAlignment.Center})
 	local sub = UI.label(panel, "Tap the map: the plane flies from your base through that point", {Position = UDim2.fromOffset(0, 44), Size = UDim2.new(1, 0, 0, 20), TextSize = 15, Font = UI.Medium, TextColor3 = T.Muted, TextXAlignment = Enum.TextXAlignment.Center})
 
 	-- море

@@ -75,6 +75,7 @@ local function setup(model, owner)
 
 	if seat and prompt then
 		prompt.Triggered:Connect(function(player)
+			if not AntiCheat.atPrompt(player, prompt) then return end
 			if TeamService.getTeamName(player) ~= teamOf(st) then
 				Notifier.send(player, "This is an enemy gun", "error")
 				return
@@ -90,6 +91,7 @@ local function setup(model, owner)
 					return
 				end
 			end
+			if seat.Occupant or TeamService.getTeamName(player) ~= teamOf(st) then return end
 			local char = player.Character
 			local hum = char and char:FindFirstChildOfClass("Humanoid")
 			if not hum or hum.Health <= 0 or hum.SeatPart or player:GetAttribute("State") ~= "Deployed" then return end
@@ -258,12 +260,14 @@ function TurretService.init()
 		for _, c in ipairs(folder:GetChildren()) do attachShip(c) end
 	end
 
+	local inputT = setmetatable({}, {__mode = "k"}) -- [игрок] = время последнего ввода (до перебора турелей: спам не грузит сервер)
 	ReplicatedStorage.Remotes:WaitForChild("TurretInput").OnServerEvent:Connect(function(player, target, firing)
 		if typeof(target) ~= "Vector3" or not (target.Magnitude < 1e5) then return end -- отсекает NaN/inf в любой координате
+		local now = os.clock()
+		if now - (inputT[player] or 0) < 0.02 then return end
+		inputT[player] = now
 		for _, st in pairs(turrets) do
 			if st.gunner == player then
-				local now = os.clock()
-				if now - st.lastInput < 0.02 then return end
 				st.lastInput = now
 				aimAt(st, target)
 				if st.firing and firing ~= true then st.firingEnd = now end

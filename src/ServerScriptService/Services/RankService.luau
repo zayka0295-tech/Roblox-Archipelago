@@ -45,13 +45,14 @@ function RankService.award(player, key, mult, sub)
 	end
 end
 
--- убийство (CombatService): лимит ботов за раунд и меньше опыта за повторные убийства одного игрока
+-- убийство (CombatService): лимит ботов за раунд и меньше опыта за повторные убийства одного игрока.
+-- Возвращает, какое это убийство по счёту: ботов за раунд / этого игрока за RepeatKillWindow (для золота)
 function RankService.onKill(killer, victim, victimIsBot)
-	if not isPlayer(killer) then return end
+	if not isPlayer(killer) then return 0 end
 	if victimIsBot then
 		botKills[killer] = (botKills[killer] or 0) + 1
 		if botKills[killer] <= (RC.BotKillCap or 50) then RankService.award(killer, "BotKill") end
-		return
+		return botKills[killer]
 	end
 	local now = os.clock()
 	local byVictim = victims[killer] or {}
@@ -63,6 +64,7 @@ function RankService.onKill(killer, victim, victimIsBot)
 	table.insert(list, now)
 	byVictim[victim] = list
 	RankService.award(killer, "Kill", #list >= 3 and (RC.RepeatKillMult or 0.25) or 1)
+	return #list
 end
 
 -- новый раунд (RoundService)

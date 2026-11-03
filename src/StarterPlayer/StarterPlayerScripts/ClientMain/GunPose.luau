@@ -164,6 +164,12 @@ return function(ctx)
 		arm(r.L, utCF, back.Magnitude > 0.01 and left + back.Unit * WRIST_BACK or left)
 	end
 
+	-- NPC с оружием (тег GunHolder): список держим по сигналам тега, а не запрашиваем каждый кадр
+	local holders = {}
+	for _, m in ipairs(CollectionService:GetTagged("GunHolder")) do holders[m] = true end
+	CollectionService:GetInstanceAddedSignal("GunHolder"):Connect(function(m) holders[m] = true end)
+	CollectionService:GetInstanceRemovedSignal("GunHolder"):Connect(function(m) holders[m] = nil end)
+
 	local sendAcc, sentPitch, sentAim = 0, nil, nil
 	RunService.Stepped:Connect(function(_, dt)
 		gunState.kick -= gunState.kick * math.min(1, dt * 14)
@@ -178,7 +184,7 @@ return function(ctx)
 			if char and (p == player or near(char)) then pose(char, p == player, dt) end
 		end
 		-- NPC с оружием (тег GunHolder): наклон — по их атрибуту AimPitch
-		for _, m in ipairs(CollectionService:GetTagged("GunHolder")) do
+		for m in pairs(holders) do
 			if m:IsA("Model") and m.Parent and near(m) then pose(m, false, dt) end
 		end
 		-- свой наклон прицела — на сервер, чтобы остальные видели позу

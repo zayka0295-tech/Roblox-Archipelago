@@ -892,12 +892,15 @@ local function routeStep(route, now)
 			CaptureService.setExtraStatus(route.id, "Unloading at base")
 			LogisticsService._bayTruck(base) -- грузовик подаётся под кран сразу
 			task.spawn(function()
-				local ok = unload(base, route, st)
+				-- ошибка или гибель судна посреди разгрузки не должны навсегда занять причал базы
+				-- (base.busy держит очередь: все следующие суда команды ждали бы вечно)
+				local okRun, ok = pcall(unload, base, route, st)
+				if not okRun then warn("[LogisticsService] unload: " .. tostring(ok)) end
+				if base.busy == route then base.busy = nil end
 				if st.dead then return end
 				-- деньги — не сейчас, а когда грузовик довезёт контейнеры в ангар
-				if ok then dispatchTruck(base, route, route.delivery) end
+				if okRun and ok then dispatchTruck(base, route, route.delivery) end
 				route.delivery = nil
-				if base.busy == route then base.busy = nil end
 				startToIsland(route)
 			end)
 		end
@@ -949,6 +952,27 @@ local function moveStep(st, dt)
 end
 
 ------------------------------------------------------------------ API
+-- новый раунд: грузовые суда (в пути и у причалов), очереди причалов и грузовики с грузом убираем —
+-- груз прошлого раунда в казну нового не попадёт
+function LogisticsService.resetAll()
+	for id, route in pairs(routes) do
+		if route.ship then despawnShip(route) end
+		route.delivery, route.respawnAt, route.state = nil, nil, "Empty"
+		CaptureService.setExtraStatus(id, "")
+	end
+	for _, base in pairs(bases) do
+		table.clear(base.queue)
+		base.busy = nil
+		base.bayTruck = nil
+	end
+	for m, t in pairs(trucks) do
+		trucks[m] = nil
+		t.delivery, t.state = nil, "Destroyed"
+		if m.Parent then m:Destroy() end
+	end
+	table.clear(paidDeliveries) -- все доставки прошлого раунда отменены
+end
+
 function LogisticsService.getShips()
 	local list = {}
 	for _, route in pairs(routes) do

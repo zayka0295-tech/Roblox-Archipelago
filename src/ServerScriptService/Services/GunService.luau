@@ -28,13 +28,15 @@ end
 -- Выстрел вбок или назад от того, куда он смотрит, — чит («стрельба на 360°»). Запас на касание края
 -- экрана на телефоне и на то, что поворот тела доходит до сервера с небольшой задержкой.
 local MAX_YAW = math.cos(math.rad(80))
-local function facing(hrp, aim)
+-- попадание, которое засчитывает клиент (hitPart), — строже: иначе «silent aim» бьёт любого в секторе 160°
+local CLIENT_HIT_YAW = math.cos(math.rad(45))
+local function facing(hrp, aim, limit)
 	local flat = Vector3.new(aim.X, 0, aim.Z)
 	if flat.Magnitude < 3 then return true end -- стрельба почти отвесно или вупор
 	local lv = hrp.CFrame.LookVector
 	local fl = Vector3.new(lv.X, 0, lv.Z)
 	if fl.Magnitude < 0.01 then return true end
-	return fl.Unit:Dot(flat.Unit) >= MAX_YAW
+	return fl.Unit:Dot(flat.Unit) >= (limit or MAX_YAW)
 end
 
 -- выдать оружие игроку (в рюкзак), с полным магазином
@@ -88,6 +90,14 @@ local function onFire(player, target, hitPart)
 		end
 		return
 	end
+	-- из своей защищённой зоны ракетами нельзя: игрока там не убить, а он бы безнаказанно обстреливал технику
+	if gun.Rocket and zone ~= nil and zone == TeamService.getTeamName(player) then
+		if not safeWarned[player] or t - safeWarned[player] > 4 then
+			safeWarned[player] = t
+			Notifier.send(player, "Rockets are disabled inside your protected base", "safe")
+		end
+		return
+	end
 	-- направление проверяем до того, как списать патрон и запустить перезарядку ствола
 	local muzzle = tool:FindFirstChild("Muzzle") or tool:FindFirstChild("Handle")
 	local from = head.Position
@@ -119,6 +129,7 @@ local function onFire(player, target, hitPart)
 	local origin = from
 	-- попадание глазами игрока: цель на сервере уже сдвинулась на пинг, серверный луч бы промахнулся
 	if typeof(hitPart) == "Instance" and hitPart:IsA("BasePart") and not hitPart:IsDescendantOf(char)
+		and (not hrp or facing(hrp, aim, CLIENT_HIT_YAW))
 		and CombatService.checkClientHit(origin, hitPart, target, gun.Range + 20) then
 		local ok = true
 		if hitPart.Name == "Head" then
