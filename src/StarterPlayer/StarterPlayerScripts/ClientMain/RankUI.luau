@@ -25,7 +25,6 @@ return function(ctx)
 		local nx = LIST[rank() + 1]
 		return nx ~= nil and xp() >= nx.XP
 	end
-	local function circle(f) UI.new("UICorner", {CornerRadius = UDim.new(0.5, 0)}, f) return f end
 
 	---------------------------------------------------------------- кнопка на экране (под рулеткой)
 	-- рамка как у DailySpinUI (такая же позиция и масштаб) — кнопка всегда ровно под кнопкой рулетки
@@ -35,14 +34,12 @@ return function(ctx)
 	-- на телефоне — ближе к краю и вплотную под рулеткой (её позиция в DailySpinUI)
 	local btnX, btnY = -6, 122
 	if UI.touchOnly then btnX, btnY = 8, 96 end
-	local btn = circle(UI.new("TextButton", {
-		Name = "RankButton", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, btnX, 1, btnY), Size = UDim2.fromOffset(66, 66),
-		Text = "", AutoButtonColor = false, BackgroundColor3 = T.Panel2,
-	}, frame))
-	local btnStroke = UI.new("UIStroke", {Color = T.Line, Thickness = 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border}, btn)
-	local btnScale = UI.new("UIScale", {}, btn)
-	local btnGlow = circle(UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1.25, 1.25),
-		BackgroundColor3 = GOLD, BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 0}, btn))
+	-- значок ранга — картинка из RankBadge внутри диска (своей картинки у кнопки нет)
+	local hb = UI.hudButton(frame, nil, "RANK", Color3.fromRGB(60, 90, 150), {
+		Name = "RankButton", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, btnX, 1, btnY),
+	})
+	local btn, btnScale, btnStroke, btnGlow = hb.btn, hb.scale, hb.stroke, hb.glow
+	btnGlow.BackgroundColor3 = GOLD
 	local btnBadge
 	local newBadge = UI.new("TextLabel", {
 		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -8, 0, 4), Size = UDim2.fromOffset(40, 20), Rotation = 12,
@@ -50,10 +47,7 @@ return function(ctx)
 	}, btn)
 	UI.corner(newBadge, 10)
 	UI.new("UIStroke", {Color = Color3.new(1, 1, 1), Thickness = 1.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border}, newBadge)
-	local btnLbl = UI.label(btn, "RANK", {
-		AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, 3), Size = UDim2.fromOffset(140, 16),
-		TextSize = 13, TextXAlignment = Enum.TextXAlignment.Center, TextStrokeTransparency = 0.3,
-	})
+	local btnLbl = hb.label
 	-- всплывающее «+N XP» слева от кнопки
 	local function floatXP(n, reason)
 		local l = UI.label(frame, ("+%d XP"):format(n) .. (reason and ("  ·  " .. reason) or ""), {
@@ -80,6 +74,7 @@ return function(ctx)
 	-- текущий ранг и прогресс
 	local head = UI.new("Frame", {Position = UDim2.fromOffset(20, 58), Size = UDim2.new(1, -40, 0, 112), BackgroundColor3 = T.Panel2, BorderSizePixel = 0}, panel)
 	UI.corner(head, 10)
+	UI.plate(head)
 	local headBadgeHolder = UI.new("Frame", {Position = UDim2.fromOffset(16, 16), Size = UDim2.fromOffset(80, 80), BackgroundTransparency = 1}, head)
 	local curName = UI.label(head, "", {Position = UDim2.fromOffset(116, 12), Size = UDim2.new(1, -130, 0, 28), TextSize = 24})
 	local curSub = UI.label(head, "", {Position = UDim2.fromOffset(116, 40), Size = UDim2.new(1, -130, 0, 18), TextSize = 14, Font = UI.Medium, TextColor3 = T.Muted})
@@ -87,6 +82,7 @@ return function(ctx)
 	UI.corner(barBg, 6)
 	local bar = UI.new("Frame", {Size = UDim2.fromScale(0, 1), BackgroundColor3 = GOLD, BorderSizePixel = 0}, barBg)
 	UI.corner(bar, 6)
+	UI.bar(barBg, bar)
 	local barTxt = UI.label(head, "", {Position = UDim2.fromOffset(116, 80), Size = UDim2.new(1, -132, 0, 18), TextSize = 13, Font = UI.Medium, TextColor3 = T.Text})
 	-- повышение ждёт подтверждения
 	local accept = UI.button(head, "ACCEPT PROMOTION", T.Good, {AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0, 26), Size = UDim2.fromOffset(200, 36), TextSize = 15, Visible = false, ZIndex = 3})
@@ -102,6 +98,7 @@ return function(ctx)
 	for i, def in ipairs(LIST) do
 		local row = UI.new("Frame", {LayoutOrder = i, Size = UDim2.new(1, -12, 0, 48), BackgroundColor3 = T.Panel2, BackgroundTransparency = 0.25, BorderSizePixel = 0}, scroll)
 		UI.corner(row, 8)
+		UI.plate(row)
 		local rs = UI.new("UIStroke", {Color = GOLD, Thickness = 2, Transparency = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border}, row)
 		RankBadge.build(row, i, {AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0)}, 34)
 		local name = UI.label(row, def.Name, {Position = UDim2.fromOffset(56, 6), Size = UDim2.new(1, -150, 0, 20), TextSize = 15, TextColor3 = RankBadge.textColor(i), TextTruncate = Enum.TextTruncate.AtEnd})
@@ -112,6 +109,7 @@ return function(ctx)
 
 	local how = UI.new("Frame", {Position = UDim2.new(0, 396, 0, 182), Size = UDim2.new(1, -416, 1, -202), BackgroundColor3 = T.Panel2, BackgroundTransparency = 0.25, BorderSizePixel = 0}, panel)
 	UI.corner(how, 8)
+	UI.plate(how)
 	UI.padding(how, 12)
 	UI.label(how, "HOW TO EARN XP", {Size = UDim2.new(1, 0, 0, 20), TextSize = 15, TextColor3 = GOLD})
 	local X = RC.XP
@@ -161,7 +159,7 @@ return function(ctx)
 		if shownRank ~= r then
 			shownRank = r
 			if btnBadge then btnBadge:Destroy() end
-			btnBadge = RankBadge.build(btn, r, {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.74, 0.74), ZIndex = 2}, 48)
+			btnBadge = RankBadge.build(hb.body, r, {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.8, 0.8)}, 48)
 			for _, c in ipairs(headBadgeHolder:GetChildren()) do c:Destroy() end
 			RankBadge.build(headBadgeHolder, r, {Size = UDim2.fromScale(1, 1)}, 80)
 		end
@@ -260,8 +258,8 @@ return function(ctx)
 			acceptStroke.Transparency = 0.5 - 0.5 * math.sin(t * 5)
 		else
 			btnScale.Scale = 1
-			btnStroke.Color = T.Line
-			btnStroke.Transparency = 0.2
+			btnStroke.Color = UI.Outline
+			btnStroke.Transparency = 0
 			btnGlow.BackgroundTransparency = 1
 		end
 		acc += dt

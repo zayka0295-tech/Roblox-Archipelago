@@ -41,6 +41,7 @@ return function(ctx)
 		for i, r in ipairs(res.rows) do
 			local row = UI.new("Frame", {LayoutOrder = i, Size = UDim2.new(1, -8, 0, 52), BackgroundColor3 = T.Panel2, BorderSizePixel = 0}, list)
 			UI.corner(row, 8)
+			UI.plate(row)
 			local tc = r.team and Config.Teams[r.team]
 			UI.label(row, r.name, {Position = UDim2.fromOffset(12, 6), Size = UDim2.new(1, -170, 0, 22), TextSize = 16, TextColor3 = tc and tc.Color or T.Text})
 			UI.label(row, ("@%s · %s"):format(r.user, tc and tc.DisplayName or "lobby"), {

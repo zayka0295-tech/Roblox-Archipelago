@@ -10,10 +10,11 @@ local UI = {}
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+-- палитра под рамки окон (тёмно-синий металл с золотом)
 UI.T = {
-	Panel = Color3.fromRGB(16, 21, 29),
-	Panel2 = Color3.fromRGB(26, 33, 44),
-	Line = Color3.fromRGB(54, 66, 84),
+	Panel = Color3.fromRGB(18, 34, 70),
+	Panel2 = Color3.fromRGB(12, 24, 52),
+	Line = Color3.fromRGB(70, 98, 148),
 	Text = Color3.fromRGB(232, 238, 245),
 	Muted = Color3.fromRGB(140, 152, 168),
 	Accent = Color3.fromRGB(110, 200, 255),
@@ -24,6 +25,9 @@ UI.T = {
 }
 UI.Bold = Enum.Font.GothamBold
 UI.Medium = Enum.Font.GothamMedium
+UI.Display = Enum.Font.FredokaOne -- мультяшный шрифт подписей HUD и заголовков (в стиле иконок)
+UI.Icons = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("Icons"))
+UI.Outline = Color3.fromRGB(12, 18, 30) -- тёмная обводка, как у иконок
 
 function UI.new(class, props, parent)
 	local inst = Instance.new(class)
@@ -356,41 +360,222 @@ function UI.screen(name, order)
 	}, playerGui)
 end
 
+------------------------------------------------------------------ скины (картинки из assets/ui)
+-- Картинка 9-slice под рамкой: ZIndex 0 — всё содержимое рамки рисуется поверх. Рамка сама становится прозрачной
+-- и такой остаётся: если чужой код меняет её BackgroundTransparency, это уходит в прозрачность картинки.
+-- Рамки-обводки (UIStroke Border), которые старый код вешает на рамку, выключаются — их заменяет картинка.
+-- scaleOf(abs) — SliceScale по текущему размеру на экране (углы картинки не зависят от UIScale, считаем сами).
+local SKIN = UI.Icons.Skin
+function UI.skin(f, s, pad, scaleOf, keepStrokes)
+	pad = pad or 0
+	local img = UI.new("ImageLabel", {
+		Name = "Skin", BackgroundTransparency = 1, Image = s.image, ScaleType = Enum.ScaleType.Slice, SliceCenter = s.slice,
+		Position = UDim2.fromOffset(-pad, -pad), Size = UDim2.new(1, pad * 2, 1, pad * 2), ZIndex = 0,
+	}, f)
+	local function fit()
+		img.SliceScale = scaleOf(f.AbsoluteSize, f)
+	end
+	f:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
+	fit()
+	-- UIPadding рамки сжимает и картинку — растягиваем её обратно на отступы
+	local function place()
+		local p = f:FindFirstChildOfClass("UIPadding")
+		local l, t, r, b = 0, 0, 0, 0
+		if p then l, t, r, b = p.PaddingLeft.Offset, p.PaddingTop.Offset, p.PaddingRight.Offset, p.PaddingBottom.Offset end
+		img.Position = UDim2.fromOffset(-pad - l, -pad - t)
+		img.Size = UDim2.new(1, pad * 2 + l + r, 1, pad * 2 + t + b)
+	end
+	place()
+	f.ChildAdded:Connect(function(c) if c:IsA("UIPadding") then place() end end)
+	local own = false
+	local function keepClear()
+		if own or f.BackgroundTransparency == 1 then return end
+		own = true
+		img.ImageTransparency = f.BackgroundTransparency
+		f.BackgroundTransparency = 1
+		own = false
+	end
+	f:GetPropertyChangedSignal("BackgroundTransparency"):Connect(keepClear)
+	keepClear()
+	f.BackgroundTransparency = 1
+	local function mute(c)
+		if not keepStrokes and c:IsA("UIStroke") and c.ApplyStrokeMode == Enum.ApplyStrokeMode.Border then c.Enabled = false end
+	end
+	for _, c in ipairs(f:GetChildren()) do mute(c) end
+	f.ChildAdded:Connect(mute)
+	return img
+end
+-- во сколько раз рамка увеличена UIScale (отношение размера на экране к заданному в пикселях)
+local function zoom(abs, f)
+	local o = f.Size.Y.Offset
+	if o > 0 and f.Size.Y.Scale == 0 then return abs.Y / o end
+	local s = f:FindFirstAncestorWhichIsA("GuiObject")
+	local u = s and s:FindFirstChildWhichIsA("UIScale")
+	return u and u.Scale or 1
+end
+
+-- окно: рамка с заклёпками, чуть выходит наружу (не наезжает на содержимое); низкие панели — стальная плашка
 function UI.panel(parent, props)
-	local f = UI.new("Frame", {BackgroundColor3 = UI.T.Panel, BackgroundTransparency = 0.06, BorderSizePixel = 0}, parent)
+	local f = UI.new("Frame", {BackgroundColor3 = UI.T.Panel, BackgroundTransparency = 1, BorderSizePixel = 0}, parent)
 	for k, v in pairs(props or {}) do f[k] = v end
-	UI.corner(f, 10)
-	UI.stroke(f)
+	local small = f.Size.Y.Scale == 0 and f.Size.Y.Offset > 0 and f.Size.Y.Offset <= 100
+	if small then
+		UI.skin(f, SKIN.Plate, 2, function(abs) return math.min(abs.Y / SKIN.Plate.h * 0.9, 1) end)
+	else
+		UI.skin(f, SKIN.Panel, 8, function(abs, fr) return 0.3 * zoom(abs, fr) end)
+	end
 	return f
 end
 
+-- крупный текст (заголовки) — мультяшным шрифтом
 function UI.label(parent, text, props)
 	local l = UI.new("TextLabel", {
 		BackgroundTransparency = 1, Text = text, TextColor3 = UI.T.Text, Font = UI.Bold,
 		TextSize = 18, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, 0, 0, 22),
 	}, parent)
 	for k, v in pairs(props or {}) do l[k] = v end
+	if l.TextSize >= 24 and l.Font == UI.Bold then
+		l.Font = UI.Display
+		l.TextSize += 2
+		UI.new("UIStroke", {Color = UI.Outline, Thickness = 2.5}, l)
+	end
 	return l
 end
 
+-- картинка кнопки по её цвету: так старый код, перекрашивающий BackgroundColor3, сам меняет картинку
+local function buttonSkin(c)
+	if c == UI.T.Disabled then return SKIN.Gray end
+	local h, s, v = c:ToHSV()
+	if v < 0.36 then return SKIN.Plate end
+	if s < 0.22 then return SKIN.Gray end
+	if h < 0.05 or h >= 0.9 then return SKIN.Red end
+	if h < 0.17 then return SKIN.Gold end
+	if h < 0.45 then return SKIN.Green end
+	return SKIN.Blue
+end
+
+-- кнопка-картинка; «X» — круглая красная кнопка закрытия. Наведение — подрастает, нажатие — проседает.
 function UI.button(parent, text, color, props)
 	local b = UI.new("TextButton", {
 		AutoButtonColor = false, BackgroundColor3 = color or UI.T.Panel2, Text = text,
-		TextColor3 = UI.T.Text, Font = UI.Bold, TextSize = 18, Size = UDim2.new(1, 0, 0, 46),
+		TextColor3 = UI.T.Text, Font = UI.Display, TextSize = 19, Size = UDim2.new(1, 0, 0, 46),
 	}, parent)
 	for k, v in pairs(props or {}) do b[k] = v end
-	UI.corner(b, 6)
 	b:SetAttribute("BaseColor", b.BackgroundColor3)
 	b:SetAttribute("Enabled", true)
+	local img
+	if text == "X" then
+		b.Text = ""
+		b.BackgroundTransparency = 1
+		img = UI.new("ImageLabel", {Name = "Skin", BackgroundTransparency = 1, Image = UI.Icons.Close, ScaleType = Enum.ScaleType.Fit,
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, 6, 1, 6), ZIndex = 0}, b)
+		b.ChildAdded:Connect(function(c)
+			if c:IsA("UIStroke") then c.Enabled = false end
+		end)
+	else
+		local cur = buttonSkin(b.BackgroundColor3)
+		img = UI.skin(b, cur, 0, function(abs) return abs.Y / cur.h end)
+		b:GetPropertyChangedSignal("BackgroundColor3"):Connect(function()
+			local s = buttonSkin(b.BackgroundColor3)
+			if s ~= cur then
+				cur = s
+				img.Image, img.SliceCenter = s.image, s.slice
+				img.SliceScale = b.AbsoluteSize.Y / s.h
+			end
+		end)
+		-- свой текст кнопки рисуется под детьми (то есть под картинкой) — показываем его копией поверх
+		local cap = UI.new("TextLabel", {Name = "Caption", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 2}, b)
+		UI.new("UIStroke", {Color = UI.Outline, Thickness = 1.5}, cap)
+		local MIRROR = {"Text", "TextColor3", "TextSize", "Font", "TextScaled", "TextWrapped", "TextXAlignment", "TextYAlignment", "RichText", "TextTruncate"}
+		for _, p in ipairs(MIRROR) do
+			cap[p] = b[p]
+			b:GetPropertyChangedSignal(p):Connect(function() cap[p] = b[p] end)
+		end
+		b.TextTransparency = 1
+		local function pad(c)
+			-- отступы и ограничение размера текста, которые код вешает на кнопку, — к надписи
+			if c:IsA("UITextSizeConstraint") then c:Clone().Parent = cap end
+		end
+		for _, c in ipairs(b:GetChildren()) do pad(c) end
+		b.ChildAdded:Connect(pad)
+	end
+	local base, basePos = img.Size, img.Position
+	local function grow(px, t)
+		-- растёт от центра: у скина AnchorPoint 0, поэтому сдвигаем и позицию
+		local shift = img.AnchorPoint == Vector2.zero and UDim2.fromOffset(-px / 2, -px / 2) or UDim2.new()
+		TweenService:Create(img, TweenInfo.new(t, Enum.EasingStyle.Back), {Size = base + UDim2.fromOffset(px, px), Position = basePos + shift}):Play()
+	end
 	b.MouseEnter:Connect(function()
 		if b:GetAttribute("Enabled") then
 			b.BackgroundColor3 = b:GetAttribute("BaseColor"):Lerp(Color3.new(1, 1, 1), 0.12)
+			grow(4, 0.15)
 		end
 	end)
 	b.MouseLeave:Connect(function()
 		b.BackgroundColor3 = b:GetAttribute("Enabled") and b:GetAttribute("BaseColor") or UI.T.Disabled
+		grow(0, 0.15)
 	end)
+	b.MouseButton1Down:Connect(function() grow(-4, 0.06) end)
+	b.MouseButton1Up:Connect(function() grow(0, 0.2) end)
 	return b
+end
+
+-- строка списка / карточка: стальная плашка вместо плоского фона. Обводки (подсветка текущей строки) остаются.
+function UI.plate(f)
+	return UI.skin(f, SKIN.Plate, 0, function(abs) return math.min(abs.Y / SKIN.Plate.h * 0.9, 0.6) end, true)
+end
+
+-- готовую полосу прогресса (рамка bg и заливка fill с Size = доля) — в стальной жёлоб с золотой капсулой.
+-- Код, который меняет fill.Size и fill.BackgroundColor3, работает как раньше: зелёный цвет «готово» тонирует капсулу.
+function UI.bar(bg, fill)
+	UI.skin(bg, SKIN.Track, 0, function(abs) return abs.Y / SKIN.Track.h end)
+	fill.ClipsDescendants = true
+	local img = UI.new("ImageLabel", {Name = "Fill", BackgroundTransparency = 1, Image = SKIN.Fill.image, ScaleType = Enum.ScaleType.Slice,
+		SliceCenter = SKIN.Fill.slice}, fill)
+	local function fit()
+		local frac = fill.Size.X.Scale
+		img.Size = UDim2.fromScale(frac > 0 and 1 / frac or 0, 1)
+		img.SliceScale = bg.AbsoluteSize.Y / SKIN.Fill.h
+		local _, s = fill.BackgroundColor3:ToHSV()
+		local h = fill.BackgroundColor3:ToHSV()
+		img.ImageColor3 = (s > 0.3 and h > 0.2 and h < 0.45) and Color3.fromRGB(150, 255, 140) or Color3.new(1, 1, 1)
+		fill.BackgroundTransparency = 1
+	end
+	fill:GetPropertyChangedSignal("Size"):Connect(fit)
+	fill:GetPropertyChangedSignal("BackgroundColor3"):Connect(fit)
+	bg:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
+	fit()
+end
+
+-- лента под заголовок окна: по центру сверху, текст — внутри
+function UI.ribbon(parent, text, props)
+	local r = UI.new("Frame", {Name = "Ribbon", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0, 4), Size = UDim2.fromOffset(340, 64),
+		BackgroundTransparency = 1, ZIndex = 5}, parent)
+	for k, v in pairs(props or {}) do r[k] = v end
+	UI.skin(r, SKIN.Ribbon, 0, function(abs) return abs.Y / SKIN.Ribbon.h end).ZIndex = 5
+	local l = UI.new("TextLabel", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.44), Size = UDim2.new(1, -110, 0.5, 0),
+		BackgroundTransparency = 1, Text = text, Font = UI.Display, TextScaled = true, TextColor3 = Color3.fromRGB(255, 220, 110), ZIndex = 6}, r)
+	UI.new("UIStroke", {Color = UI.Outline, Thickness = 2.5}, l)
+	return r, l
+end
+
+-- полоса прогресса: стальной жёлоб и золотая заливка (fill.Size = UDim2.fromScale(доля, 1))
+function UI.progress(parent, props)
+	local track = UI.new("Frame", {BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 14)}, parent)
+	for k, v in pairs(props or {}) do track[k] = v end
+	UI.skin(track, SKIN.Track, 0, function(abs) return abs.Y / SKIN.Track.h end)
+	local clip = UI.new("Frame", {Size = UDim2.fromScale(0, 1), BackgroundTransparency = 1, ClipsDescendants = true}, track)
+	local fill = UI.new("ImageLabel", {BackgroundTransparency = 1, Image = SKIN.Fill.image, ScaleType = Enum.ScaleType.Slice, SliceCenter = SKIN.Fill.slice}, clip)
+	-- заливка во всю длину жёлоба, а видимую часть режет clip: края капсулы не сплющиваются
+	local function fit()
+		local frac = clip.Size.X.Scale
+		fill.Size = UDim2.fromScale(frac > 0 and 1 / frac or 0, 1)
+		fill.SliceScale = track.AbsoluteSize.Y / SKIN.Fill.h
+	end
+	track:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
+	clip:GetPropertyChangedSignal("Size"):Connect(fit)
+	fit()
+	return track, clip
 end
 
 function UI.setEnabled(b, enabled, color, text)
@@ -399,6 +584,69 @@ function UI.setEnabled(b, enabled, color, text)
 	b.BackgroundColor3 = enabled and b:GetAttribute("BaseColor") or UI.T.Disabled
 	b.TextColor3 = enabled and UI.T.Text or UI.T.Muted
 	if text then b.Text = text end
+end
+
+-- круглая кнопка HUD в стиле иконок: объёмный диск цвета accent с бликом и тёмной обводкой, тень,
+-- картинка чуть выступает за край, подпись снизу. Наведение / нажатие — пружинка (свой UIScale у body,
+-- так что h.scale остаётся свободным для пульса). Возвращает h:
+-- btn (TextButton, прозрачный), body (диск + картинка), icon (ImageLabel), label, stroke (обводка диска),
+-- glow (сияние за диском, прозрачность 1 — выключено), scale (UIScale кнопки), setColor(accent).
+function UI.hudButton(parent, image, text, accent, props)
+	local h = {}
+	local btn = UI.new("TextButton", {Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromOffset(66, 66)}, parent)
+	for k, v in pairs(props or {}) do btn[k] = v end
+	h.btn = btn
+	h.scale = UI.new("UIScale", {}, btn)
+	local body = UI.new("Frame", {Name = "Body", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1}, btn)
+	h.body = body
+	local press = UI.new("UIScale", {}, body)
+	local function round(f) UI.new("UICorner", {CornerRadius = UDim.new(0.5, 0)}, f) return f end
+	h.glow = round(UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1.45, 1.45),
+		BackgroundColor3 = accent, BackgroundTransparency = 1, BorderSizePixel = 0}, body))
+	UI.new("UIGradient", {Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.25, 0.4), NumberSequenceKeypoint.new(0.5, 0),
+		NumberSequenceKeypoint.new(0.75, 0.4), NumberSequenceKeypoint.new(1, 1),
+	})}, h.glow)
+	round(UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 4), Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.55, BorderSizePixel = 0}, body))
+	local disc = round(UI.new("Frame", {Name = "Disc", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0}, body))
+	local grad = UI.new("UIGradient", {Rotation = 90}, disc)
+	h.stroke = UI.new("UIStroke", {Color = UI.Outline, Thickness = 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border}, disc)
+	-- светлый ободок внутри и блик сверху
+	local rim = round(UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -5, 1, -5), BackgroundTransparency = 1}, disc))
+	local rimStroke = UI.new("UIStroke", {Thickness = 2, Transparency = 0.25}, rim)
+	local gloss = round(UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0.07), Size = UDim2.fromScale(0.74, 0.42),
+		BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0}, disc))
+	UI.new("UIGradient", {Rotation = 90, Transparency = NumberSequence.new(0.55, 1)}, gloss)
+	if image then
+		h.icon = UI.new("ImageLabel", {Name = "Icon", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.47), Size = UDim2.fromScale(1.02, 1.02),
+			BackgroundTransparency = 1, Image = image, ScaleType = Enum.ScaleType.Fit}, body)
+	end
+	h.label = UI.new("TextLabel", {
+		AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, 4), Size = UDim2.fromOffset(86, 18), BackgroundTransparency = 1,
+		Text = text or "", Font = UI.Display, TextScaled = true, TextColor3 = Color3.new(1, 1, 1),
+	}, btn)
+	-- длинное (MASTER SERGEANT) ужимается, а не вылезает за край экрана
+	UI.new("UITextSizeConstraint", {MaxTextSize = 16}, h.label)
+	UI.new("UIStroke", {Color = UI.Outline, Thickness = 2}, h.label)
+	function h.setColor(c)
+		grad.Color = ColorSequence.new(c:Lerp(Color3.new(1, 1, 1), 0.25), c:Lerp(Color3.new(0, 0, 0), 0.45))
+		rimStroke.Color = c:Lerp(Color3.new(1, 1, 1), 0.55)
+		h.glow.BackgroundColor3 = c
+	end
+	h.setColor(accent)
+	-- пружинка
+	local function to(s, t, style)
+		TweenService:Create(press, TweenInfo.new(t, style or Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = s}):Play()
+	end
+	local hovering = false
+	btn.MouseEnter:Connect(function() hovering = true to(1.1, 0.2) end)
+	btn.MouseLeave:Connect(function() hovering = false to(1, 0.2) end)
+	btn.MouseButton1Down:Connect(function() to(0.88, 0.08, Enum.EasingStyle.Quad) end)
+	btn.MouseButton1Up:Connect(function() to(hovering and 1.1 or 1, 0.3) end)
+	btn.Activated:Connect(function() if not hovering then to(1, 0.3) end end)
+	return h
 end
 
 -- всплывающие уведомления: тёмная стеклянная карточка с цветом вида — влетает сверху с пружинкой,
@@ -428,10 +676,81 @@ local function tween(obj, t, props, style, dir)
 	tw:Play()
 	return tw
 end
-local function toastIcon(parent, spec)
+-- все иконки грузим заранее, чтобы в уведомлениях и кнопках они появлялись сразу
+task.spawn(function()
+	local list = {}
+	for _, id in pairs(UI.Icons) do
+		if type(id) == "string" then table.insert(list, id) end
+	end
+	for _, id in ipairs(UI.Icons.Ranks) do table.insert(list, id) end
+	pcall(function() game:GetService("ContentProvider"):PreloadAsync(list) end)
+end)
+
+-- картинка к уведомлению по его тексту (сервер шлёт только текст и вид): первое совпадение сверху вниз
+local I = UI.Icons
+local TOAST_PICS = {
+	{I.PlaneDown, {"shot down"}},
+	{I.ShipSunk, {"sunk", "sank"}},
+	{I.Kill, {"eliminated", "killed by"}},
+	{I.AirRaid, {"air raid"}},
+	{I.Storm, {"storm"}},
+	{I.Capture, {"captured", "capture point", "neutralized", "point %w+ lost", "lost the island", "held by the enemy"}},
+	{I.Cargo, {"cargo", "truck", "parachute", "drop zone"}},
+	{I.RankUp, {"promoted", "you are now", "promotion"}},
+	{I.Career, {"milestone", "statue"}},
+	{I.Win, {"round %d+ started", "victory", "won the round", "training complete"}},
+	{I.Spin, {"daily spin", "spin"}},
+	{I.Rewards, {"gift", "rewards", "streak", "invite"}},
+	{I.Quests, {"quest"}},
+	{I.Diamond, {"💎", "diamond"}},
+	{I.Shop, {"purchased", "bought", "purchase"}},
+	{I.Hangar, {"plane", "airfield", "runway", "bomb", "takeoff"}},
+	{I.Gold, {"%+%d+ gold", "gold"}},
+}
+local function toastPicture(text, kind)
+	local low = text:lower()
+	for _, rule in ipairs(TOAST_PICS) do
+		for _, pat in ipairs(rule[2]) do
+			if low:find(pat) then return rule[1] end
+		end
+	end
+	if kind == "error" then return I.Warning end
+	if kind == "reward" then return I.Gold end
+	return nil
+end
+
+local function toastIcon(parent, spec, picture)
 	local dark = Color3.fromRGB(14, 20, 26)
 	local holder = UI.new("Frame", {Size = UDim2.fromOffset(36, 36), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 32, 0.5, 0),
 		BackgroundTransparency = 1}, parent)
+	if picture then
+		-- картинка покрупнее, за ней мягкое пятно цвета вида; появляется с пружинкой и покачиванием
+		holder.Size = UDim2.fromOffset(52, 52)
+		holder.Position = UDim2.new(0, 36, 0.5, 0)
+		local blob = UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1.1, 1.1),
+			BackgroundColor3 = spec.color, BackgroundTransparency = 0.78, BorderSizePixel = 0}, holder)
+		UI.corner(blob, 100)
+		UI.new("UIGradient", {Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.3, 0.3), NumberSequenceKeypoint.new(0.5, 0),
+			NumberSequenceKeypoint.new(0.7, 0.3), NumberSequenceKeypoint.new(1, 1),
+		})}, blob)
+		local img = UI.new("ImageLabel", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1, Image = picture, ScaleType = Enum.ScaleType.Fit, ZIndex = 3}, holder)
+		local s = UI.new("UIScale", {Scale = 0}, img)
+		-- CanvasGroup не перерисовывается, когда картинка догрузилась, — толкаем его сами
+		if not img.IsLoaded then
+			img:GetPropertyChangedSignal("IsLoaded"):Once(function()
+				img.ImageTransparency = 0.01
+				task.defer(function() img.ImageTransparency = 0 end)
+			end)
+		end
+		return function()
+			s.Scale = 0
+			img.Rotation = -18
+			tween(s, 0.5, {Scale = 1}, Enum.EasingStyle.Back)
+			tween(img, 0.6, {Rotation = 0}, Enum.EasingStyle.Elastic)
+		end
+	end
 	-- кольцо, которое расходится при появлении
 	local ring = UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1}, holder)
@@ -493,10 +812,12 @@ function UI.toast(text, kind, title)
 	end
 	toastShown += 1
 
-	local textW = TOAST_W - 72 - 18
+	local picture = toastPicture(text, kind)
+	local textX = picture and 74 or 62
+	local textW = TOAST_W - textX - 28
 	local msgH = TextService:GetTextSize(text, 16, UI.Medium, Vector2.new(textW, 1000)).Y
-	local titleH = title and 16 or 0
-	local h = math.max(56, msgH + titleH + 26)
+	local titleH = title and 18 or 0
+	local h = math.max(picture and 66 or 56, msgH + titleH + 26)
 
 	toastN += 1
 	-- обёртка: её высота плавно растёт / схлопывается — соседи сдвигаются без рывков
@@ -538,12 +859,12 @@ function UI.toast(text, kind, title)
 		NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.42, 1), NumberSequenceKeypoint.new(0.5, spec.gold and 0.55 or 0.78),
 		NumberSequenceKeypoint.new(0.58, 1), NumberSequenceKeypoint.new(1, 1),
 	})}, shine)
-	local playIcon = toastIcon(card, spec)
+	local playIcon = toastIcon(card, spec, picture)
 	if title then
-		UI.label(card, title, {Position = UDim2.fromOffset(62, 10), Size = UDim2.new(1, -110, 0, 14), TextSize = 12, Font = UI.Bold, TextColor3 = spec.color})
+		UI.label(card, title, {Position = UDim2.fromOffset(textX, 9), Size = UDim2.new(1, -(textX + 48), 0, 16), TextSize = 15, Font = UI.Display, TextColor3 = spec.color})
 	end
 	UI.label(card, text, {
-		Position = UDim2.fromOffset(62, 10 + titleH), Size = UDim2.new(1, -78, 1, -(titleH + 20)),
+		Position = UDim2.fromOffset(textX, 10 + titleH), Size = UDim2.new(1, -(textX + 16), 1, -(titleH + 20)),
 		TextSize = 16, Font = UI.Medium, TextWrapped = true, TextYAlignment = title and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center,
 	})
 	-- счётчик повторов «×2»

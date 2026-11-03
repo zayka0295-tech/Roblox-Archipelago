@@ -66,6 +66,7 @@ return function(ctx)
 		if P then
 			local row = UI.new("Frame", {LayoutOrder = i, Size = UDim2.new(1, 0, 0, 88), BackgroundColor3 = T.Panel2, BorderSizePixel = 0}, list)
 			UI.corner(row, 8)
+			UI.plate(row)
 			UI.padding(row, 10)
 			local preview = VehiclePreview.new(UI, T, Config, row, kind, {AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(112, 68)})
 			UI.label(row, string.upper(P.DisplayName), {Position = UDim2.fromOffset(124, 0), Size = UDim2.new(1, -314, 0, 22), TextSize = 19})

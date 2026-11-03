@@ -72,6 +72,7 @@ return function(ctx)
 	for i, m in ipairs(MY) do
 		local c = UI.new("Frame", {Position = UDim2.new((i - 1) / 6, 2, 0, 124), Size = UDim2.new(1 / 6, -4, 0, 58), BackgroundColor3 = T.Panel2, BorderSizePixel = 0}, banner)
 		UI.corner(c, 8)
+		UI.plate(c)
 		myCells[m[1]] = UI.label(c, "0", {Position = UDim2.fromOffset(0, 6), Size = UDim2.new(1, 0, 0, 28), TextSize = 24, TextXAlignment = Enum.TextXAlignment.Center})
 		UI.label(c, m[2], {Position = UDim2.fromOffset(0, 36), Size = UDim2.new(1, 0, 0, 14), TextSize = 11, TextColor3 = T.Muted, TextXAlignment = Enum.TextXAlignment.Center})
 	end
@@ -82,6 +83,7 @@ return function(ctx)
 	for i = 1, 4 do
 		local c = UI.new("Frame", {Position = UDim2.new((i - 1) / 4, 3, 0, 212), Size = UDim2.new(1 / 4, -6, 0, 92), BackgroundColor3 = T.Panel2, BorderSizePixel = 0}, banner)
 		UI.corner(c, 8)
+		UI.plate(c)
 		titleCards[i] = {
 			stroke = UI.new("UIStroke", {Color = T.Line, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border}, c),
 			head = UI.label(c, "", {Position = UDim2.fromOffset(0, 6), Size = UDim2.new(1, 0, 0, 20), TextSize = 15, TextColor3 = T.Gold, TextXAlignment = Enum.TextXAlignment.Center}),
@@ -96,6 +98,7 @@ return function(ctx)
 	local COLS = {{"#", 0.06}, {"PLAYER", 0.38}, {"KILLS", 0.11}, {"PLANES", 0.11}, {"SHIPS", 0.11}, {"CAPS", 0.11}, {"POINTS", 0.12}}
 	local boardBox = UI.new("Frame", {Position = UDim2.fromOffset(0, 334), Size = UDim2.new(1, 0, 0, 140), BackgroundColor3 = T.Panel2, BackgroundTransparency = 0.3, BorderSizePixel = 0}, banner)
 	UI.corner(boardBox, 8)
+	UI.plate(boardBox)
 	local function rowLabels(y, size, color)
 		local labels, x = {}, 0
 		for _, col in ipairs(COLS) do

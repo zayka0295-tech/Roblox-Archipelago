@@ -7,10 +7,17 @@ return function(ctx)
 	-- статистика сверху по центру (видна всегда)
 	local stats = UI.panel(gui, {Name = "Stats", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 12), Size = UDim2.fromOffset(420, 46)})
 	UI.scale(stats)
-	local gold = UI.label(stats, "◆ 0", {Position = UDim2.fromOffset(16, 0), Size = UDim2.new(0.38, -16, 1, 0), TextColor3 = T.Gold, TextSize = 22})
+	local function coin(image, x)
+		return UI.new("ImageLabel", {AnchorPoint = Vector2.new(0, 0.5), Position = x, Size = UDim2.fromOffset(34, 34), BackgroundTransparency = 1,
+			Image = image, ScaleType = Enum.ScaleType.Fit}, stats)
+	end
+	coin(UI.Icons.Gold, UDim2.new(0, 10, 0.5, 0))
+	local gold = UI.label(stats, "0", {Position = UDim2.fromOffset(48, 0), Size = UDim2.new(0.38, -48, 1, 0), TextColor3 = T.Gold, TextSize = 22, Font = UI.Display})
 	-- диаманты (премиальная валюта): атрибут игрока Diamonds
-	local diamonds = UI.label(stats, "💎 0", {AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), Size = UDim2.new(0.26, 0, 1, 0),
-		TextColor3 = Color3.fromRGB(120, 220, 255), TextSize = 22, TextXAlignment = Enum.TextXAlignment.Center})
+	coin(UI.Icons.Diamond, UDim2.new(0.39, 0, 0.5, 0))
+	local diamonds = UI.label(stats, "0", {Position = UDim2.new(0.39, 38, 0, 0), Size = UDim2.new(0.25, -38, 1, 0),
+		TextColor3 = Color3.fromRGB(120, 220, 255), TextSize = 22, Font = UI.Display})
+	for _, l in ipairs({gold, diamonds}) do UI.new("UIStroke", {Color = UI.Outline, Thickness = 1.5}, l) end
 	local kd = UI.label(stats, "K 0 · D 0", {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 0, 0), Size = UDim2.new(0.36, -16, 1, 0), TextSize = 20, TextXAlignment = Enum.TextXAlignment.Right})
 
 	-- левая колонка (только в бою)
@@ -29,8 +36,8 @@ return function(ctx)
 	for _, b in ipairs({btnSpawn, btnBoard, btnLobby}) do UI.stroke(b) end
 
 	local function refreshStats()
-		gold.Text = "◆ " .. tostring(ctx.stat("Gold"))
-		diamonds.Text = "💎 " .. tostring(player:GetAttribute("Diamonds") or 0)
+		gold.Text = tostring(ctx.stat("Gold"))
+		diamonds.Text = tostring(player:GetAttribute("Diamonds") or 0)
 		kd.Text = ("K %d · D %d"):format(ctx.stat("Kills"), ctx.stat("Deaths"))
 	end
 	player:GetAttributeChangedSignal("Diamonds"):Connect(function() refreshStats() end)

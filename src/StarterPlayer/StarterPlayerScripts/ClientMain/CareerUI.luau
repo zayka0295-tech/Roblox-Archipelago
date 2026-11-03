@@ -28,6 +28,9 @@ return function(ctx)
 	local UI, T, Config = ctx.UI, ctx.UI.T, ctx.Config
 	local player = ctx.player
 	local C = Config.Career
+	-- картинка вместо эмодзи из Config.Career (Icon)
+	local I = UI.Icons
+	local ICON_PIC = {["✈️"] = I.PlaneDown, ["⚓"] = I.ShipSunk, ["🚩"] = I.Capture, ["🏆"] = I.Win, ["📦"] = I.Cargo, ["🎯"] = I.Kill}
 	ctx.Remotes:WaitForChild("Career")
 	local DIAMOND = Color3.fromRGB(120, 220, 255)
 
@@ -369,13 +372,16 @@ return function(ctx)
 	for i = 1, #C.List do
 		local row = UI.new("Frame", {Position = UDim2.fromOffset(16, 154 + (i - 1) * 64), Size = UDim2.new(1, -32, 0, 58), BackgroundColor3 = T.Panel2, BorderSizePixel = 0}, panel)
 		UI.corner(row, 8)
+		UI.plate(row)
 		local r = {row = row}
-		r.icon = UI.new("TextLabel", {Position = UDim2.fromOffset(6, 0), Size = UDim2.fromOffset(44, 58), BackgroundTransparency = 1, Text = "", TextSize = 28, Font = UI.Bold}, row)
+		r.icon = UI.new("ImageLabel", {AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 6, 0.5, 0), Size = UDim2.fromOffset(44, 44),
+			BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit}, row)
 		r.text = UI.label(row, "", {Position = UDim2.fromOffset(54, 6), Size = UDim2.new(1, -330, 0, 20), TextSize = 15, TextTruncate = Enum.TextTruncate.AtEnd})
 		local barBg = UI.new("Frame", {Position = UDim2.fromOffset(54, 32), Size = UDim2.new(1, -330, 0, 8), BackgroundColor3 = T.Panel, BorderSizePixel = 0}, row)
 		UI.corner(barBg, 4)
 		r.fill = UI.new("Frame", {Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.Accent, BorderSizePixel = 0}, barBg)
 		UI.corner(r.fill, 4)
+		UI.bar(barBg, r.fill)
 		r.prog = UI.label(row, "", {Position = UDim2.fromOffset(54, 41), Size = UDim2.new(1, -330, 0, 14), TextSize = 11, Font = UI.Medium, TextColor3 = T.Muted})
 		r.medals = {}
 		for t = 1, 3 do
@@ -425,7 +431,7 @@ return function(ctx)
 		end
 		for i, r in ipairs(rows) do
 			local a = st.list[i]
-			r.icon.Text = a.icon
+			r.icon.Image = ICON_PIC[a.icon] or UI.Icons.Career
 			r.text.Text = a.text
 			local maxed = a.claimed >= 3
 			-- показываемый уровень: выбранная медаль или следующий незабранный

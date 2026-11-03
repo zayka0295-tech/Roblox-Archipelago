@@ -36,23 +36,16 @@ return function(ctx)
 	-- на телефоне — ближе к краю и вплотную под кнопкой ранга (как сдвинуты кнопки в DailySpinUI / RankUI)
 	local btnX, btnY = -6, 232
 	if UI.touchOnly then btnX, btnY = 8, 186 end
-	local btn = circle(UI.new("TextButton", {
-		Name = "RewardsButton", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, btnX, 1, btnY), Size = UDim2.fromOffset(66, 66),
-		Text = "", AutoButtonColor = false, BackgroundColor3 = Color3.new(1, 1, 1),
-	}, frame))
-	UI.new("UIGradient", {Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(90, 220, 140), Color3.fromRGB(30, 140, 120))}, btn)
-	UI.new("UIStroke", {Color = Color3.fromRGB(190, 255, 210), Thickness = 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border}, btn)
-	local btnScale = UI.new("UIScale", {}, btn)
-	UI.new("TextLabel", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "🎁", TextSize = 34, Font = UI.Bold}, btn)
+	local hb = UI.hudButton(frame, UI.Icons.Rewards, "REWARDS", Color3.fromRGB(60, 190, 110), {
+		Name = "RewardsButton", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, btnX, 1, btnY),
+	})
+	local btn, btnScale = hb.btn, hb.scale
 	local count = circle(UI.new("TextLabel", {
 		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -6, 0, 6), Size = UDim2.fromOffset(24, 24), ZIndex = 3, Visible = false,
 		BackgroundColor3 = Color3.fromRGB(235, 45, 60), Text = "", TextColor3 = Color3.new(1, 1, 1), Font = UI.Bold, TextSize = 14,
 	}, btn))
 	UI.new("UIStroke", {Color = Color3.new(1, 1, 1), Thickness = 1.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border}, count)
-	UI.label(btn, "REWARDS", {
-		AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, 3), Size = UDim2.fromOffset(120, 16),
-		TextSize = 13, TextXAlignment = Enum.TextXAlignment.Center, TextStrokeTransparency = 0.3, TextColor3 = Color3.fromRGB(150, 255, 180),
-	})
+	hb.label.TextColor3 = Color3.fromRGB(150, 255, 180)
 
 	---------------------------------------------------------------- окно
 	local gui = UI.screen("RewardsUI", 45)
@@ -64,8 +57,7 @@ return function(ctx)
 	UI.new("TextButton", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 0}, panel)
 	UI.new("UIGradient", {Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(36, 46, 66), Color3.fromRGB(16, 21, 29))}, panel)
 	local panelScale = UI.new("UIScale", {}, panel)
-	local title = UI.label(panel, "REWARDS", {Position = UDim2.fromOffset(0, 12), Size = UDim2.new(1, 0, 0, 38), TextSize = 32, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Center})
-	UI.new("UIGradient", {Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 240, 160), Color3.fromRGB(255, 150, 40))}, title)
+	UI.ribbon(panel, "REWARDS", {Position = UDim2.new(0.5, 0, 0, 14), Size = UDim2.fromOffset(330, 70)})
 	local close = UI.button(panel, "X", T.Panel2, {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 10), Size = UDim2.fromOffset(38, 38), TextSize = 20})
 	UI.stroke(close)
 
@@ -93,6 +85,7 @@ return function(ctx)
 	for i = 1, 3 do
 		local row = UI.new("Frame", {Position = UDim2.fromOffset(0, 26 + (i - 1) * 74), Size = UDim2.new(1, 0, 0, 66), BackgroundColor3 = T.Panel2, BorderSizePixel = 0}, daily)
 		UI.corner(row, 8)
+		UI.plate(row)
 		local tag = UI.label(row, TIER_TAG[i][1], {Position = UDim2.fromOffset(12, 8), Size = UDim2.fromOffset(70, 16), TextSize = 12, TextColor3 = TIER_TAG[i][2]})
 		local r = {row = row, tag = tag}
 		r.text = UI.label(row, "", {Position = UDim2.fromOffset(84, 6), Size = UDim2.new(1, -230, 0, 20), TextSize = 15, TextTruncate = Enum.TextTruncate.AtEnd})
@@ -100,6 +93,7 @@ return function(ctx)
 		UI.corner(barBg, 5)
 		r.fill = UI.new("Frame", {Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.Accent, BorderSizePixel = 0}, barBg)
 		UI.corner(r.fill, 5)
+		UI.bar(barBg, r.fill)
 		r.prog = UI.label(row, "", {Position = UDim2.fromOffset(12, 47), Size = UDim2.new(1, -170, 0, 14), TextSize = 12, Font = UI.Medium, TextColor3 = T.Muted})
 		r.reward = UI.label(row, "", {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 6), Size = UDim2.fromOffset(130, 18), TextSize = 14, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Right})
 		r.button = UI.button(row, "", T.Accent, {AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -12, 1, -8), Size = UDim2.fromOffset(130, 30), TextSize = 13})
@@ -107,6 +101,7 @@ return function(ctx)
 	end
 	local bonusRow = UI.new("Frame", {Position = UDim2.fromOffset(0, 26 + 3 * 74), Size = UDim2.new(1, 0, 0, 50), BackgroundColor3 = Color3.fromRGB(40, 52, 78), BorderSizePixel = 0}, daily)
 	UI.corner(bonusRow, 8)
+	UI.plate(bonusRow)
 	UI.new("UIStroke", {Color = DIAMOND, Transparency = 0.5, Thickness = 1.5}, bonusRow)
 	local bonusLbl = UI.label(bonusRow, "", {Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -170, 1, 0), TextSize = 15, TextColor3 = DIAMOND})
 	local bonusBtn = UI.button(bonusRow, "", DIAMOND, {AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(130, 30), TextSize = 13})
@@ -121,9 +116,11 @@ return function(ctx)
 		local big = i == 7
 		local c = UI.new("Frame", {Position = UDim2.fromOffset(10 + (i - 1) * (CARD_W + GAP), 62), Size = UDim2.fromOffset(CARD_W, 132), BackgroundColor3 = big and Color3.fromRGB(70, 56, 30) or T.Panel2, BorderSizePixel = 0}, streak)
 		UI.corner(c, 10)
+		UI.plate(c)
 		local stroke = UI.new("UIStroke", {Color = big and GOLD or T.Line, Thickness = big and 2 or 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border}, c)
 		UI.label(c, "DAY " .. i, {Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 16), TextSize = 13, TextColor3 = big and GOLD or T.Text, TextXAlignment = Enum.TextXAlignment.Center})
-		local icon = UI.new("TextLabel", {Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, 0, 0, 44), BackgroundTransparency = 1, Text = "", TextSize = big and 36 or 30, Font = UI.Bold}, c)
+		local icon = UI.new("ImageLabel", {AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 26), Size = UDim2.fromOffset(big and 52 or 46, big and 52 or 46),
+			BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit}, c)
 		local amount = UI.label(c, "", {Position = UDim2.fromOffset(2, 76), Size = UDim2.new(1, -4, 0, 30), TextSize = 12, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center})
 		local state = UI.label(c, "", {Position = UDim2.fromOffset(0, 108), Size = UDim2.new(1, 0, 0, 16), TextSize = 11, TextXAlignment = Enum.TextXAlignment.Center})
 		local cs = UI.new("UIScale", {}, c)
@@ -140,14 +137,18 @@ return function(ctx)
 	for i = 1, 4 do
 		local c = UI.new("Frame", {Position = UDim2.fromOffset((i - 1) * (CH_W + 10), 30), Size = UDim2.fromOffset(CH_W, 246), BackgroundColor3 = T.Panel2, BorderSizePixel = 0}, gifts)
 		UI.corner(c, 10)
+		UI.plate(c)
 		local stroke = UI.new("UIStroke", {Color = T.Line, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border}, c)
-		local icon = UI.new("TextLabel", {Position = UDim2.fromOffset(0, 12), Size = UDim2.new(1, 0, 0, 60), BackgroundTransparency = 1, Text = "🎁", TextSize = 46 + i * 4, Font = UI.Bold}, c)
+		-- чем дольше играть, тем крупнее подарок
+		local icon = UI.new("ImageLabel", {AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 8), Size = UDim2.fromOffset(48 + i * 6, 48 + i * 6),
+			BackgroundTransparency = 1, Image = UI.Icons.Rewards, ScaleType = Enum.ScaleType.Fit}, c)
 		local mins = UI.label(c, "", {Position = UDim2.fromOffset(0, 80), Size = UDim2.new(1, 0, 0, 22), TextSize = 18, TextXAlignment = Enum.TextXAlignment.Center})
 		local reward = UI.label(c, "", {Position = UDim2.fromOffset(6, 106), Size = UDim2.new(1, -12, 0, 36), TextSize = 13, TextWrapped = true, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Center})
 		local barBg = UI.new("Frame", {Position = UDim2.new(0, 12, 0, 152), Size = UDim2.new(1, -24, 0, 10), BackgroundColor3 = T.Panel, BorderSizePixel = 0}, c)
 		UI.corner(barBg, 5)
 		local fill = UI.new("Frame", {Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.Accent, BorderSizePixel = 0}, barBg)
 		UI.corner(fill, 5)
+		UI.bar(barBg, fill)
 		local timeLbl = UI.label(c, "", {Position = UDim2.fromOffset(0, 166), Size = UDim2.new(1, 0, 0, 16), TextSize = 12, Font = UI.Medium, TextColor3 = T.Muted, TextXAlignment = Enum.TextXAlignment.Center})
 		local b = UI.button(c, "", T.Good, {AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -12), Size = UDim2.new(1, -24, 0, 36), TextSize = 14})
 		local iconScale = UI.new("UIScale", {}, icon)
@@ -200,13 +201,13 @@ return function(ctx)
 		streakSub.Text = "Come back every day for bigger rewards — day 7 is the jackpot!"
 		for i, c in ipairs(cards) do
 			local r = s.rewards[i] or {}
-			c.icon.Text = (r.Diamonds or 0) > 0 and ((r.Gold or 0) > 0 and "🏆" or "💎") or "💰"
+			c.icon.Image = (r.Diamonds or 0) > 0 and ((r.Gold or 0) > 0 and UI.Icons.Chest or UI.Icons.Diamond) or UI.Icons.Bag
 			c.amount.Text = rewardText(r.Gold, r.Diamonds)
 			c.amount.TextColor3 = (r.Diamonds or 0) > 0 and (r.Gold or 0) == 0 and DIAMOND or GOLD
 			local past = i < s.index or (s.claimed and i == s.index)
 			local today = i == s.index and not s.claimed
 			c.frame.BackgroundTransparency = past and 0.5 or 0
-			c.icon.TextTransparency = past and 0.5 or 0
+			c.icon.ImageTransparency = past and 0.5 or 0
 			c.state.Text = past and "CLAIMED" or (today and "TODAY" or "")
 			c.state.TextColor3 = past and T.Good or GOLD
 			c.stroke.Color = today and GOLD or (c.big and GOLD or T.Line)
@@ -240,7 +241,7 @@ return function(ctx)
 				c.fill.Size = UDim2.fromScale(math.clamp(sec / need, 0, 1), 1)
 				c.fill.BackgroundColor3 = (g.done or ready) and T.Good or T.Accent
 				c.time.Text = g.done and "Opened" or (ready and "Ready to open!" or ("Opens in " .. clock(need - sec)))
-				c.icon.TextTransparency = g.done and 0.6 or 0
+				c.icon.ImageTransparency = g.done and 0.6 or 0
 				c.stroke.Color = ready and T.Good or T.Line
 				c.stroke.Thickness = ready and 2 or 1
 				UI.setEnabled(c.button, ready, T.Good, g.done and "OPENED" or (ready and "OPEN" or "LOCKED"))
@@ -364,6 +365,7 @@ return function(ctx)
 		t += dt
 		local n = player:GetAttribute("RewardsReady") or 0
 		btnScale.Scale = n > 0 and 1 + 0.06 * math.max(0, math.sin(t * 4)) or 1
+		hb.glow.BackgroundTransparency = n > 0 and 0.45 - 0.3 * math.sin(t * 4) or 1
 		if gui.Enabled and state and math.floor(t * 4) ~= math.floor((t - dt) * 4) then render() end
 	end)
 

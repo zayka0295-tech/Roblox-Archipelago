@@ -47,29 +47,12 @@ return function(ctx)
 	UI.scale(frame)
 
 	-- на телефоне кнопка ближе к правому краю и к панели островов (так же сдвинута кнопка ранга в RankUI)
-	local btn = circle(UI.new("TextButton", {
-		Name = "SpinButton", AnchorPoint = Vector2.new(1, 0), Size = UDim2.fromOffset(66, 66),
+	local SPIN_ON, SPIN_OFF = Color3.fromRGB(255, 160, 40), Color3.fromRGB(80, 92, 112)
+	local hb = UI.hudButton(frame, UI.Icons.Spin, "DAILY SPIN", SPIN_ON, {
+		Name = "SpinButton", AnchorPoint = Vector2.new(1, 0),
 		Position = UI.touchOnly and UDim2.new(1, 8, 1, 6) or UDim2.new(1, -6, 1, 12),
-		Text = "", AutoButtonColor = false, BackgroundColor3 = Color3.new(1, 1, 1),
-	}, frame))
-	local btnGrad = UI.new("UIGradient", {Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 220, 90)),
-		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 120, 40)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 60, 120)),
-	})}, btn)
-	local btnStroke = UI.new("UIStroke", {Color = Color3.fromRGB(255, 240, 170), Thickness = 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border}, btn)
-	local btnScale = UI.new("UIScale", {}, btn)
-	-- мини-колесо внутри кнопки
-	local mini = circle(UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(48, 48), BackgroundColor3 = T.Panel}, btn))
-	UI.new("UIStroke", {Color = Color3.fromRGB(255, 225, 120), Thickness = 2}, mini)
-	for i, pz in ipairs(S.Prizes) do
-		local a = math.rad((i - 1) * SEG)
-		circle(UI.new("Frame", {
-			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, math.sin(a) * 14, 0.5, -math.cos(a) * 14),
-			Size = UDim2.fromOffset(13, 13), BackgroundColor3 = (look(pz)),
-		}, mini))
-	end
-	circle(UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(10, 10), BackgroundColor3 = Color3.fromRGB(255, 225, 120)}, mini))
+	})
+	local btn, btnScale = hb.btn, hb.scale
 	-- бейдж FREE
 	local badge = UI.new("TextLabel", {
 		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -8, 0, 4), Size = UDim2.fromOffset(46, 20), Rotation = 12,
@@ -79,10 +62,7 @@ return function(ctx)
 	UI.new("UIStroke", {Color = Color3.new(1, 1, 1), Thickness = 1.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border}, badge)
 	local badgeScale = UI.new("UIScale", {}, badge)
 	-- подпись под кнопкой: DAILY SPIN или таймер
-	local btnLbl = UI.label(btn, "DAILY SPIN", {
-		AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, 3), Size = UDim2.fromOffset(120, 16),
-		TextSize = 13, TextXAlignment = Enum.TextXAlignment.Center, TextStrokeTransparency = 0.3, TextColor3 = T.Gold,
-	})
+	local btnLbl = hb.label
 
 	---------------------------------------------------------------- окно с колесом
 	local gui = UI.screen("DailySpinUI", 45)
@@ -93,8 +73,7 @@ return function(ctx)
 	-- подложка: нажатие по пустому месту окна не проваливается в затемнение (а оно закрывает окно)
 	UI.new("TextButton", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 0}, panel)
 	UI.new("UIGradient", {Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(40, 48, 70), Color3.fromRGB(16, 21, 29))}, panel)
-	local title = UI.label(panel, "DAILY SPIN", {Position = UDim2.fromOffset(0, 14), Size = UDim2.new(1, 0, 0, 40), TextSize = 36, TextColor3 = T.Gold, TextXAlignment = Enum.TextXAlignment.Center})
-	UI.new("UIGradient", {Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 240, 160), Color3.fromRGB(255, 150, 40))}, title)
+	UI.ribbon(panel, "DAILY SPIN", {Position = UDim2.new(0.5, 0, 0, 22), Size = UDim2.fromOffset(340, 72)})
 	local sub = UI.label(panel, "One free spin every 24 hours", {Position = UDim2.fromOffset(0, 54), Size = UDim2.new(1, 0, 0, 20), TextSize = 15, Font = UI.Medium, TextColor3 = T.Muted, TextXAlignment = Enum.TextXAlignment.Center})
 	local close = UI.button(panel, "X", T.Panel2, {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 10), Size = UDim2.fromOffset(38, 38), TextSize = 20})
 
@@ -246,6 +225,7 @@ return function(ctx)
 	---------------------------------------------------------------- анимации каждый кадр
 	local lastTick = 0
 	local acc = 0
+	local spinReady -- что сейчас нарисовано на кнопке (перекрашиваем только при смене)
 	RunService.RenderStepped:Connect(function(dt)
 		local t = os.clock()
 		local left = waitLeft()
@@ -254,12 +234,13 @@ return function(ctx)
 		if not frame.Visible and not spinning then gui.Enabled = false end
 		-- кнопка: готово — яркая, пульсирует, колесо крутится, иногда покачивается; иначе серая с таймером
 		if ready then
-			btnGrad.Rotation = (t * 90) % 360
-			btnGrad.Enabled = true
-			btn.BackgroundColor3 = Color3.new(1, 1, 1)
-			mini.Rotation = (t * 120) % 360
+			if not spinReady then
+				spinReady = true
+				hb.setColor(SPIN_ON)
+				hb.icon.ImageColor3 = Color3.new(1, 1, 1)
+			end
 			btnScale.Scale = 1 + 0.06 * math.sin(t * 4)
-			btnStroke.Transparency = 0.5 - 0.5 * math.sin(t * 4)
+			hb.glow.BackgroundTransparency = 0.45 - 0.3 * math.sin(t * 4)
 			local ph = t % 3.5
 			btn.Rotation = ph < 0.6 and 10 * math.sin(ph / 0.6 * math.pi * 3) * (1 - ph / 0.6) or 0
 			badge.Visible = true
@@ -267,10 +248,13 @@ return function(ctx)
 			btnLbl.Text = "DAILY SPIN"
 			btnLbl.TextColor3 = T.Gold
 		else
-			btnGrad.Enabled = false
-			btn.BackgroundColor3 = T.Panel2
+			if spinReady ~= false then
+				spinReady = false
+				hb.setColor(SPIN_OFF)
+				hb.icon.ImageColor3 = Color3.fromRGB(150, 150, 160) -- приглушённая, пока ждём
+			end
 			btnScale.Scale = 1
-			btnStroke.Transparency = 0.6
+			hb.glow.BackgroundTransparency = 1
 			btn.Rotation = 0
 			badge.Visible = false
 			btnLbl.Text = left and clock(left) or ""
