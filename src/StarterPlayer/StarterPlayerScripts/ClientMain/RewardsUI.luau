@@ -109,6 +109,20 @@ return function(ctx)
 	---------------------------------------------------------------- STREAK
 	local streak = pages.STREAK
 	local streakTitle = UI.label(streak, "", {Size = UDim2.new(1, 0, 0, 30), TextSize = 26, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Center})
+	-- огоньки по бокам заголовка, следуют за шириной текста
+	local flames = {}
+	for i, side in ipairs({-1, 1}) do
+		flames[i] = UI.new("ImageLabel", {AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(30, 30), BackgroundTransparency = 1,
+			Image = UI.Icons.Flame, ScaleType = Enum.ScaleType.Fit}, streakTitle)
+		local function place()
+			-- TextBounds — в пикселях экрана (с UIScale), поэтому через долю ширины
+			local frac = streakTitle.AbsoluteSize.X > 0 and streakTitle.TextBounds.X / streakTitle.AbsoluteSize.X or 0
+			flames[i].Position = UDim2.new(0.5 + side * frac / 2, side * 22, 0.5, 0)
+		end
+		streakTitle:GetPropertyChangedSignal("TextBounds"):Connect(place)
+		streakTitle:GetPropertyChangedSignal("AbsoluteSize"):Connect(place)
+		place()
+	end
 	local streakSub = UI.label(streak, "", {Position = UDim2.fromOffset(0, 32), Size = UDim2.new(1, 0, 0, 18), TextSize = 14, Font = UI.Medium, TextColor3 = T.Muted, TextXAlignment = Enum.TextXAlignment.Center})
 	local cards = {}
 	local CARD_W, GAP = 76, 6
@@ -197,7 +211,7 @@ return function(ctx)
 		-- вкладка STREAK
 		local s = st.streak
 		local shownCount = s.claimed and s.count or s.count + 1
-		streakTitle.Text = ("🔥 Day %d streak"):format(math.max(1, shownCount))
+		streakTitle.Text = ("Day %d streak"):format(math.max(1, shownCount))
 		streakSub.Text = "Come back every day for bigger rewards — day 7 is the jackpot!"
 		for i, c in ipairs(cards) do
 			local r = s.rewards[i] or {}

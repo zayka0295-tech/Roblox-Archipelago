@@ -35,7 +35,44 @@ local Icons = {
 	Crown = "rbxassetid://93546826664671",
 	Chest = "rbxassetid://84439032667036",
 	Close = "rbxassetid://128571711354825",
+	-- бой (assets/icons/combat)
+	Crosshair = "rbxassetid://131307799202001",
+	Hit = "rbxassetid://82436977040482",
+	HitKill = "rbxassetid://72725232228794",
+	DamageArc = "rbxassetid://84796175075926",
+	Skull = "rbxassetid://101657127725475",
+	Reload = "rbxassetid://90587021698909",
 }
+
+-- сенсорные кнопки на телефоне (assets/icons/touch): круг целиком, вместе с фоном
+Icons.Touch = {
+	Fire = "rbxassetid://108880000622404",
+	Aim = "rbxassetid://73628601041918",
+	Reload = "rbxassetid://70562987340197",
+	Up = "rbxassetid://124690198858597",
+	Down = "rbxassetid://114246921321998",
+	Bomb = "rbxassetid://95694184496906",
+	Sight = "rbxassetid://118531165966459",
+	Torpedo = "rbxassetid://120975444380768",
+	Dive = "rbxassetid://103016451303335",
+	Surface = "rbxassetid://90631147629485",
+	Zoom = "rbxassetid://73169588669336",
+	Charge = "rbxassetid://136544473564832",
+}
+
+-- эмблемы команд (ключи Config.Teams)
+Icons.Teams = {
+	Blue = "rbxassetid://88268956971958",
+	Red = "rbxassetid://117069525121444",
+}
+-- баннеры итогов раунда (assets/ui/round), картинки примерно 2:1
+Icons.Round = {
+	Victory = "rbxassetid://137935233763756",
+	Defeat = "rbxassetid://123366070082137",
+	Draw = "rbxassetid://98626501552838",
+}
+-- арт игры для экрана загрузки (assets/ui/keyart.jpg, 16:9)
+Icons.KeyArt = "rbxassetid://71909187303311"
 
 -- детали окон (assets/ui), растягиваются 9-slice: image, size — размер картинки, slice — SliceCenter
 -- (углы и края вне его не тянутся), h — высота картинки, по которой подгоняется SliceScale

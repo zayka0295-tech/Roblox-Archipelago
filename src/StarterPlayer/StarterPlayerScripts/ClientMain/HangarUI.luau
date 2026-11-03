@@ -12,7 +12,7 @@ return function(ctx)
 	UI.scale(panel)
 	UI.padding(panel, 16)
 	local title = UI.label(panel, "HANGAR", {TextSize = 28, Size = UDim2.new(1, -140, 0, 32)})
-	local balance = UI.label(panel, "", {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 4), Size = UDim2.fromOffset(300, 26), TextSize = 18, TextColor3 = T.Gold, TextXAlignment = Enum.TextXAlignment.Right})
+	local balance = UI.money(panel, {{UI.Icons.Gold, T.Gold}}, {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 2), Size = UDim2.fromOffset(300, 28), TextSize = 18})
 	local list = UI.new("Frame", {Position = UDim2.fromOffset(0, 44), Size = UDim2.new(1, 0, 1, -104), BackgroundTransparency = 1}, panel)
 	UI.new("UIListLayout", {Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder}, list)
 	local close = UI.button(panel, "CLOSE", T.Panel2, {AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0), Size = UDim2.new(1, 0, 0, 46)})
@@ -39,7 +39,7 @@ return function(ctx)
 	local function refresh()
 		if not panel.Visible then return end
 		local gold = ctx.stat("Gold")
-		balance.Text = ("◆ %d"):format(gold)
+		balance(1, tostring(gold))
 		local tc = openTeam and Config.Teams[openTeam]
 		title.TextColor3 = tc and tc.Color or T.Text
 		local L = Config.Limits or {}

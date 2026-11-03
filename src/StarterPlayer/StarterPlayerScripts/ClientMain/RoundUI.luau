@@ -54,7 +54,8 @@ return function(ctx)
 		Captain = {"⚓", "CAPTAIN", "ships sunk"}, Conqueror = {"🚩", "CONQUEROR", "island captures"},
 	}
 	local gui = UI.screen("RoundUI", 40)
-	local banner = UI.panel(gui, {Name = "Banner", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(640, 520), Visible = false})
+	-- чуть ниже центра: сверху над окном висит картинка VICTORY / DEFEAT / DRAW
+	local banner = UI.panel(gui, {Name = "Banner", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.6), Size = UDim2.fromOffset(640, 520), Visible = false})
 	UI.scale(banner, 0.55)
 	UI.new("UIGradient", {Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(36, 46, 66), Color3.fromRGB(16, 21, 29))}, banner)
 	local bannerScale = UI.new("UIScale", {}, banner)
@@ -62,7 +63,14 @@ return function(ctx)
 	local title = UI.label(banner, "", {Size = UDim2.new(1, 0, 0, 46), TextSize = 40, TextXAlignment = Enum.TextXAlignment.Center})
 	local scoreLbl = UI.label(banner, "", {Position = UDim2.fromOffset(0, 48), Size = UDim2.new(1, 0, 0, 24), TextSize = 18, RichText = true, Font = UI.Medium, TextXAlignment = Enum.TextXAlignment.Center})
 	local personal = UI.label(banner, "", {Position = UDim2.fromOffset(0, 74), Size = UDim2.new(1, 0, 0, 22), TextSize = 16, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center})
-	local closeBtn = UI.button(banner, "X", T.Panel2, {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 6, 0, -6), Size = UDim2.fromOffset(34, 34), TextSize = 16})
+	local resultPic = UI.new("ImageLabel", {AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 0, 6), Size = UDim2.fromOffset(380, 196),
+		BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit, ZIndex = 3}, banner)
+	-- эмблемы команд по краям строки с победителем и счётом
+	for key, x in pairs({Blue = 0, Red = 1}) do
+		UI.new("ImageLabel", {AnchorPoint = Vector2.new(x, 0), Position = UDim2.new(x, 0, 0, 2), Size = UDim2.fromOffset(64, 68),
+			BackgroundTransparency = 1, Image = UI.Icons.Teams[key], ScaleType = Enum.ScaleType.Fit}, banner)
+	end
+	local closeBtn = UI.button(banner, "X", T.Panel2, {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 6, 0, -6), Size = UDim2.fromOffset(34, 34), TextSize = 16, ZIndex = 4})
 	UI.stroke(closeBtn)
 
 	-- твой раунд
@@ -126,6 +134,9 @@ return function(ctx)
 			title.Text = "DRAW"
 			title.TextColor3 = T.Text
 		end
+		-- картинка — с точки зрения игрока; без команды — просто победа
+		resultPic.Image = not w and UI.Icons.Round.Draw
+			or ((res.team and res.team ~= w) and UI.Icons.Round.Defeat or UI.Icons.Round.Victory)
 		scoreLbl.Text = ('<font color="%s">%s %d</font>  :  <font color="%s">%d %s</font>'):format(
 			hex(Config.Teams.Blue.Color), teamName("Blue"), res.blue or 0, hex(Config.Teams.Red.Color), res.red or 0, teamName("Red"))
 		if (res.diamonds or 0) > 0 then

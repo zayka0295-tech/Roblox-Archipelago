@@ -26,8 +26,17 @@ return function(ctx)
 	local badge = UI.panel(side, {Size = UDim2.new(1, 0, 0, 74)})
 	local bar = UI.new("Frame", {Size = UDim2.new(0, 6, 1, -16), Position = UDim2.fromOffset(10, 8), BorderSizePixel = 0, BackgroundColor3 = T.Muted}, badge)
 	UI.corner(bar, 3)
+	-- эмблема команды вместо цветной полоски (без команды — полоска)
+	local emblem = UI.new("ImageLabel", {AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0), Size = UDim2.fromOffset(54, 58),
+		BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit, Visible = false}, badge)
 	local teamLbl = UI.label(badge, "NO TEAM", {Position = UDim2.fromOffset(26, 8), Size = UDim2.new(1, -34, 0, 24), TextSize = 19})
 	local carrierLbl = UI.label(badge, "", {Position = UDim2.fromOffset(26, 34), Size = UDim2.new(1, -34, 0, 32), TextSize = 13, Font = UI.Medium, TextColor3 = T.Muted, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top})
+	local function indent(x)
+		for _, l in ipairs({teamLbl, carrierLbl}) do
+			l.Position = UDim2.fromOffset(x, l.Position.Y.Offset)
+			l.Size = UDim2.new(1, -x - 8, 0, l.Size.Y.Offset)
+		end
+	end
 
 	local btnSpawn = UI.button(side, "SPAWN POINT", T.Panel2, {Position = UDim2.fromOffset(0, 84), Size = UDim2.new(1, 0, 0, 40), TextSize = 15})
 	local btnBoard = UI.button(side, "LEADERS", T.Panel2, {Position = UDim2.fromOffset(0, 130), Size = UDim2.new(0.5, -4, 0, 40), TextSize = 15})
@@ -46,12 +55,18 @@ return function(ctx)
 		if team then
 			local c = Config.Teams[team]
 			bar.BackgroundColor3 = c.Color
+			emblem.Image = UI.Icons.Teams[team] or ""
+			emblem.Visible = UI.Icons.Teams[team] ~= nil
+			bar.Visible = not emblem.Visible
+			indent(emblem.Visible and 70 or 26)
 			teamLbl.Text = string.upper(c.DisplayName)
 			teamLbl.TextColor3 = c.Color
 			local _, text = ctx.carrierStatus(team)
 			carrierLbl.Text = "Carrier: " .. text
 		else
 			bar.BackgroundColor3 = T.Muted
+			emblem.Visible, bar.Visible = false, true
+			indent(26)
 			teamLbl.Text = "NO TEAM"
 			teamLbl.TextColor3 = T.Text
 			carrierLbl.Text = ""

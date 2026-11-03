@@ -45,9 +45,9 @@ return function(ctx)
 		end)
 	end
 	local _, _, airDef = ctx.islandStatus(nil)
-	makeCard("Base", "BASE", 1, "Base", 1.35)
-	makeCard("Carrier", "CARRIER", 2, "Carrier", 1.4)
-	makeCard("Island", "AIRFIELD " .. (airDef and airDef.Letter or ""), 3, "CentralIsland", 1.5)
+	makeCard("Base", "BASE", 1, "Base", 1.1)
+	makeCard("Carrier", "CARRIER", 2, "Carrier", 1.15)
+	makeCard("Island", "AIRFIELD " .. (airDef and airDef.Letter or ""), 3, "CentralIsland", 1.2)
 
 	local back = UI.button(panel, "CLOSE", T.Panel2, {AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(0.34, 0, 0, 50)})
 	UI.stroke(back)

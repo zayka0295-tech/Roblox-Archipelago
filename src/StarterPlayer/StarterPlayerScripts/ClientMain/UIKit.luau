@@ -143,6 +143,11 @@ local function replaceAll()
 end
 replaceRounds = replaceAll
 
+-- картинки кнопок по подписи (Icons.Touch); другую — UI.roundIcon(b, key)
+local TOUCH_ICON = {
+	FIRE = "Fire", R = "Reload", AIM = "Aim", ["GAS\n+"] = "Up", ["GAS\n−"] = "Down", BOMB = "Bomb", SIGHT = "Sight",
+	TORPEDO = "Torpedo", ["▼\nDIVE"] = "Dive", ["▲\nUP"] = "Surface", ZOOM = "Zoom",
+}
 -- круглая кнопка в месте slot (см. SLOTS); видна только когда её покажут
 function UI.roundButton(parent, slot, text, color)
 	color = color or Color3.fromRGB(22, 27, 36)
@@ -161,16 +166,57 @@ function UI.roundButton(parent, slot, text, color)
 	b:SetAttribute("Enabled", true)
 	place(b)
 	table.insert(rounds, b)
-	-- отклик на нажатие
+	if TOUCH_ICON[text] then UI.roundIcon(b, TOUCH_ICON[text]) end
+	-- отклик на нажатие: у картинки — сжатие, у простой кнопки — ярче фон
+	local function press(on)
+		local s = b:FindFirstChild("Icon") and b.Icon:FindFirstChildOfClass("UIScale")
+		if s then s.Scale = on and 0.88 or 1 else b.BackgroundTransparency = on and 0.05 or 0.3 end
+	end
 	b.InputBegan:Connect(function(i)
-		if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then b.BackgroundTransparency = 0.05 end
+		if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then press(true) end
 	end)
 	b.InputEnded:Connect(function(i)
 		-- зажатую кнопку (onHold) не «отжимаем», когда палец съехал с неё
 		if b:GetAttribute("Held") then return end
-		if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then b.BackgroundTransparency = 0.3 end
+		if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then press(false) end
 	end)
 	return b
+end
+
+-- картинка на круглой кнопке (Icons.Touch[key]) вместо фона и подписи. Состояния, которые код задаёт цветом фона,
+-- показываются иначе: UI.T.Disabled — бледная картинка; цвет не BaseColor (режим включён: прицел, зум) — светящееся
+-- кольцо. Число в подписи (BOMB\n3) — бейдж в углу.
+function UI.roundIcon(b, key)
+	local img = b:FindFirstChild("Icon")
+	if not img then
+		local pad = b:FindFirstChildOfClass("UIPadding")
+		if pad then pad:Destroy() end
+		b.BackgroundTransparency = 1
+		b.TextTransparency = 1
+		img = UI.new("ImageLabel", {Name = "Icon", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit}, b)
+		UI.new("UIScale", {}, img)
+		local ring = b:FindFirstChildOfClass("UIStroke")
+		ring.Color, ring.Thickness, ring.Transparency = Color3.fromRGB(120, 230, 255), 3, 0
+		local count = UI.new("TextLabel", {AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromScale(0.42, 0.42),
+			BackgroundColor3 = Color3.fromRGB(255, 205, 90), Text = "", TextColor3 = UI.Outline, Font = UI.Display, TextScaled = true, ZIndex = 3, Visible = false}, b)
+		UI.new("UICorner", {CornerRadius = UDim.new(1, 0)}, count)
+		UI.new("UIStroke", {Color = UI.Outline, Thickness = 2}, count)
+		local function state()
+			local c = b.BackgroundColor3
+			local off = c == UI.T.Disabled
+			img.ImageTransparency = off and 0.5 or 0
+			img.ImageColor3 = off and Color3.fromRGB(170, 170, 170) or Color3.new(1, 1, 1)
+			ring.Enabled = not off and c ~= b:GetAttribute("BaseColor")
+			local n = b.Text:match("%d+")
+			count.Visible = n ~= nil
+			count.Text = n or ""
+		end
+		b:GetPropertyChangedSignal("BackgroundColor3"):Connect(state)
+		b:GetPropertyChangedSignal("Text"):Connect(state)
+		state()
+	end
+	img.Image = UI.Icons.Touch[key] or ""
 end
 
 -- поворот камеры пальцем, зажавшим кнопку (FIRE турели и т.п.): сдвиги копятся и применяются
@@ -559,6 +605,28 @@ function UI.ribbon(parent, text, props)
 	return r, l
 end
 
+-- сумма с монеткой: строка [иконка][число], прижатая к краю по TextXAlignment из props (по умолчанию вправо).
+-- items = {{image, color}, ...} — несколько сумм подряд; возвращает set(i, text)
+function UI.money(parent, items, props)
+	props = props or {}
+	local size = props.TextSize or 18
+	local align = props.TextXAlignment == Enum.TextXAlignment.Left and Enum.HorizontalAlignment.Left or Enum.HorizontalAlignment.Right
+	local f = UI.new("Frame", {BackgroundTransparency = 1, AnchorPoint = props.AnchorPoint, Position = props.Position, Size = props.Size}, parent)
+	UI.new("UIListLayout", {FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = align,
+		VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, f)
+	local labels = {}
+	for i, it in ipairs(items) do
+		UI.new("ImageLabel", {LayoutOrder = i * 2 - 1, Size = UDim2.fromOffset(size + 6, size + 6), BackgroundTransparency = 1,
+			Image = it[1], ScaleType = Enum.ScaleType.Fit}, f)
+		local l = UI.new("TextLabel", {LayoutOrder = i * 2, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 1, 0),
+			BackgroundTransparency = 1, Text = "", Font = UI.Display, TextSize = size + 2, TextColor3 = it[2]}, f)
+		UI.new("UIStroke", {Color = UI.Outline, Thickness = 1.5}, l)
+		UI.new("UIPadding", {PaddingRight = UDim.new(0, i < #items and 10 or 0)}, l)
+		labels[i] = l
+	end
+	return function(i, text) labels[i].Text = text end
+end
+
 -- полоса прогресса: стальной жёлоб и золотая заливка (fill.Size = UDim2.fromScale(доля, 1))
 function UI.progress(parent, props)
 	local track = UI.new("Frame", {BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 14)}, parent)
@@ -657,7 +725,7 @@ end
 -- На экране — по одной карточке (TOAST_VISIBLE): остальные ждут в очереди; когда очередь длинная, каждая висит меньше.
 -- Виды: success, error, info, safe (безопасная зона), reward (награда золотом).
 local TextService = game:GetService("TextService")
-local TOAST_W, TOAST_TIME, TOAST_MAX, TOAST_GAP = 440, 4, 4, 8
+local TOAST_W, TOAST_TIME, TOAST_MAX, TOAST_GAP = 420, 4, 4, 8
 local TOAST_VISIBLE, TOAST_TIME_BUSY = 1, 2.5 -- сколько карточек сразу; сколько висит, если в очереди ещё 2+
 local TOAST_KINDS = {
 	success = {color = Color3.fromRGB(80, 215, 130), icon = "check", title = "DONE"},
@@ -683,6 +751,9 @@ task.spawn(function()
 		if type(id) == "string" then table.insert(list, id) end
 	end
 	for _, id in ipairs(UI.Icons.Ranks) do table.insert(list, id) end
+	for _, group in ipairs({UI.Icons.Teams, UI.Icons.Round}) do
+		for _, id in pairs(group) do table.insert(list, id) end
+	end
 	pcall(function() game:GetService("ContentProvider"):PreloadAsync(list) end)
 end)
 
@@ -691,7 +762,8 @@ local I = UI.Icons
 local TOAST_PICS = {
 	{I.PlaneDown, {"shot down"}},
 	{I.ShipSunk, {"sunk", "sank"}},
-	{I.Kill, {"eliminated", "killed by"}},
+	{I.Skull, {"killed by"}},
+	{I.Kill, {"eliminated"}},
 	{I.AirRaid, {"air raid"}},
 	{I.Storm, {"storm"}},
 	{I.Capture, {"captured", "capture point", "neutralized", "point %w+ lost", "lost the island", "held by the enemy"}},
@@ -788,14 +860,13 @@ function UI.toast(text, kind, title)
 	if not toastHolder then
 		local g = UI.screen("Notifications", 50)
 		toastHolder = UI.new("Frame", {
-			Name = "Holder", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 106),
+			Name = "Holder", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 8),
 			Size = UDim2.fromOffset(TOAST_W, 320), BackgroundTransparency = 1,
 		}, g)
 		UI.new("UIListLayout", {Padding = UDim.new(0, 0), HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder}, toastHolder)
-		-- сразу под панелью HUD.Stats с полоской раунда (12 + 46 + 4 + 26 при масштабе 1): на телефоне
-		-- панель сжата — и карточки поднимаются вслед за ней, а не висят посреди экрана
+		-- как оповещения на телефоне: сверху по центру, поверх панели золота и раунда (HUD.Stats той же ширины)
 		local s = UI.scale(toastHolder)
-		local function place() toastHolder.Position = UDim2.new(0.5, 0, 0, 12 + 84 * s.Scale) end
+		local function place() toastHolder.Position = UDim2.new(0.5, 0, 0, 8 * s.Scale) end
 		s:GetPropertyChangedSignal("Scale"):Connect(place)
 		place()
 	end
@@ -822,7 +893,8 @@ function UI.toast(text, kind, title)
 	local textW = TOAST_W - textX - 28
 	local msgH = TextService:GetTextSize(text, 16, UI.Medium, Vector2.new(textW, 1000)).Y
 	local titleH = title and 18 or 0
-	local h = math.max(picture and 66 or 56, msgH + titleH + 26)
+	-- не ниже панели золота с полоской раунда (12 + 46 + 4 + 26 = 88 от верха, карточка — с 8): закрывает её целиком
+	local h = math.max(82, msgH + titleH + 26)
 
 	toastN += 1
 	-- обёртка: её высота плавно растёт / схлопывается — соседи сдвигаются без рывков
@@ -839,6 +911,7 @@ function UI.toast(text, kind, title)
 	local pop = UI.new("UIScale", {Scale = 0.82}, card)
 	-- стекло: тёмный градиент сверху вниз и цвет вида, разлитый слева (градиент — на отдельной рамке:
 	-- UIGradient прямо в CanvasGroup тонировал бы всё содержимое, включая текст)
+	-- непрозрачное: карточка лежит поверх панели золота, цифры под ней просвечивать не должны
 	local glass = UI.new("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0}, card)
 	UI.new("UIGradient", {Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(34, 40, 52), Color3.fromRGB(16, 19, 26))}, glass)
 	local wash = UI.new("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = spec.color, BackgroundTransparency = 0, BorderSizePixel = 0}, card)
@@ -897,10 +970,10 @@ function UI.toast(text, kind, title)
 			local nextOne = table.remove(toastQueue, 1)
 			if nextOne then UI.toast(nextOne[1], nextOne[2], nextOne[3]) end
 		end)
-		-- уезжает вверх и тает, потом обёртка схлопывается — соседи плавно подтягиваются
-		tween(card, 0.25, {GroupTransparency = 1})
+		-- уезжает вверх за край экрана и тает, потом обёртка схлопывается — соседи плавно подтягиваются
+		tween(card, 0.3, {GroupTransparency = 1})
 		tween(shadow, 0.25, {BackgroundTransparency = 1})
-		tween(slot, 0.3, {Position = UDim2.fromOffset(0, -14)})
+		tween(slot, 0.3, {Position = UDim2.fromOffset(0, -(h + 30))}, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 		tween(pop, 0.3, {Scale = 0.92})
 		task.delay(0.2, function()
 			tween(wrap, 0.25, {Size = UDim2.new(1, 0, 0, 0)})
@@ -931,9 +1004,9 @@ function UI.toast(text, kind, title)
 			if entry.token == tok then close() end
 		end)
 	end
-	-- появление: место раздвигается, карточка падает сверху с пружинкой
+	-- появление: как оповещение на телефоне — выезжает из-за верхнего края с пружинкой
 	tween(wrap, 0.28, {Size = UDim2.new(1, 0, 0, h + TOAST_GAP)})
-	slot.Position = UDim2.fromOffset(0, -22)
+	slot.Position = UDim2.fromOffset(0, -(h + 30))
 	tween(slot, 0.45, {Position = UDim2.fromOffset(0, 0)}, Enum.EasingStyle.Back)
 	tween(card, 0.22, {GroupTransparency = 0})
 	tween(shadow, 0.3, {BackgroundTransparency = 0.6})

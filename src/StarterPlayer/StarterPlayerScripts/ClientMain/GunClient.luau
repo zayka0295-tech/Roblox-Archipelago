@@ -9,6 +9,7 @@
 -- Клиент только целится: попадание, урон и патроны считает сервер (GunService).
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 local SoundFx = require(script.Parent:WaitForChild("SoundFx"))
 
 local BASE_FOV = 70
@@ -41,45 +42,28 @@ return function(ctx)
 	gui.Enabled = false
 	gui.Parent = player:WaitForChild("PlayerGui")
 
-	local function bar(parent, size, color)
-		local f = Instance.new("Frame")
-		f.AnchorPoint = Vector2.new(0.5, 0.5)
-		f.Size = size
-		f.BackgroundColor3 = color or Color3.new(1, 1, 1)
-		f.BorderSizePixel = 0
-		local s = Instance.new("UIStroke")
-		s.Thickness = 1
-		s.Transparency = 0.4
-		s.Parent = f
-		f.Parent = parent
-		return f
-	end
 	local cross = Instance.new("Frame")
 	cross.AnchorPoint = Vector2.new(0.5, 0.5)
 	cross.Position = UDim2.fromScale(0.5, 0.5)
 	cross.Size = UDim2.fromOffset(1, 1)
 	cross.BackgroundTransparency = 1
 	cross.Parent = gui
-	local dot = bar(cross, UDim2.fromOffset(2, 2))
-	local arms = {
-		{bar(cross, UDim2.fromOffset(2, 9)), Vector2.new(0, -1)},
-		{bar(cross, UDim2.fromOffset(2, 9)), Vector2.new(0, 1)},
-		{bar(cross, UDim2.fromOffset(9, 2)), Vector2.new(-1, 0)},
-		{bar(cross, UDim2.fromOffset(9, 2)), Vector2.new(1, 0)},
-	}
+	-- картинка прицела (Icons.Crosshair): размер растёт вместе с разбросом
+	local crossImg = UI.new("ImageLabel", {AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(16, 16), BackgroundTransparency = 1,
+		Image = UI.Icons.Crosshair, ScaleType = Enum.ScaleType.Fit, ImageTransparency = 0.1}, cross)
+	-- перезарядка: крутящийся значок под прицелом
+	local reloadImg = UI.new("ImageLabel", {AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(22, 22), BackgroundTransparency = 1,
+		Image = UI.Icons.Reload, ScaleType = Enum.ScaleType.Fit, Visible = false}, cross)
+	-- хитмаркер: белый крест, в голову — красный
 	local hit = Instance.new("Frame")
 	hit.AnchorPoint = Vector2.new(0.5, 0.5)
 	hit.Position = UDim2.fromScale(0.5, 0.5)
-	hit.Size = UDim2.fromOffset(1, 1)
+	hit.Size = UDim2.fromOffset(24, 24)
 	hit.BackgroundTransparency = 1
 	hit.Visible = false
 	hit.Parent = gui
-	for i, r in ipairs({45, 135, 225, 315}) do
-		local b = bar(hit, UDim2.fromOffset(10, 2))
-		local a = math.rad(r)
-		b.Position = UDim2.fromOffset(math.cos(a) * 11, math.sin(a) * 11)
-		b.Rotation = r
-	end
+	local hitImg = UI.new("ImageLabel", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Image = UI.Icons.Hit, ScaleType = Enum.ScaleType.Fit}, hit)
+	local hitScale = UI.new("UIScale", {}, hit)
 
 	local panel = Instance.new("Frame")
 	panel.AnchorPoint = Vector2.new(1, 1)
@@ -347,13 +331,18 @@ return function(ctx)
 			pendingShot = true
 		end)
 	end
+	local hitN = 0
 	HitMarker.OnClientEvent:Connect(function(head)
-		for _, b in ipairs(hit:GetChildren()) do
-			if b:IsA("Frame") then b.BackgroundColor3 = head and Color3.fromRGB(255, 70, 60) or Color3.new(1, 1, 1) end
-		end
+		hitImg.Image = head and UI.Icons.HitKill or UI.Icons.Hit
 		hit.Visible = true
+		hitScale.Scale = 1.5
+		TweenService:Create(hitScale, TweenInfo.new(0.12, Enum.EasingStyle.Quad), {Scale = 1}):Play()
 		SoundFx.play("HitMarker")
-		task.delay(0.14, function() hit.Visible = false end)
+		hitN += 1
+		local my = hitN
+		task.delay(head and 0.25 or 0.16, function()
+			if hitN == my then hit.Visible = false end
+		end)
 	end)
 
 	------------------------------------------------------------------ кадр
@@ -453,10 +442,14 @@ return function(ctx)
 		if hum.FloorMaterial == Enum.Material.Air then spread *= 2 end
 		local vh = cam and cam.ViewportSize.Y or 720
 		local gap = 4 + math.tan(math.rad(spread)) / math.tan(math.rad(fovNow / 2)) * vh / 2
-		for _, arm in ipairs(arms) do
-			arm[1].Position = UDim2.fromOffset(arm[2].X * (gap + 4.5), arm[2].Y * (gap + 4.5))
+		-- мелкий: 16 px в покое, растёт с разбросом, но не больше 44
+		local d = math.clamp(8 + gap * 1.2, 16, 44)
+		crossImg.Size = UDim2.fromOffset(d, d)
+		reloadImg.Visible = reloading == true
+		if reloading then
+			reloadImg.Position = UDim2.fromOffset(0, d / 2 + 14)
+			reloadImg.Rotation = (nowT * 360) % 360
 		end
-		dot.Visible = aiming
 		-- патроны
 		if gun.Reserve then
 			ammoLbl.Text = ("%d / %d"):format(ammo, tool:GetAttribute("Reserve") or 0)

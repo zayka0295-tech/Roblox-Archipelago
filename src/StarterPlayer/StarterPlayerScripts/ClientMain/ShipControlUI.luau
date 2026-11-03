@@ -67,6 +67,7 @@ return function(ctx)
 	if touchOnly then
 		torpBtn = UI.roundButton(gui, "main", "TORPEDO", T.Bad)
 		chargeBtn = UI.roundButton(gui, "a1", "BOMB", T.Bad)
+		UI.roundIcon(chargeBtn, "Charge") -- глубинная бомба, а не авиабомба
 		surfaceBtn = UI.roundButton(gui, "a2", "▲\nUP")
 		diveBtn = UI.roundButton(gui, "a1", "▼\nDIVE")
 		UI.onHold(surfaceBtn, function() diveHeld.up = true end, function() diveHeld.up = false end)

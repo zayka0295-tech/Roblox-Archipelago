@@ -42,13 +42,42 @@ local function label(text, size, color, y, font)
 	l.Parent = bg
 	return l
 end
-label("ARCHIPELAGO", 46, TEXT, -70)
-label("WAR & TRADE", 18, GOLD, -30)
-local status = label("Loading…", 15, MUTED, 52, Enum.Font.GothamMedium)
+-- арт игры на весь экран (тот же id, что Icons.KeyArt; ReplicatedStorage здесь ещё может быть не загружен),
+-- снизу затемнение под полосу загрузки; надпись ARCHIPELAGO уже на самом арте
+local art = Instance.new("ImageLabel")
+art.Size = UDim2.fromScale(1, 1)
+art.BackgroundTransparency = 1
+art.Image = "rbxassetid://71909187303311"
+art.ScaleType = Enum.ScaleType.Crop
+art.Parent = bg
+local shade = Instance.new("Frame")
+shade.AnchorPoint = Vector2.new(0, 1)
+shade.Position = UDim2.fromScale(0, 1)
+shade.Size = UDim2.fromScale(1, 0.3)
+shade.BackgroundColor3 = BG
+shade.BorderSizePixel = 0
+shade.Parent = bg
+local grad = Instance.new("UIGradient")
+grad.Rotation = -90
+grad.Transparency = NumberSequence.new(0.1, 1)
+grad.Parent = shade
+-- надпись, пока арт не скачан
+local titles = {label("ARCHIPELAGO", 46, TEXT, -40), label("WAR & TRADE", 18, GOLD, 0)}
+local function artShown()
+	for _, l in ipairs(titles) do l.Visible = not art.IsLoaded end
+end
+artShown() -- сигнал IsLoaded приходит не всегда — ещё и каждый кадр ниже
+task.spawn(function() pcall(ContentProvider.PreloadAsync, ContentProvider, {art}) end)
+local status = label("Loading…", 16, TEXT, 0, Enum.Font.GothamBold)
+status.AnchorPoint = Vector2.new(0.5, 1)
+status.Position = UDim2.new(0.5, 0, 1, -54)
+local stroke = Instance.new("UIStroke")
+stroke.Thickness = 1.5
+stroke.Parent = status
 local barBg = Instance.new("Frame")
-barBg.AnchorPoint = Vector2.new(0.5, 0.5)
-barBg.Position = UDim2.new(0.5, 0, 0.5, 20)
-barBg.Size = UDim2.new(0, 360, 0, 8)
+barBg.AnchorPoint = Vector2.new(0.5, 1)
+barBg.Position = UDim2.new(0.5, 0, 1, -36)
+barBg.Size = UDim2.new(0, 360, 0, 10)
 barBg.BackgroundColor3 = PANEL
 barBg.BorderSizePixel = 0
 barBg.Parent = bg
@@ -67,6 +96,7 @@ local progress, shown = 0, 0
 local conn = RunService.RenderStepped:Connect(function(dt)
 	shown += (progress - shown) * math.min(1, dt * 6)
 	bar.Size = UDim2.fromScale(shown, 1)
+	artShown()
 end)
 local function stage(text, p)
 	status.Text = text
@@ -136,6 +166,10 @@ TweenService:Create(bg, info, {BackgroundTransparency = 1}):Play()
 for _, d in ipairs(bg:GetDescendants()) do
 	if d:IsA("TextLabel") then
 		TweenService:Create(d, info, {TextTransparency = 1}):Play()
+	elseif d:IsA("UIStroke") then
+		TweenService:Create(d, info, {Transparency = 1}):Play()
+	elseif d:IsA("ImageLabel") then
+		TweenService:Create(d, info, {ImageTransparency = 1}):Play()
 	elseif d:IsA("Frame") then
 		TweenService:Create(d, info, {BackgroundTransparency = 1}):Play()
 	end

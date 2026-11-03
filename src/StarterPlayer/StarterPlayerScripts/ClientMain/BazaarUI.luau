@@ -3,6 +3,7 @@
 -- Купленное — по атрибуту игрока Items (биты). После покупки — карточка «куплено» с большой 3D-моделью.
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VehiclePreview = require(script.Parent.VehiclePreview)
 
 local DIAMOND = Color3.fromRGB(120, 220, 255)
 
@@ -14,12 +15,7 @@ return function(ctx)
 	-- ViewportFrame с моделью kind, которая медленно крутится (views обновляет RenderStepped)
 	local views = {}
 	local function view(parent, kind, props, zoom)
-		local vp = UI.new("ViewportFrame", {
-			Name = "Preview", BackgroundColor3 = T.Panel, BorderSizePixel = 0,
-			Ambient = Color3.fromRGB(170, 170, 180), LightColor = Color3.fromRGB(255, 250, 240), LightDirection = Vector3.new(-1, -2, -1),
-		}, parent)
-		for k, v in pairs(props or {}) do vp[k] = v end
-		UI.corner(vp, 6)
+		local vp = VehiclePreview.frame(UI, parent, props)
 		local cam = Instance.new("Camera")
 		cam.FieldOfView = 30
 		cam.Parent = vp
@@ -38,7 +34,7 @@ return function(ctx)
 			m.Parent = vp
 			local cf, size = m:GetBoundingBox()
 			v.center = cf.Position
-			v.dist = size.Magnitude / 2 / math.tan(math.rad(cam.FieldOfView / 2)) * 0.85 / (zoom or 1)
+			v.dist = size.Magnitude / 2 / math.tan(math.rad(cam.FieldOfView / 2)) * 0.7 / (zoom or 1)
 			table.insert(views, v)
 		end)
 		return v
@@ -51,7 +47,7 @@ return function(ctx)
 	UI.scale(panel)
 	UI.padding(panel, 16)
 	UI.label(panel, "★ MILITARY BAZAAR", {TextSize = 28, Size = UDim2.new(1, -160, 0, 32), TextColor3 = T.Gold})
-	local balance = UI.label(panel, "", {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 4), Size = UDim2.fromOffset(200, 26), TextSize = 20, TextColor3 = DIAMOND, TextXAlignment = Enum.TextXAlignment.Right})
+	local balance = UI.money(panel, {{UI.Icons.Diamond, DIAMOND}}, {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 2), Size = UDim2.fromOffset(200, 28), TextSize = 20})
 	local list = UI.new("ScrollingFrame", {
 		Position = UDim2.fromOffset(0, 44), Size = UDim2.new(1, 0, 1, -104), BackgroundTransparency = 1, BorderSizePixel = 0,
 		ScrollBarThickness = 4, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(),
@@ -78,9 +74,9 @@ return function(ctx)
 	local function showBought(it)
 		if doneView then
 			for i, v in ipairs(views) do if v == doneView then table.remove(views, i) break end end
-			doneView.vp:Destroy()
+			doneView.vp.Parent:Destroy()
 		end
-		doneView = view(done, it.Preview, {Position = UDim2.fromOffset(0, 38), Size = UDim2.new(1, 0, 1, -150), BackgroundColor3 = T.Panel2}, 1.15)
+		doneView = view(done, it.Preview, {Position = UDim2.fromOffset(0, 38), Size = UDim2.new(1, 0, 1, -150)}, 1.15)
 		doneTitle.Text = string.upper(it.Name) .. " UNLOCKED!"
 		doneHint.Text = it.Description
 		done.Visible = true
@@ -98,7 +94,7 @@ return function(ctx)
 
 	local function refresh()
 		local dia = player:GetAttribute("Diamonds") or 0
-		balance.Text = "💎 " .. dia
+		balance(1, tostring(dia))
 		for _, r in ipairs(rows) do
 			if owns(r.item) then
 				UI.setEnabled(r.buy, false, T.Good, "OWNED ✓")
