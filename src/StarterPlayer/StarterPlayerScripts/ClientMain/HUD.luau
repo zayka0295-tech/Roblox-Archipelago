@@ -39,10 +39,9 @@ return function(ctx)
 	end
 
 	local btnSpawn = UI.button(side, "SPAWN POINT", T.Panel2, {Position = UDim2.fromOffset(0, 84), Size = UDim2.new(1, 0, 0, 40), TextSize = 15})
-	local btnBoard = UI.button(side, "LEADERS", T.Panel2, {Position = UDim2.fromOffset(0, 130), Size = UDim2.new(0.5, -4, 0, 40), TextSize = 15})
-	local btnLobby = UI.button(side, "LOBBY", T.Panel2, {Position = UDim2.new(0.5, 4, 0, 130), Size = UDim2.new(0.5, -4, 0, 40), TextSize = 15})
+	local btnLobby = UI.button(side, "LOBBY", T.Panel2, {Position = UDim2.fromOffset(0, 130), Size = UDim2.new(1, 0, 0, 40), TextSize = 15})
 	local spawnInfo = UI.label(side, "", {Position = UDim2.fromOffset(2, 176), Size = UDim2.new(1, 0, 0, 18), TextSize = 13, Font = UI.Medium, TextColor3 = T.Muted})
-	for _, b in ipairs({btnSpawn, btnBoard, btnLobby}) do UI.stroke(b) end
+	for _, b in ipairs({btnSpawn, btnLobby}) do UI.stroke(b) end
 
 	local function refreshStats()
 		gold.Text = tostring(ctx.stat("Gold"))
@@ -102,9 +101,6 @@ return function(ctx)
 
 	btnSpawn.Activated:Connect(function()
 		ctx.screens.SpawnSelectionUI.open("change")
-	end)
-	btnBoard.Activated:Connect(function()
-		ctx.screens.LeaderboardUI.toggle()
 	end)
 	local busy = false
 	btnLobby.Activated:Connect(function()
