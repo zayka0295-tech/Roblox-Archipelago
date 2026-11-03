@@ -792,7 +792,12 @@ function UI.toast(text, kind, title)
 			Size = UDim2.fromOffset(TOAST_W, 320), BackgroundTransparency = 1,
 		}, g)
 		UI.new("UIListLayout", {Padding = UDim.new(0, 0), HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder}, toastHolder)
-		UI.scale(toastHolder)
+		-- сразу под панелью HUD.Stats с полоской раунда (12 + 46 + 4 + 26 при масштабе 1): на телефоне
+		-- панель сжата — и карточки поднимаются вслед за ней, а не висят посреди экрана
+		local s = UI.scale(toastHolder)
+		local function place() toastHolder.Position = UDim2.new(0.5, 0, 0, 12 + 84 * s.Scale) end
+		s:GetPropertyChangedSignal("Scale"):Connect(place)
+		place()
 	end
 
 	local key = (title or "") .. "\0" .. text
