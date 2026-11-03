@@ -607,6 +607,27 @@ end
 
 -- сумма с монеткой: строка [иконка][число], прижатая к краю по TextXAlignment из props (по умолчанию вправо).
 -- items = {{image, color}, ...} — несколько сумм подряд; возвращает set(i, text)
+-- текст награды: «120 gold + 5 💎» (sep — разделитель)
+function UI.rewardText(gold, diamonds, sep)
+	local parts = {}
+	if (gold or 0) > 0 then table.insert(parts, ("%d gold"):format(gold)) end
+	if (diamonds or 0) > 0 then table.insert(parts, ("%d 💎"):format(diamonds)) end
+	return table.concat(parts, sep or " + ")
+end
+
+-- предмет из Decor каждой базы команд (Map.Teams.<Team>Base.Decor.<name>): список {база, предмет}
+function UI.baseDecor(name)
+	local list = {}
+	local map = workspace:FindFirstChild("Map")
+	local teams = map and map:FindFirstChild("Teams")
+	for _, base in ipairs(teams and teams:GetChildren() or {}) do
+		local decor = base:FindFirstChild("Decor")
+		local obj = decor and decor:FindFirstChild(name)
+		if obj then table.insert(list, {base, obj}) end
+	end
+	return list
+end
+
 function UI.money(parent, items, props)
 	props = props or {}
 	local size = props.TextSize or 18

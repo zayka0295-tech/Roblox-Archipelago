@@ -13,6 +13,7 @@ local TeamService = require(Services.TeamService)
 local CombatService = require(Services.CombatService)
 local CarrierService = require(Services.CarrierService)
 local TurretService = require(Services.TurretService)
+local SinkFx = require(Services.SinkFx)
 local Notifier = require(Services.Notifier)
 local AbandonTimer = require(Services.AbandonTimer)
 local TreasuryService = require(Services.TreasuryService)
@@ -322,15 +323,8 @@ local function spawnShip(kind, team, owner, donor)
 		local pr = plat.Name == "LadderPlatform" and plat:FindFirstChild("BoardPrompt")
 		local target = plat:GetAttribute("DeckTarget")
 		if pr and target then
-			pr.Triggered:Connect(function(player)
-				if st.dead then return end
-				local char = player.Character
-				local hum = char and char:FindFirstChildOfClass("Humanoid")
-				local hrp = char and char:FindFirstChild("HumanoidRootPart")
-				if not hum or hum.Health <= 0 or not hrp or hum.SeatPart then return end
-				if (hrp.Position - plat.Position).Magnitude > 18 then return end
-				AntiCheat.moveTo(player, char, m:GetPivot() * CFrame.new(target), plat)
-			end)
+			AntiCheat.ladder(pr, plat, 18, function() return m:GetPivot() * CFrame.new(target), plat end,
+				function() return not st.dead end)
 		end
 	end
 	if cfg.Team and donor then
@@ -637,30 +631,11 @@ local function sink(st, killer)
 	end
 
 	task.spawn(function()
-		-- серия взрывов
-		local n = st.cfg.Team and 5 or 3
-		for i = 1, n do
-			if not m.Parent then return end
-			local e = Instance.new("Explosion")
-			e.BlastPressure = 0
-			e.DestroyJointRadiusPercent = 0
-			e.BlastRadius = st.cfg.Team and 22 or 14
-			e.Position = (m:GetPivot() * CFrame.new((math.random() - 0.5) * st.cfg.Beam, 6, (math.random() - 0.5) * st.cfg.Length * 0.8)).Position
-			e.Parent = workspace
-			task.wait(0.35)
-		end
-		if not m.Parent then return end
-		-- крен на борт и медленное погружение; сквозь дно — без столкновений
-		for _, d in ipairs(m:GetDescendants()) do
-			if d:IsA("BasePart") then d.CanCollide = false end
-		end
-		st.ao.Responsiveness = 2
-		st.ao.CFrame = CFrame.Angles(0, st.yaw, 0) * CFrame.Angles(math.rad(10), 0, math.rad(22))
-		st.lv.VectorVelocity = Vector3.new(0, -3.5, 0)
-		local t0 = os.clock()
-		while m.Parent and st.root.Position.Y > -95 and os.clock() - t0 < 50 do
-			task.wait(0.5)
-		end
+		-- взрывы, крен на борт и медленное погружение (сквозь дно — без столкновений)
+		local big = st.cfg.Team
+		if not SinkFx.run(m, {explosions = big and 5 or 3, radius = big and 22 or 14, width = st.cfg.Beam, length = st.cfg.Length * 0.8,
+			ao = st.ao, lv = st.lv, root = st.root, yaw = st.yaw, pitch = 10, roll = 22, speed = 3.5, floor = -95, timeout = 50,
+			noCollide = true}) then return end
 		forget(st)
 		if m.Parent then m:Destroy() end
 		if st.cfg.Team then

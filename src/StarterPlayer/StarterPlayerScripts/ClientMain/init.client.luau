@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local Config = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("GameConfig"))
+local Islands = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Islands"))
 local GameState = ReplicatedStorage:WaitForChild("GameState")
 local UI = require(script:WaitForChild("UIKit"))
 
@@ -51,11 +52,7 @@ end
 
 -- аэродром на острове (Config.IslandAirfield): доступен команде?, текст, запись острова
 function ctx.islandStatus(team)
-	local id = Config.IslandAirfield and Config.IslandAirfield.Island
-	local def
-	for _, d in ipairs(Config.Islands) do
-		if d.Id == id then def = d end
-	end
+	local def = Islands.airfield()
 	if not def then return false, "No airfield", nil end
 	local owner = GameState:GetAttribute("Island_" .. def.Id .. "_Owner") or "Neutral"
 	if team and owner == team then return true, ("Point %s · %s"):format(def.Letter, def.Name), def end

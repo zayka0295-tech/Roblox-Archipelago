@@ -64,12 +64,9 @@ return function(ctx)
 	-- ещё не подхваченных Капитанов (см. цикл обновления ниже)
 	local hooked = setmetatable({}, {__mode = "k"})
 	local function scanCaptains()
-		local map = workspace:FindFirstChild("Map")
-		local teams = map and map:FindFirstChild("Teams")
-		for _, base in ipairs(teams and teams:GetChildren() or {}) do
-			local decor = base:FindFirstChild("Decor")
-			local cap = decor and decor:FindFirstChild("Captain")
-			if cap and not hooked[cap] then
+		for _, e in ipairs(UI.baseDecor("Captain")) do
+			local cap = e[2]
+			if not hooked[cap] then
 				hooked[cap] = true
 				task.spawn(hookCaptain, cap)
 			end

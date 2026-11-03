@@ -75,6 +75,22 @@ function AntiCheat.moveTo(player, char, cf, ref)
 	char:PivotTo(cf)
 end
 
+-- кнопка трапа/лестницы у воды (авианосец, корабли, нефтяные платформы): подъём на палубу.
+-- maxDist — от площадки plat; target() → CFrame наверху и деталь, с которой он движется (или nil — нельзя);
+-- canUse() — дополнительное условие (корабль цел и т.п.)
+function AntiCheat.ladder(prompt, plat, maxDist, target, canUse)
+	prompt.Triggered:Connect(function(player)
+		if canUse and not canUse() then return end
+		local char = player.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		if not hum or hum.Health <= 0 or not hrp or hum.SeatPart then return end
+		if (hrp.Position - plat.Position).Magnitude > maxDist then return end
+		local cf, ref = target()
+		if cf then AntiCheat.moveTo(player, char, cf, ref) end
+	end)
+end
+
 -- игрок не дальше dist от точки pos (кресла и кнопки: ProximityPrompt читом жмут с любого расстояния)
 function AntiCheat.near(player, pos, dist)
 	local char = player.Character

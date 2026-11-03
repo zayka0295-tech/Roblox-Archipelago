@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 local Debris = game:GetService("Debris")
 local Config = require(ReplicatedStorage.Config.GameConfig)
+local Islands = require(ReplicatedStorage.Shared.Islands)
 
 local Services = script.Parent
 local DataService = require(Services.DataService)
@@ -76,17 +77,9 @@ function SpawnService.basePoints(team)
 end
 
 -- аэродром на острове: остров (запись Config.Islands) и площадки появления на перроне
-local function airfieldIsland()
-	local id = Config.IslandAirfield and Config.IslandAirfield.Island
-	for _, def in ipairs(Config.Islands) do
-		if def.Id == id then return def end
-	end
-	return nil
-end
+local airfieldIsland = Islands.airfield
 local function islandPads()
-	local def = airfieldIsland()
-	local outpost = def and workspace.Map.Neutral:FindFirstChild(def.Outpost)
-	local strip = outpost and outpost:FindFirstChild("Airstrip")
+	local strip = Islands.airstrip()
 	local folder = strip and strip:FindFirstChild("Spawns")
 	local list = {}
 	for _, c in ipairs(folder and folder:GetChildren() or {}) do

@@ -107,8 +107,24 @@ local function updateBoard(list)
 	end
 end
 
+-- ушедшие игроки и имена, которые в таблицу уже не попадут (ниже последнего места), — не храним:
+-- иначе за дни работы сервера таблицы растут на каждого, кто заходил
+local function prune()
+	if #current < Config.Data.LeaderboardSize then return end
+	local keep = {}
+	for _, e in ipairs(current) do keep[e.userId] = true end
+	for _, p in ipairs(Players:GetPlayers()) do keep[p.UserId] = true end
+	for id in pairs(offline) do
+		if not keep[id] then offline[id] = nil end
+	end
+	for id in pairs(names) do
+		if not keep[id] and not global[id] then names[id] = nil end
+	end
+end
+
 local function broadcast(force)
 	current = build()
+	prune()
 	local parts = {}
 	for _, e in ipairs(current) do
 		table.insert(parts, e.userId .. ":" .. e.kills .. ":" .. e.name)

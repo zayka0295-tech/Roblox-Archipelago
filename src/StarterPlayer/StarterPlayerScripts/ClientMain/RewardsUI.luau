@@ -22,12 +22,7 @@ return function(ctx)
 		sec = math.max(0, math.floor(sec))
 		return sec >= 3600 and ("%d:%02d:%02d"):format(sec // 3600, sec // 60 % 60, sec % 60) or ("%d:%02d"):format(sec // 60, sec % 60)
 	end
-	local function rewardText(gold, diamonds)
-		local parts = {}
-		if (gold or 0) > 0 then table.insert(parts, ("%d gold"):format(gold)) end
-		if (diamonds or 0) > 0 then table.insert(parts, ("%d 💎"):format(diamonds)) end
-		return table.concat(parts, " + ")
-	end
+	local rewardText = UI.rewardText
 
 	---------------------------------------------------------------- кнопка на экране (под кнопкой ранга)
 	local hudGui = UI.screen("RewardsButton", 6)

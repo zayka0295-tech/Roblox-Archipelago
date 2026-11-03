@@ -72,12 +72,9 @@ return function(ctx)
 	-- «!» над досками баз (стриминг: доски подгружаются позже — применяем и в цикле ниже)
 	local allDone = false
 	local function applyMark()
-		local map = workspace:FindFirstChild("Map")
-		local teams = map and map:FindFirstChild("Teams")
-		for _, base in ipairs(teams and teams:GetChildren() or {}) do
-			local decor = base:FindFirstChild("Decor")
-			local board = decor and decor:FindFirstChild("QuestBoard")
-			local bb = board and board:FindFirstChild("Board") and board.Board:FindFirstChild("BillboardGui")
+		for _, e in ipairs(UI.baseDecor("QuestBoard")) do
+			local board = e[2]
+			local bb = board:FindFirstChild("Board") and board.Board:FindFirstChild("BillboardGui")
 			if bb then bb.Enabled = not allDone end
 		end
 	end

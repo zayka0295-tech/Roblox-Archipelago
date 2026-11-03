@@ -456,14 +456,7 @@ local function hookLadders(rig)
 		local pr = plat.Name == "LadderPlatform" and plat:FindFirstChild("BoardPrompt")
 		local offset = plat:GetAttribute("ClimbOffset")
 		if pr and offset then
-			pr.Triggered:Connect(function(player)
-				local char = player.Character
-				local hum = char and char:FindFirstChildOfClass("Humanoid")
-				local hrp = char and char:FindFirstChild("HumanoidRootPart")
-				if not hum or hum.Health <= 0 or not hrp or hum.SeatPart then return end
-				if (hrp.Position - plat.Position).Magnitude > 18 then return end
-				AntiCheat.moveTo(player, char, plat.CFrame * CFrame.new(offset), plat)
-			end)
+			AntiCheat.ladder(pr, plat, 18, function() return plat.CFrame * CFrame.new(offset), plat end)
 		end
 	end
 end

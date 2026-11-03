@@ -159,8 +159,13 @@ function JudgeService.init()
 	Players.PlayerAdded:Connect(joined)
 	Players.PlayerRemoving:Connect(function(p)
 		joinedAt[p] = nil
-		-- голоса против ушедшего не стираем: иначе перезашёл — и чист. Они сами сгорят через VoteTTL.
+		-- голоса против ушедшего не стираем сразу: иначе перезашёл — и чист. Через VoteTTL они сгорели бы
+		-- всё равно — тогда и убираем запись (если он не вернулся), чтобы таблица не росла
 		owners[p.UserId] = nil
+		local id = p.UserId
+		task.delay(J.VoteTTL, function()
+			if not Players:GetPlayerByUserId(id) then votes[id] = nil end
+		end)
 	end)
 	ReplicatedStorage.Remotes.Judge.OnServerInvoke = function(player, action, id)
 		if not Guard.bucket(player, "Judge", 2, 6) then return fail("Too fast, please wait") end

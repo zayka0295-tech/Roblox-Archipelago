@@ -10,6 +10,7 @@ local DataService = require(Services.DataService)
 local TeamService = require(Services.TeamService)
 local Notifier = require(Services.Notifier)
 local TreasuryService = require(Services.TreasuryService)
+local SinkFx = require(Services.SinkFx)
 local Guard = require(Services.RemoteGuard)
 local AntiCheat = require(Services.AntiCheatService)
 
@@ -151,17 +152,11 @@ local function setupHelm(team, model)
 		local board = plat.Name == "LadderPlatform" and plat:FindFirstChild("BoardPrompt")
 		if board then
 			local sx = plat:GetAttribute("BoardSide") or 1
-			board.Triggered:Connect(function(player)
-				if s.model ~= model or s.state ~= "Active" then return end
-				local char = player.Character
-				local hum = char and char:FindFirstChildOfClass("Humanoid")
-				local hrp = char and char:FindFirstChild("HumanoidRootPart")
-				if not hum or hum.Health <= 0 or not hrp or hum.SeatPart then return end
-				if (hrp.Position - plat.Position).Magnitude > 16 then return end
+			AntiCheat.ladder(board, plat, 16, function()
 				local hull = model:FindFirstChild("Hull")
-				if not hull then return end
-				AntiCheat.moveTo(player, char, hull.CFrame * CFrame.new(sx * 36, 20, -110) * CFrame.Angles(0, sx > 0 and math.pi / 2 or -math.pi / 2, 0), hull)
-			end)
+				if not hull then return nil end
+				return hull.CFrame * CFrame.new(sx * 36, 20, -110) * CFrame.Angles(0, sx > 0 and math.pi / 2 or -math.pi / 2, 0), hull
+			end, function() return s.model == model and s.state == "Active" end)
 		end
 	end
 	prompt.Triggered:Connect(function(player)
@@ -366,30 +361,10 @@ function CarrierService.destroy(team, attacker)
 	end
 
 	task.spawn(function()
-		-- серия взрывов по палубе
-		for _ = 1, 7 do
-			if not model.Parent then break end
-			local e = Instance.new("Explosion")
-			e.BlastPressure = 0
-			e.DestroyJointRadiusPercent = 0
-			e.BlastRadius = 30
-			e.Position = (model:GetPivot() * CFrame.new(math.random(-30, 30), 20, math.random(-140, 140))).Position
-			e.Parent = workspace
-			task.wait(0.35)
-		end
-		if model.Parent and ctrl then
-			-- крен и медленное погружение; сквозь дно — без столкновений
-			for _, d in ipairs(model:GetDescendants()) do
-				if d:IsA("BasePart") then d.CanCollide = false end
-			end
-			ctrl.ao.Responsiveness = 2
-			ctrl.ao.CFrame = CFrame.Angles(0, ctrl.yaw, 0) * CFrame.Angles(math.rad(8), 0, math.rad(18))
-			ctrl.lv.VectorVelocity = Vector3.new(0, -3, 0)
-			local t0 = os.clock()
-			while model.Parent and ctrl.root.Position.Y > -60 and os.clock() - t0 < 45 do
-				task.wait(0.5)
-			end
-		end
+		-- взрывы по палубе, крен и медленное погружение (сквозь дно — без столкновений)
+		SinkFx.run(model, {explosions = 7, radius = 30, width = 60, length = 280, height = 20,
+			ao = ctrl and ctrl.ao, lv = ctrl and ctrl.lv, root = ctrl and ctrl.root, yaw = ctrl and ctrl.yaw,
+			pitch = 8, roll = 18, speed = 3, floor = -60, timeout = 45, noCollide = true})
 		if model.Parent then model:Destroy() end
 		-- новый раунд мог уже убрать его и спустить новый — тогда состояние не трогаем
 		if s.sinkModel ~= model then return end

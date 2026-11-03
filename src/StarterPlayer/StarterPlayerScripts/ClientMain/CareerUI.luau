@@ -46,13 +46,9 @@ return function(ctx)
 	-- {статуя, своя ли база}
 	local function statues()
 		local list = {}
-		local map = workspace:FindFirstChild("Map")
-		local teams = map and map:FindFirstChild("Teams")
 		local mine = ctx.team()
-		for _, base in ipairs(teams and teams:GetChildren() or {}) do
-			local decor = base:FindFirstChild("Decor")
-			local st = decor and decor:FindFirstChild("CareerStatue")
-			if st then table.insert(list, {st, mine ~= nil and base.Name == mine .. "Base"}) end
+		for _, e in ipairs(UI.baseDecor("CareerStatue")) do
+			table.insert(list, {e[2], mine ~= nil and e[1].Name == mine .. "Base"})
 		end
 		return list
 	end
@@ -402,12 +398,7 @@ return function(ctx)
 	local state
 	local busy = false
 	local selStage -- выбранная ступень (nil — показываем текущую)
-	local function rewardText(r)
-		local parts = {}
-		if (r.Gold or 0) > 0 then table.insert(parts, ("%d gold"):format(r.Gold)) end
-		if (r.Diamonds or 0) > 0 then table.insert(parts, ("%d 💎"):format(r.Diamonds)) end
-		return table.concat(parts, "\n")
-	end
+	local function rewardText(r) return UI.rewardText(r.Gold, r.Diamonds, "\n") end
 	local function render()
 		local st = state
 		if not st then return end

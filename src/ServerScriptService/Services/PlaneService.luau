@@ -8,6 +8,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local RunService = game:GetService("RunService")
 local Debris = game:GetService("Debris")
 local Config = require(ReplicatedStorage.Config.GameConfig)
+local Islands = require(ReplicatedStorage.Shared.Islands)
 
 local Services = script.Parent
 local DataService = require(Services.DataService)
@@ -157,18 +158,8 @@ end
 
 ------------------------------------------------------------------ вызов
 -- аэродром на острове (Config.IslandAirfield): определение острова и модель Airstrip в его аутпосте
-local function airfieldIsland()
-	local id = Config.IslandAirfield and Config.IslandAirfield.Island
-	for _, def in ipairs(Config.Islands) do
-		if def.Id == id then return def end
-	end
-	return nil
-end
-local function airstrip()
-	local def = airfieldIsland()
-	local outpost = def and workspace.Map.Neutral:FindFirstChild(def.Outpost)
-	return outpost and outpost:FindFirstChild("Airstrip")
-end
+local airfieldIsland = Islands.airfield
+local airstrip = Islands.airstrip
 
 local function spawnCFrame(team, where, carrier, P)
 	P = P or Config.Planes.Fighter

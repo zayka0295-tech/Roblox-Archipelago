@@ -18,6 +18,7 @@ local CombatService = require(Services.CombatService)
 local CaptureService = require(Services.CaptureService)
 local Notifier = require(Services.Notifier)
 local TreasuryService = require(Services.TreasuryService)
+local SinkFx = require(Services.SinkFx)
 
 local LogisticsService = {}
 local L = Config.Logistics
@@ -737,21 +738,8 @@ local function sink(route, st, killer)
 	setState(route, "Sunk")
 	route.respawnAt = os.clock() + (L.RespawnDelay or 30)
 	task.spawn(function()
-		for _ = 1, 3 do
-			if not m.Parent then break end
-			local e = Instance.new("Explosion")
-			e.BlastPressure = 0
-			e.DestroyJointRadiusPercent = 0
-			e.BlastRadius = 12
-			e.Position = (m:GetPivot() * CFrame.new((math.random() - 0.5) * 10, 6, (math.random() - 0.5) * 40)).Position
-			e.Parent = workspace
-			task.wait(0.35)
-		end
-		st.ao.Responsiveness = 2
-		st.ao.CFrame = CFrame.Angles(0, st.yaw, 0) * CFrame.Angles(math.rad(10), 0, math.rad(22))
-		st.lv.VectorVelocity = Vector3.new(0, -3.5, 0)
-		local t0 = os.clock()
-		while m.Parent and st.root.Position.Y > -60 and os.clock() - t0 < 30 do task.wait(0.5) end
+		SinkFx.run(m, {explosions = 3, radius = 12, width = 10, length = 40,
+			ao = st.ao, lv = st.lv, root = st.root, yaw = st.yaw, pitch = 10, roll = 22, speed = 3.5, floor = -60, timeout = 30})
 		if m.Parent then m:Destroy() end
 	end)
 end
