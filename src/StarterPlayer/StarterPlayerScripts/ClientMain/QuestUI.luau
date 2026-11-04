@@ -22,7 +22,7 @@ local HINT = {
 	deploy = "Step on a deploy pad in the lobby",
 	plane = "Hop into a plane at your base airfield",
 	helm = "Board a ship at the shipyard and sit at the helm",
-	firstkill = "Players or bots — both count",
+	firstkill = "Any enemy soldier counts",
 	capture = "Stand in an island's capture zone with your team",
 	reward = "Press the 🎁 REWARDS button on the right",
 }

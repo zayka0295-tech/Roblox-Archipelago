@@ -16,6 +16,7 @@ local PlaneService = require(Services.PlaneService)
 local ShipService = require(Services.ShipService)
 local LogisticsService = require(Services.LogisticsService)
 local NavalWeaponsService = require(Services.NavalWeaponsService)
+local BotNames = require(Services.BotNames)
 
 local BotService = {}
 local B = Config.Bots
@@ -32,8 +33,6 @@ local ANIM = {
 	tool = "rbxassetid://507768375",
 	sit = "rbxassetid://2506281703",
 }
-local ROLE_NAME = {captain = "captain", carrierGunner = "gunner", baseGunner = "AA gunner", pilot = "pilot", infantry = "infantry",
-	bsCaptain = "battleship captain", bsGunner = "turret gunner", gbCaptain = "gunboat", subCaptain = "submarine"}
 local SHIP_ROLE = {bsCaptain = "Battleship", gbCaptain = "Gunboat", subCaptain = "Submarine"}
 -- ботам разрешены только истребитель (spawnForBot), катер и зенитки своей базы; авианосец, линкор, подлодка и их турели — только игрокам
 local ALLOWED_ROLE = {pilot = true, gbCaptain = true, baseGunner = true}
@@ -52,10 +51,14 @@ local function clampArena(p)
 end
 
 ------------------------------------------------------------------ создание бота
-local function makeBot(team, label)
+local SKIN = {Color3.fromRGB(234, 184, 146), Color3.fromRGB(255, 204, 153), Color3.fromRGB(204, 142, 105),
+	Color3.fromRGB(160, 105, 70), Color3.fromRGB(105, 64, 40), Color3.fromRGB(245, 205, 48)}
+
+-- slot: ник, ранг и цвет кожи хранятся в слоте — после смерти бот возвращается тем же «игроком»
+local function makeBot(team, label, slot)
 	local tc = Config.Teams[team].Color
 	local desc = Instance.new("HumanoidDescription")
-	desc.HeadColor = Color3.fromRGB(234, 184, 146)
+	desc.HeadColor = slot and slot.skin or SKIN[1]
 	desc.TorsoColor = tc
 	desc.LeftArmColor = tc:Lerp(Color3.new(0, 0, 0), 0.2)
 	desc.RightArmColor = tc:Lerp(Color3.new(0, 0, 0), 0.2)
@@ -68,7 +71,7 @@ local function makeBot(team, label)
 		warn("[BotService] failed to create bot: " .. tostring(model))
 		return nil
 	end
-	model.Name = "Bot_" .. label:gsub("%s", "_")
+	model.Name = label
 	-- техника (катера, самолёты) видна игрокам на любом расстоянии (Persistent) — бот за штурвалом тоже
 	-- должен, иначе стриминг выгружает его: катер без капитана, и попасть в него нельзя
 	model.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
@@ -80,27 +83,14 @@ local function makeBot(team, label)
 	model:SetAttribute("Team", team)
 	model:SetAttribute("State", "Deployed")
 	model:SetAttribute("DisplayName", label)
+	if slot and slot.rank then model:SetAttribute("Rank", slot.rank) end -- RankTags рисует ранг, как у игроков
 	local hum = model:FindFirstChildOfClass("Humanoid")
 	hum.MaxHealth = B.Health
 	hum.Health = B.Health
 	hum.WalkSpeed = B.WalkSpeed
-	hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-	local head = model:FindFirstChild("Head")
-	local bb = Instance.new("BillboardGui")
-	bb.Size = UDim2.fromOffset(150, 22)
-	bb.StudsOffset = Vector3.new(0, 2.2, 0)
-	bb.MaxDistance = 140
-	bb.Adornee = head
-	bb.Parent = head
-	local t = Instance.new("TextLabel")
-	t.Size = UDim2.fromScale(1, 1)
-	t.BackgroundTransparency = 1
-	t.Text = label
-	t.TextColor3 = tc
-	t.TextStrokeTransparency = 0.3
-	t.Font = Enum.Font.GothamBold
-	t.TextScaled = true
-	t.Parent = bb
+	-- имя над головой — стандартное, как у игроков (не отличить по табличке)
+	hum.DisplayName = label
+	hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
 	return model
 end
 
@@ -757,8 +747,16 @@ end
 
 local function spawnSlot(slot)
 	slot.spawning = true
-	local label = ("Bot %s-%d · %s"):format(slot.team == "Blue" and "A" or "B", slot.number, ROLE_NAME[slot.role])
-	local bot = makeBot(slot.team, label)
+	if not slot.nick then
+		local used = {}
+		for _, s in ipairs(slots) do if s.nick then used[s.nick] = true end end
+		for _, p in ipairs(Players:GetPlayers()) do used[p.DisplayName] = true; used[p.Name] = true end
+		slot.nick = BotNames.new(used)
+		slot.rank = BotNames.rank(#Config.Ranks.List)
+		slot.skin = SKIN[math.random(1, #SKIN - 1)]
+	end
+	local label = slot.nick
+	local bot = makeBot(slot.team, label, slot)
 	slot.spawning = false
 	if not bot then
 		slot.respawnAt = os.clock() + 5

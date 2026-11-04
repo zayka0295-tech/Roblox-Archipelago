@@ -199,20 +199,42 @@ local function claim(player, kind, index)
 	return true, "Reward claimed: " .. rewardText(res)
 end
 
--- новичок пришёл по приглашению (Join Data от SocialService:PromptGameInvite): награда ему и пригласившему
-local function checkReferral(player)
+-- кто привёл игрока: приглашение (Join Data от SocialService:PromptGameInvite — ReferredByPlayerId)
+-- или вход через «Join» в профиле друга (FollowUserId; тогда проверяем, что они правда друзья)
+local function referrer(player)
 	local ok, jd = pcall(function() return player:GetJoinData() end)
 	local ref = ok and type(jd) == "table" and tonumber(jd.ReferredByPlayerId) or 0
-	if not ref or ref <= 0 or ref == player.UserId then return end
-	local got = DataService.apply(player, function(data)
-		if has(data.Flags, FLAG_REFERRED) or data.PlaySec >= I.NewPlayerMaxSec then return nil end
+	if ref and ref > 0 and ref ~= player.UserId then return ref end
+	local follow = player.FollowUserId
+	if follow and follow > 0 and follow ~= player.UserId and Players:GetPlayerByUserId(follow) then
+		local okF, friends = pcall(function() return player:IsFriendsWith(follow) end)
+		if okF and friends then return follow end
+	end
+	return nil
+end
+
+-- новичок пришёл по приглашению друга: награда ему и пригласившему (если тот на этом сервере)
+local function checkReferral(player)
+	local ref = referrer(player)
+	if not ref then return end
+	local inviter = Players:GetPlayerByUserId(ref)
+	local got, why = DataService.apply(player, function(data)
+		if has(data.Flags, FLAG_REFERRED) then return nil, "Done" end
+		if data.PlaySec >= I.NewPlayerMaxSec then return nil, "NotNew" end
 		data.Flags = bit32.bor(data.Flags, FLAG_REFERRED)
 		return {Gold = I.NewPlayerGold}
 	end, true)
-	if not got then return end
+	if not got then
+		-- пригласивший должен понимать, почему золота нет
+		if inviter and why == "NotNew" then
+			Notifier.send(inviter, ("%s has already played here — invite rewards are only for new players"):format(player.DisplayName), "info")
+		elseif inviter and why == "Done" then
+			Notifier.send(inviter, ("%s already got an invite reward before"):format(player.DisplayName), "info")
+		end
+		return
+	end
 	task.spawn(DataService.save, player)
 	Notifier.send(player, ("Welcome! A friend invited you: +%d gold"):format(I.NewPlayerGold), "success")
-	local inviter = Players:GetPlayerByUserId(ref)
 	if inviter and DataService.isLoaded(inviter) then
 		local paid = DataService.apply(inviter, function(data)
 			if data.Invites >= I.MaxRewarded then return nil end

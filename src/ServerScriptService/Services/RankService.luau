@@ -17,7 +17,7 @@ local RankService = {}
 RankService.Action = Instance.new("BindableEvent")
 local RC = Config.Ranks
 local REASON = {
-	Kill = "Enemy eliminated", BotKill = "Bot eliminated", PlaneKill = "Plane shot down", Sink = "Ship sunk",
+	Kill = "Enemy eliminated", BotKill = "Enemy eliminated", PlaneKill = "Plane shot down", Sink = "Ship sunk",
 	CarrierKill = "Carrier destroyed", Capture = "Island captured", Neutralize = "Island neutralized",
 	Delivery = "Cargo delivered", CargoKill = "Cargo ship sunk", TruckKill = "Cargo truck destroyed",
 	Quest = "Quest complete", Tutorial = "Captain's task", RoundWin = "Round won", RoundLoss = "Round played",

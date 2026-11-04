@@ -114,7 +114,7 @@ return function(ctx)
 	UI.label(how, "HOW TO EARN XP", {Size = UDim2.new(1, 0, 0, 20), TextSize = 15, TextColor3 = GOLD})
 	local X = RC.XP
 	local ways = {
-		{"Kill an enemy player", X.Kill}, {"Kill a bot", X.BotKill},
+		{"Kill an enemy", X.Kill},
 		{"Shoot down a plane", X.PlaneKill}, {"Sink a gunboat", X.Sink.Gunboat},
 		{"Sink a submarine", X.Sink.Submarine}, {"Sink a battleship", X.Sink.Battleship},
 		{"Destroy a carrier", X.CarrierKill}, {"Capture an island", X.Capture},

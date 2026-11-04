@@ -64,6 +64,8 @@ Config.Spawn = {
 	RespawnTime = 5,
 	SafeZoneTag = "SafeZone",
 	WalkSpeed = 32,          -- скорость ходьбы игрока (стандарт Roblox — 16)
+	SwimSpeed = 12,          -- скорость в воде (SwimLimit на клиенте): плыть медленнее, чем бежать
+	SwimJumpCooldown = 1.5,  -- прыжок из воды — не чаще раза в N сек. (иначе «прыгают» по морю быстрее, чем бегают)
 }
 
 Config.Carrier = {
@@ -555,13 +557,13 @@ Config.Daily = {
 	Tiers = {
 		{ -- лёгкие
 			{Id = "battle10", Text = "Spend %d minutes in battle", Events = {PlayMinute = 1}, Goal = 10, Reward = 250},
-			{Id = "enemies5", Text = "Defeat %d enemies (players or bots)", Events = {Kill = 1, BotKill = 1}, Goal = 5, Reward = 250},
+			{Id = "enemies5", Text = "Defeat %d enemies", Events = {Kill = 1, BotKill = 1}, Goal = 5, Reward = 250},
 			{Id = "deliver1", Text = "Deliver %d cargo for your team", Events = {Delivery = 1}, Goal = 1, Reward = 250},
 		},
 		{ -- средние
 			{Id = "planes2", Text = "Shoot down %d planes", Events = {PlaneKill = 1}, Goal = 2, Reward = 500},
 			{Id = "capture2", Text = "Take part in %d island captures", Events = {Capture = 1, Neutralize = 1}, Goal = 2, Reward = 500},
-			{Id = "enemies15", Text = "Defeat %d enemies (players or bots)", Events = {Kill = 1, BotKill = 1}, Goal = 15, Reward = 500},
+			{Id = "enemies15", Text = "Defeat %d enemies", Events = {Kill = 1, BotKill = 1}, Goal = 15, Reward = 500},
 			{Id = "cargo2", Text = "Destroy %d enemy cargo ships or trucks", Events = {CargoKill = 1, TruckKill = 1}, Goal = 2, Reward = 500},
 		},
 		{ -- трудные

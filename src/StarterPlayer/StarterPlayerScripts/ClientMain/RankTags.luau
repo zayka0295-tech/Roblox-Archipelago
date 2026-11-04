@@ -120,6 +120,21 @@ return function(ctx)
 		end
 	end)
 
+	-- key — игрок или модель бота (у бота атрибут Rank на самой модели, как будто это обычный игрок)
+	local function update(key, char, r, vip)
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if not char or type(r) ~= "number" or not LIST[r] or not hum or hum.Health <= 0 then
+			remove(key)
+			return
+		end
+		local t = tags[key]
+		if not t or t.rank ~= r or t.char ~= char or t.vip ~= vip or not t.bb.Parent then
+			build(key, char, r, vip)
+			t = tags[key]
+		end
+		if t then t.bb.Enabled = hum.SeatPart == nil end
+	end
+
 	-- раз в полсекунды: новые персонажи, смена ранга, сел/встал в технику
 	local acc = 0
 	RunService.Heartbeat:Connect(function(dt)
@@ -128,21 +143,21 @@ return function(ctx)
 		acc = 0
 		for _, p in ipairs(Players:GetPlayers()) do
 			if p ~= ctx.player then
-				local char = p.Character
-				local r = p:GetAttribute("Rank")
-				local hum = char and char:FindFirstChildOfClass("Humanoid")
-				if not char or type(r) ~= "number" or not LIST[r] or not hum or hum.Health <= 0 then
-					remove(p)
-				else
-					local t = tags[p]
-					local vip = p:GetAttribute("VIP") == true
-					if not t or t.rank ~= r or t.char ~= char or t.vip ~= vip or not t.bb.Parent then
-						build(p, char, r, vip)
-						t = tags[p]
-					end
-					if t then t.bb.Enabled = hum.SeatPart == nil end
+				update(p, p.Character, p:GetAttribute("Rank"), p:GetAttribute("VIP") == true)
+			end
+		end
+		local bots = workspace:FindFirstChild("Bots")
+		local alive = {}
+		if bots then
+			for _, m in ipairs(bots:GetChildren()) do
+				if m:IsA("Model") and m:GetAttribute("IsBot") then
+					alive[m] = true
+					update(m, m, m:GetAttribute("Rank"), false)
 				end
 			end
+		end
+		for key in pairs(tags) do
+			if typeof(key) == "Instance" and key:IsA("Model") and not alive[key] then remove(key) end
 		end
 	end)
 
