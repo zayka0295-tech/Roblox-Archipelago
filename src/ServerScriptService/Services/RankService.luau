@@ -99,7 +99,9 @@ function RankService.init()
 					inBattle[p] = (inBattle[p] or 0) + 5
 					if inBattle[p] >= 60 then
 						inBattle[p] -= 60
-						DataService.addXP(p, RC.XP.PlayMinute or 0)
+						-- ошибка у одного игрока не должна навсегда остановить цикл (опыт за время встал бы у всех)
+						local ok, err = pcall(DataService.addXP, p, RC.XP.PlayMinute or 0)
+						if not ok then warn("[RankService] play minute: " .. tostring(err)) end
 						RankService.Action:Fire(p, "PlayMinute", RC.XP.PlayMinute or 0)
 					end
 				end

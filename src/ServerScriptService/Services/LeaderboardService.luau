@@ -109,8 +109,8 @@ end
 
 -- ушедшие игроки и имена, которые в таблицу уже не попадут (ниже последнего места), — не храним:
 -- иначе за дни работы сервера таблицы растут на каждого, кто заходил
+-- (таблица неполная — в ней все с убийствами > 0, так что вне её только записи с нулём: их тоже убираем)
 local function prune()
-	if #current < Config.Data.LeaderboardSize then return end
 	local keep = {}
 	for _, e in ipairs(current) do keep[e.userId] = true end
 	for _, p in ipairs(Players:GetPlayers()) do keep[p.UserId] = true end
@@ -141,6 +141,18 @@ function LeaderboardService.get()
 	return current
 end
 
+-- изменение убийств: рассылка не на каждое (в бою их много в секунду), а одна за BROADCAST_GAP сек.
+local BROADCAST_GAP = 1
+local queued = false
+local function queueBroadcast()
+	if queued then return end
+	queued = true
+	task.delay(BROADCAST_GAP, function()
+		queued = false
+		broadcast(false)
+	end)
+end
+
 function LeaderboardService.init()
 	Remotes.GetLeaderboard.OnServerInvoke = function(player)
 		if not Guard.allow(player, "GetLeaderboard") then return nil end -- клиент оставит прежние данные
@@ -153,7 +165,7 @@ function LeaderboardService.init()
 	DataService.StatChanged.Event:Connect(function(p, field, value)
 		if field == "Kills" then
 			seen[p.UserId] = value
-			broadcast(false)
+			queueBroadcast()
 		end
 	end)
 	Players.PlayerRemoving:Connect(function(p)

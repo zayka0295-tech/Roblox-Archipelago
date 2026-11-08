@@ -125,7 +125,9 @@ function UniformService.init()
 		if player:GetAttribute("State") ~= "Lobby" then return {ok = false, msg = "You can change clothes only in the lobby"} end
 		local off = not player:GetAttribute("UniformOff")
 		player:SetAttribute("UniformOff", off or nil)
-		task.spawn(function() player:LoadCharacter() end)
+		task.spawn(function()
+			if player.Parent then player:LoadCharacter() end -- вышел из игры — LoadCharacter бросил бы ошибку
+		end)
 		return {ok = true, msg = off and "Uniform off — your own outfit" or "Uniform on"}
 	end
 end

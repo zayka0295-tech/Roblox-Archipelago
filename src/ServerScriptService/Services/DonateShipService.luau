@@ -107,7 +107,9 @@ local function grant(kind, player)
 	local ok = SpawnService.joinAndDeploy(player, team, true, function(char, hum)
 		hum:UnequipTools()
 		pcall(function() player:RequestStreamAroundAsync(seat.Position, 3) end)
-		if player.Character ~= char or not seat.Parent then return end
+		if player.Character ~= char then return end
+		-- корабль пропал, пока грузился персонаж: false — SpawnService поставит на обычную точку
+		if not seat.Parent then return false end
 		AntiCheat.grace(player)
 		sitAt(seat, char, hum)
 		Notifier.send(player, "You're the captain! WASD to sail.", "success")

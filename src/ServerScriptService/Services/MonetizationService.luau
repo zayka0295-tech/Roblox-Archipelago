@@ -48,21 +48,14 @@ function MonetizationService.prompt(player, key)
 	pcall(function() MarketplaceService:PromptProductPurchase(player, id) end)
 end
 
-local function processReceipt(info)
-	if granting[info.PurchaseId] then return Enum.ProductPurchaseDecision.NotProcessedYet end
-	if grantedHere[info.PurchaseId] then return Enum.ProductPurchaseDecision.PurchaseGranted end
-	local player = Players:GetPlayerByUserId(info.PlayerId)
-	local fn = handlers[info.ProductId]
-	if not player or not fn then return Enum.ProductPurchaseDecision.NotProcessedYet end
-	if not DataService.isLoaded(player) then return Enum.ProductPurchaseDecision.NotProcessedYet end
+-- проверка «уже выдано?» и выдача (вызывается под отметкой granting)
+local function grantOnce(info, player, fn)
 	if store then
 		local ok, done = pcall(function() return store:GetAsync(info.PurchaseId) end)
 		if not ok then return Enum.ProductPurchaseDecision.NotProcessedYet end
 		if done then return Enum.ProductPurchaseDecision.PurchaseGranted end -- уже выдано раньше
 	end
-	granting[info.PurchaseId] = true
 	local ok, granted = pcall(fn, player)
-	granting[info.PurchaseId] = nil
 	if not ok then
 		warn("[MonetizationService] grant failed: " .. tostring(granted))
 		return Enum.ProductPurchaseDecision.NotProcessedYet
@@ -74,12 +67,35 @@ local function processReceipt(info)
 	if store then
 		for attempt = 1, 3 do
 			local saved = pcall(function() store:SetAsync(info.PurchaseId, {u = info.PlayerId, p = info.ProductId, t = os.time()}) end)
-			if saved then break end
+			if saved then
+				-- факт выдачи уже в DataStore — помнить его здесь больше незачем (таблица не растёт)
+				grantedHere[info.PurchaseId] = nil
+				break
+			end
 			if attempt == 3 then warn("[MonetizationService] could not record purchase " .. tostring(info.PurchaseId)) end
 			task.wait(attempt)
 		end
 	end
 	return Enum.ProductPurchaseDecision.PurchaseGranted
+end
+
+local function processReceipt(info)
+	if granting[info.PurchaseId] then return Enum.ProductPurchaseDecision.NotProcessedYet end
+	if grantedHere[info.PurchaseId] then return Enum.ProductPurchaseDecision.PurchaseGranted end
+	local player = Players:GetPlayerByUserId(info.PlayerId)
+	local fn = handlers[info.ProductId]
+	if not player or not fn then return Enum.ProductPurchaseDecision.NotProcessedYet end
+	if not DataService.isLoaded(player) then return Enum.ProductPurchaseDecision.NotProcessedYet end
+	-- отметка ставится ДО GetAsync: иначе два одновременных вызова по одной покупке оба прошли бы проверку,
+	-- пока ждут ответа DataStore, и выдали бы товар дважды
+	granting[info.PurchaseId] = true
+	local ok, decision = pcall(grantOnce, info, player, fn)
+	granting[info.PurchaseId] = nil
+	if not ok then
+		warn("[MonetizationService] receipt error: " .. tostring(decision))
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	return decision
 end
 
 function MonetizationService.init()

@@ -45,6 +45,7 @@ function BazaarService.init()
 		if not it then return {ok = false, msg = "Unknown item"} end
 		local ok, why = DataService.buyItem(player, it.Bit, it.Price)
 		if not ok then return {ok = false, msg = WHY[why] or "Purchase failed"} end
+		task.spawn(DataService.save, player) -- покупка за диаманты — сразу в сохранение, как и награды
 		return {ok = true, msg = ("%s bought! It's yours forever"):format(it.Name)}
 	end
 	-- E у прилавка на каждой базе

@@ -185,8 +185,12 @@ function QuestService.init()
 			task.wait(TICK)
 			for _, p in ipairs(Players:GetPlayers()) do
 				if DataService.isLoaded(p) then
-					DataService.addProgress(p, "PlaySec", TICK)
-					checkReady(p, "play")
+					-- ошибка у одного игрока не должна навсегда остановить учёт времени у всех
+					local ok, err = pcall(function()
+						DataService.addProgress(p, "PlaySec", TICK)
+						checkReady(p, "play")
+					end)
+					if not ok then warn("[QuestService] tick: " .. tostring(err)) end
 				end
 			end
 		end

@@ -136,6 +136,11 @@ function CareerService.init()
 	end
 	RankService.Action.Event:Connect(onAction)
 	DataService.Loaded.Event:Connect(publish)
+	-- профиль забран с другого сервера позже (DataService.adoptLater пересылает все поля) — статуя и счётчик
+	-- на кнопке по сохранённой карьере, а не по временной
+	DataService.StatChanged.Event:Connect(function(player, field)
+		if field == "CareerDone" and player.Parent then publish(player) end
+	end)
 end
 
 -- только для тестов в Studio (DevCommands "career"): добавить n ко всем счётчикам

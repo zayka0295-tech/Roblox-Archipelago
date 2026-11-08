@@ -386,12 +386,12 @@ function CargoDropService.drop(player, team)
 		local seat
 		for _, s in ipairs(f.seats) do if not s.Occupant then seat = s break end end
 		if not seat then
-			-- (практически невозможно: самолёт свой, на 4 кресла) — пустой самолёт убираем, а ошибкой даём
-			-- SpawnService поставить игрока на обычную точку появления (он вызывает расстановку через pcall)
+			-- (практически невозможно: самолёт свой, на 4 кресла) — пустой самолёт убираем, а false даёт
+			-- SpawnService поставить игрока на обычную точку появления
 			flights[f.model] = nil
 			f.model:Destroy()
 			Notifier.send(player, "The cargo plane had no free seat — you spawn at your usual point", "error")
-			error("no free cargo seat")
+			return false
 		end
 		pcall(function() player:RequestStreamAroundAsync(seat.Position, 3) end)
 		if player.Character ~= char then return end

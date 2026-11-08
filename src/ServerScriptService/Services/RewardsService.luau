@@ -24,6 +24,7 @@ local TICK = 5            -- сек.: шаг учёта времени для с
 local FLAG_REFERRED = 1   -- Flags: награда новичку за приглашение уже выдана
 local BONUS_BIT = 8       -- DQDone: бонус за все три задания забран
 local lastDay = {}        -- [игрок] = день, который он видел (для тоста «новый день»)
+local persistConn = {}    -- [игрок] = подписка «сохранение включилось» (профиль ещё забирается с другого сервера)
 
 local function today() return os.time() // 86400 end
 local function resetIn() return 86400 - os.time() % 86400 end
@@ -307,9 +308,12 @@ function RewardsService.init()
 			conn = player:GetAttributeChangedSignal("DataPersistent"):Connect(function()
 				if player:GetAttribute("DataPersistent") ~= true then return end
 				conn:Disconnect()
+				persistConn[player] = nil
 				checkReferral(player)
 				publish(player)
 			end)
+			-- сессия может так и остаться временной — отключим при выходе
+			if player.Parent then persistConn[player] = conn else conn:Disconnect() end
 		end
 		checkReferral(player)
 		publish(player)
@@ -328,7 +332,12 @@ function RewardsService.init()
 		end
 	end)
 
-	Players.PlayerRemoving:Connect(function(p) lastDay[p] = nil end)
+	Players.PlayerRemoving:Connect(function(p)
+		lastDay[p] = nil
+		local conn = persistConn[p]
+		persistConn[p] = nil
+		if conn then conn:Disconnect() end
+	end)
 end
 
 -- только для тестов в Studio (DevCommands): сдвинуть награды на «вчера» / открыть сундуки

@@ -233,6 +233,15 @@ local function adoptLater(player, p)
 	end)
 end
 
+local loading = {}          -- [игрок] = true, пока идёт загрузка
+local leftWhileLoading = {} -- [игрок] = true: PlayerRemoving уже сработал, пока профиль грузился
+
+-- игрок ушёл (или уходит) — профиль ему уже не заводим: PlayerRemoving мог отработать раньше, чем
+-- обнулился Parent, и тогда профиль остался бы без финального сохранения, а замок — висеть до LOCK_TTL
+local function gone(player)
+	return player.Parent == nil or leftWhileLoading[player] == true
+end
+
 local function loadProfile(player)
 	local session = HttpService:GenerateGUID(false)
 	local raw, canSave, locked, failed = nil, false, false, false
@@ -246,7 +255,7 @@ local function loadProfile(player)
 			elseif ok then
 				-- прошлый сервер ещё сохраняет игрока — ждём, но замок не отбираем
 				locked = true
-				if os.clock() - t0 >= LOCK_WAIT or not player.Parent then break end
+				if os.clock() - t0 >= LOCK_WAIT or gone(player) then break end
 				task.wait(LOCK_POLL)
 			elseif studioNoApi(res) then
 				-- Studio без доступа к API: дальше DataStore не трогаем, сессии временные, покупки доступны сразу
@@ -261,7 +270,7 @@ local function loadProfile(player)
 			end
 		end
 	end
-	if not player.Parent then
+	if gone(player) then
 		-- вышел, пока загружались: если замок успели поставить — снимаем
 		if canSave then releaseOwn(player, session) end
 		return
@@ -304,12 +313,12 @@ end
 
 -- загрузка — один раз на игрока: повторный вызов (в Main могут сработать и PlayerAdded, и цикл по уже вошедшим)
 -- завёл бы вторую сессию — она ждала бы замок первой, а потом подменила бы её профиль
-local loading = {}
 function DataService.load(player)
 	if profiles[player] or loading[player] then return end
 	loading[player] = true
 	local ok, err = pcall(loadProfile, player)
 	loading[player] = nil
+	leftWhileLoading[player] = nil
 	if not ok then warn(("[DataService] load error %s: %s"):format(player.Name, tostring(err))) end
 end
 
@@ -329,10 +338,12 @@ end
 -- золото за бой: у VIP (атрибут VIP, VipService) — ×Config.Vip.GoldMult; raw = true — без множителя
 -- (возврат денег, тестовые команды)
 function DataService.addGold(player, amount, raw)
+	-- дробная награда (множитель в конфиге, напр. ×1.5) — округляем вниз, а не отказываем целиком
+	if type(amount) == "number" and amount == amount and amount < math.huge then amount = math.floor(amount) end
 	if not validAmount(amount) then return false end
 	local p = profiles[player]
 	if not p then return false end
-	if not raw and player:GetAttribute("VIP") == true then amount *= (Config.Vip and Config.Vip.GoldMult or 1) end
+	if not raw and player:GetAttribute("VIP") == true then amount = math.floor(amount * (Config.Vip and Config.Vip.GoldMult or 1)) end
 	p.data.Gold = math.min(Config.Economy.MaxGold, p.data.Gold + amount)
 	p.dirty = true
 	syncStat(player, "Gold")
@@ -595,6 +606,7 @@ end
 
 function DataService.init()
 	Players.PlayerRemoving:Connect(function(player)
+		if loading[player] then leftWhileLoading[player] = true end
 		DataService.save(player, true)
 		profiles[player] = nil
 	end)
