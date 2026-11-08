@@ -102,6 +102,9 @@ local function releaseDriver(team)
 	if prevHum and prevHum.Parent and prevHum.Health > 0 and exit then
 		task.delay(0.15, function()
 			if prevHum.Parent and not prevHum.SeatPart then
+				-- серверный перенос: льгота, чтобы античит не принял его за телепорт и не вернул к штурвалу
+				local pl = Players:GetPlayerFromCharacter(prevHum.Parent)
+				if pl then AntiCheat.grace(pl, 1) end
 				prevHum.Parent:PivotTo(exit.CFrame + Vector3.new(0, 3, 0))
 			end
 		end)
@@ -216,16 +219,25 @@ local function spawnCarrier(team)
 		label.DeckGui.DeckText.Text = string.upper(tcfg.DisplayName) .. " FLEET"
 	end
 
+	-- всё, что может упасть, — до parent: после него ошибка оставила бы в мире авианосец без состояния
+	-- (казна вернётся, а модель останется)
+	local root = m:FindFirstChild("Hull")
+	local ao = root and root:FindFirstChild("HelmAlign")
+	local lv = root and root:FindFirstChild("HelmDrive")
+	if not ao or not lv then
+		m:Destroy()
+		error("carrier template has no Hull/HelmAlign/HelmDrive")
+	end
+
 	local _, yaw = anchor.CFrame:ToOrientation()
 	m:PivotTo(CFrame.new(anchor.Position.X, C.WaterlineY, anchor.Position.Z) * CFrame.Angles(0, yaw, 0))
 	m.Parent = carriersFolder()
 
-	local root = m.Hull
 	serverOwn(root)
 	local ctrl = {
 		root = root,
-		ao = root.HelmAlign,
-		lv = root.HelmDrive,
+		ao = ao,
+		lv = lv,
 		yaw = yaw,
 		rootY = root.Position.Y,
 		speed = 0,
@@ -526,7 +538,8 @@ local obstacleParams = RaycastParams.new()
 obstacleParams.FilterType = Enum.RaycastFilterType.Include
 obstacleParams.IgnoreWater = true
 
-countBlocked = function(s, pos, yaw)
+-- что считается препятствием для авианосца s; ставится один раз за кадр перед вызовами countBlocked
+local function setObstacleFilter(s)
 	local list = {workspace.Terrain}
 	for _, n in ipairs({"Teams", "Neutral", "Nature", "Vessels"}) do
 		local f = workspace.Map:FindFirstChild(n)
@@ -536,6 +549,9 @@ countBlocked = function(s, pos, yaw)
 		if other ~= s and other.model then table.insert(list, other.model) end
 	end
 	obstacleParams.FilterDescendantsInstances = list
+end
+
+countBlocked = function(s, pos, yaw)
 	local rot = CFrame.Angles(0, yaw, 0)
 	local rootY = s.ctrl.rootY
 	local keelLimit = rootY - 14  -- днище на rootY - 13, нужен запас 1 студ
@@ -594,11 +610,16 @@ local function step(s, dt)
 		vel = Vector3.zero
 	end
 
-	-- мель и препятствия: корабль не может заехать на сушу, пирс или чужой корабль
-	if vel.Magnitude > 0.05 or newYaw ~= prevYaw then
+	-- мель и препятствия: корабль не может заехать на сушу, пирс или чужой корабль.
+	-- Чистая вода впереди — следующую проверку (28 лучей на вызов, 2–4 вызова) пропускаем на 0,1 с: упреждение
+	-- 0,8 с хода (≥10 студов), за 0,1 с корабль проходит ≤4 студа, а нос на повороте смещается ≤2,5
+	local clock = os.clock()
+	if (vel.Magnitude > 0.05 or newYaw ~= prevYaw) and clock >= (s.clearUntil or 0) then
+		setObstacleFilter(s)
 		local cur = countBlocked(s, pos, prevYaw)
 		local look = vel.Magnitude > 0.05 and vel.Unit * math.max(10, math.abs(c.speed) * 0.8) or Vector3.zero
 		local nxt = countBlocked(s, pos + look, newYaw)
+		if cur == 0 and nxt == 0 then s.clearUntil = clock + 0.1 end
 		if nxt > 0 and nxt >= cur then
 			local straightOk = false
 			if newYaw ~= prevYaw and vel.Magnitude > 0.05 then

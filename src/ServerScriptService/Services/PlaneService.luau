@@ -277,6 +277,12 @@ end
 local function makePlane(ownerActor, team, cf, kind)
 	kind = Config.Planes[kind] and kind or "Fighter"
 	local P = Config.Planes[kind]
+	-- шаблон проверяем до замены старого самолёта и до parent: ошибка ниже оставила бы полусамолёт в мире
+	local template = ServerStorage.Vehicles:FindFirstChild(P.Model or kind)
+	local troot = template and template:FindFirstChild("Root")
+	if not troot or not template:FindFirstChild("PilotSeat") or not troot:FindFirstChild("FlightAlign") or not troot:FindFirstChild("FlightDrive") then
+		error(("plane template %s is missing Root/PilotSeat/FlightAlign/FlightDrive"):format(tostring(P.Model or kind)))
+	end
 	local mine = byOwner[ownerActor]
 	local old = mine and planes[mine]
 	if old and old.pilot and old.pilot ~= ownerActor then
@@ -285,7 +291,7 @@ local function makePlane(ownerActor, team, cf, kind)
 	elseif mine then
 		destroyPlane(mine, nil, "replaced")
 	end
-	local model = ServerStorage.Vehicles[P.Model or kind]:Clone()
+	local model = template:Clone()
 	model.Name = kind .. "_" .. ownerActor.Name
 	local tcol = Config.Teams[team].Color
 	for _, d in ipairs(model:GetDescendants()) do
@@ -371,7 +377,7 @@ end
 function PlaneService.requestSpawn(player, team, where, carrier, kind)
 	kind = Config.Planes[kind] and kind or "Fighter"
 	local P = Config.Planes[kind]
-	if TeamService.getTeamName(player) ~= team then
+	if not team or not Config.Teams[team] or TeamService.getTeamName(player) ~= team then
 		Notifier.send(player, "This is the other team's terminal", "error")
 		return false
 	end
@@ -425,8 +431,25 @@ function PlaneService.requestSpawn(player, team, where, carrier, kind)
 			or "Data is still loading", "error")
 		return false
 	end
+	local prevSpawn, before = lastSpawn[player], byOwner[player]
 	lastSpawn[player] = now
-	local model, st = makePlane(player, team, cf, kind)
+	local made, model, st = pcall(makePlane, player, team, cf, kind)
+	if not made then
+		-- золото уже списано: возвращаем (raw — без VIP-множителя), кулдаун не тратим.
+		-- Если самолёт успел появиться (ошибка в конце makePlane) — убираем, иначе он вышел бы бесплатным
+		warn("[PlaneService] " .. tostring(model))
+		local after = byOwner[player]
+		if after and after ~= before then
+			local ast = planes[after]
+			if ast then ast.dead = true end
+			planes[after], byOwner[player] = nil, nil
+			after:Destroy()
+		end
+		lastSpawn[player] = prevSpawn
+		DataService.addGold(player, P.Price, true)
+		Notifier.send(player, "The plane could not be prepared — gold refunded", "error")
+		return false
+	end
 	AntiCheat.grace(player)
 	char:PivotTo(st.seat.CFrame + Vector3.new(0, 3, 0))
 	st.seat:Sit(hum)
@@ -471,6 +494,8 @@ end
 function PlaneService.removeOf(actor)
 	local m = byOwner[actor]
 	if not m then return end
+	local st = planes[m]
+	if st then st.dead = true end -- обработчики мест (setupSeat) не трогают убранный самолёт
 	planes[m] = nil
 	byOwner[actor] = nil
 	m:Destroy()
@@ -582,6 +607,10 @@ local function botFly(st, dt)
 end
 
 ------------------------------------------------------------------ стрельба
+local fireParams = RaycastParams.new() -- общий: выстрел ~10 раз/с на самолёт
+fireParams.CollisionGroup = "Weapons" -- оружие видит и грузовые суда
+fireParams.FilterType = Enum.RaycastFilterType.Exclude
+
 local function fire(st)
 	local muzzle = st.muzzles[(st.shotN % #st.muzzles) + 1]
 	st.shotN += 1
@@ -590,9 +619,7 @@ local function fire(st)
 	local origin = muzzle.Position
 	local converge = st.root.Position + st.root.CFrame.LookVector * 300
 	local dir = (converge - origin).Unit * P.GunRange
-	local params = RaycastParams.new()
-	params.CollisionGroup = "Weapons" -- оружие видит и грузовые суда
-	params.FilterType = Enum.RaycastFilterType.Exclude
+	local params = fireParams
 	local ignore = {st.model}
 	local pc = charOf(st.pilot)
 	if pc then table.insert(ignore, pc) end
@@ -614,6 +641,8 @@ local crashParams = RaycastParams.new()
 crashParams.FilterType = Enum.RaycastFilterType.Exclude
 crashParams.IgnoreWater = true
 crashParams.RespectCanCollide = true -- надписи и декор без коллизии не считаются препятствием
+local gearParams = RaycastParams.new() -- шасси/перезарядка: общий объект вместо нового каждые 0,4 с
+gearParams.FilterType = Enum.RaycastFilterType.Exclude
 
 local function step(dt)
 	local now = os.clock()
@@ -641,6 +670,7 @@ local function step(dt)
 		AbandonTimer.check(st, P.DisplayName:lower(), P.AbandonDespawn, now)
 		if not st.pilot and st.abandonT and now - st.abandonT > P.AbandonDespawn then
 			-- пустой самолёт самоуничтожается: взрыв без урона и наград
+			st.dead = true
 			planes[model] = nil
 			if byOwner[st.owner] == model then byOwner[st.owner] = nil end
 			local e = Instance.new("Explosion")
@@ -718,8 +748,7 @@ local function step(dt)
 		if st.gearT > 0.4 then
 			local elapsed = st.gearT
 			st.gearT = 0
-			local p = RaycastParams.new()
-			p.FilterType = Enum.RaycastFilterType.Exclude
+			local p = gearParams
 			p.FilterDescendantsInstances = {model}
 			local gearH = model:GetAttribute("GearHeight") or 6.2
 			local g = workspace:Raycast(root.Position, Vector3.new(0, -(gearH + 8), 0), p)
@@ -775,7 +804,18 @@ function PlaneService.dropBomb(actor, origin, vel)
 	local v = root.AssemblyLinearVelocity
 	local sv = v.Magnitude
 	-- точка сброса глазами пилота (у него самолёт впереди на пинг); запас — не больше ~0,25 с полёта
-	if finiteVec(origin) and (origin - from).Magnitude < 15 + sv * 0.25 then from = origin end
+	-- У пилота самолёт впереди серверного по ходу, а не сбоку/сзади: вдоль скорости — до 15 + 0,25 с полёта,
+	-- назад — до 15, вбок — до 15 + 0,1 с полёта (в вираже 120°/с за 0,25 с хорда уходит вбок на ~10 студов)
+	if finiteVec(origin) then
+		local off = origin - from
+		local ok = off.Magnitude < 15 + sv * 0.25
+		if ok and sv > 5 then
+			local dir = v / sv
+			local along = off:Dot(dir)
+			ok = along > -15 and (off - dir * along).Magnitude < 15 + sv * 0.1
+		end
+		if ok then from = origin end
+	end
 	if finiteVec(vel) and (vel - v).Magnitude < 40 and vel.Magnitude < st.cfg.MaxSpeed * 1.5 then v = vel end
 	st.lastBomb = now
 	setBombs(st, st.bombs - 1)

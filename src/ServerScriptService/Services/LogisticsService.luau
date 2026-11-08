@@ -839,9 +839,10 @@ local function routeStep(route, now)
 					local ok, err = pcall(loadShip, route.crane, route, st)
 					if not ok then
 						warn("[LogisticsService] loading " .. route.id .. ": " .. tostring(err))
-						local carry = route.crane.craneState.carry
+						-- контейнер на спредере или ещё на площадке (папка Loading — только для груза этого крана,
+						-- а погрузка у причала одна за раз: route.loading) — иначе следующий встанет поверх
 						route.crane.craneState.carry = nil
-						if carry then carry:Destroy() end
+						route.crane.loadFolder:ClearAllChildren()
 					end
 					route.loading = false
 				end)

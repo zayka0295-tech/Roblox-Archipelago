@@ -26,6 +26,7 @@ local GameState = ReplicatedStorage:WaitForChild("GameState")
 local ShipService = {}
 local capFail -- объявлена ниже (лимиты техники), используется при покупке
 local crewed, selfDestruct -- пустая техника (см. ShipService.remove)
+local forget -- объявлена ниже (урон и потопление), нужна при сбое постройки
 local ships = {}      -- [модель] = состояние (живые и тонущие)
 local teamShips = {}  -- [тип][команда] = {active = {модели}, sinking = {модели}, donated = {модели сверх лимита}, busy,
 --                      reservedBy, reservedUntil — бронь причала покупателем доната (окно оплаты → выдача)}
@@ -193,6 +194,9 @@ local function releaseDriver(st)
 		task.delay(0.15, function()
 			if prevHum.Parent and not prevHum.SeatPart then
 				local cf = exit and exit.CFrame or (st.root.CFrame * CFrame.new(st.cfg.Beam / 2 + 3, 6, 0))
+				-- серверный перенос: льгота, чтобы античит не принял его за телепорт и не вернул к штурвалу
+				local pl = Players:GetPlayerFromCharacter(prevHum.Parent)
+				if pl then AntiCheat.grace(pl, 1) end
 				prevHum.Parent:PivotTo(cf + Vector3.new(0, 3, 0))
 			end
 		end)
@@ -285,12 +289,8 @@ end
 
 ------------------------------------------------------------------ появление
 -- donor — игрок, купивший командный корабль за донат: корабль вне TeamLimit (список donated)
-local function spawnShip(kind, team, owner, donor)
+local function buildShip(m, kind, team, owner, donor, cf)
 	local cfg = Config.Ships[kind]
-	local cf = berthCF(team, kind)
-	assert(cf, "missing berth Berth_" .. kind)
-
-	local m = ServerStorage.Ships[kind]:Clone()
 	m.Name = ("%s_%s%s"):format(kind, team, owner and ("_" .. owner.Name) or "")
 	local tcol = Config.Teams[team].Color
 	for _, d in ipairs(m:GetDescendants()) do
@@ -355,6 +355,25 @@ local function spawnShip(kind, team, owner, donor)
 		publishPersonal(owner)
 	end
 	return m, st
+end
+
+local function spawnShip(kind, team, owner, donor)
+	local cf = berthCF(team, kind)
+	assert(cf, "missing berth Berth_" .. kind)
+	local m = ServerStorage.Ships[kind]:Clone()
+	local ok, res, st = pcall(buildShip, m, kind, team, owner, donor, cf)
+	if not ok then
+		-- ошибка, когда модель уже в мире (нет HelmSeat/HelmAlign и т.п.): деньги вызывающий вернёт,
+		-- а недостроенный корабль остался бы бесплатным — убираем его и записи о нём
+		local s = ships[m]
+		if s then
+			s.dead = true
+			forget(s)
+		end
+		m:Destroy()
+		error(res, 0)
+	end
+	return res, st
 end
 
 ------------------------------------------------------------------ покупка
@@ -536,7 +555,7 @@ capFail = function(kind, team, owner)
 end
 
 ------------------------------------------------------------------ урон и потопление
-local function forget(st)
+function forget(st)
 	if ships[st.model] then shipsVer += 1 end
 	ships[st.model] = nil
 	if st.cfg.Team then
@@ -737,10 +756,11 @@ local function step(st, dt)
 		if (st.driver or st.forceSurface) and st.vertical ~= 0 then
 			st.depth = math.clamp(st.depth - st.vertical * cfg.DiveRate * dt, 0, cfg.DiveDepth)
 		end
-		-- не ниже дна (фильтр — один раз: дно не меняется)
+		-- не ниже дна (фильтр — один раз: дно не меняется; пока папки Seabed нет — пробуем каждый кадр)
 		if not floorReady then
-			floorReady = true
-			floorParams.FilterDescendantsInstances = {workspace.Terrain, workspace.Map:FindFirstChild("Seabed")}
+			local seabed = workspace.Map:FindFirstChild("Seabed")
+			floorParams.FilterDescendantsInstances = {workspace.Terrain, seabed}
+			floorReady = seabed ~= nil
 		end
 		local fl = workspace:Raycast(pos, Vector3.new(0, -200, 0), floorParams)
 		local floorY = fl and fl.Position.Y or -88
@@ -758,9 +778,10 @@ local function step(st, dt)
 	end
 
 	if vel.Magnitude > 0.05 or newYaw ~= prevYaw then
-		local cur = countBlocked(st, pivotPos, prevYaw, keelY)
 		local look = vel.Magnitude > 0.05 and vel.Unit * math.max(6, math.abs(st.speed) * 0.6) or Vector3.zero
 		local nxt = countBlocked(st, pivotPos + look, newYaw, keelY)
+		-- текущее положение нужно только для сравнения, когда впереди препятствие (на чистой воде — вдвое меньше лучей)
+		local cur = nxt > 0 and countBlocked(st, pivotPos, prevYaw, keelY) or 0
 		if nxt > 0 and nxt >= cur then
 			local straightOk = false
 			if newYaw ~= prevYaw and vel.Magnitude > 0.05 then
