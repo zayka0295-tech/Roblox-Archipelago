@@ -79,7 +79,7 @@ local function resetWorld()
 			local char = p.Character
 			if char and p:GetAttribute("State") == "Deployed" and aboard(char, models) then
 				if p:GetAttribute("SpawnChoice") == "Carrier" then p:SetAttribute("SpawnChoice", "Base") end
-				task.spawn(function() p:LoadCharacter() end)
+				task.spawn(function() if p.Parent then p:LoadCharacter() end end)
 			end
 		end
 	end
@@ -249,11 +249,23 @@ function RoundService.init()
 					publish()
 				end
 				if now() >= endsAt or devEnd then
-					endRound()
+					-- ошибка в итогах (награды, сохранение) не должна навсегда останавливать цикл раундов
+					local ok, err = pcall(endRound)
+					if not ok then warn("[RoundService] endRound: " .. tostring(err)) end
 				end
 			elseif now() >= endsAt or devEnd then
 				acc = 0
-				startRound()
+				local ok, err = pcall(startRound)
+				if not ok then
+					warn("[RoundService] startRound: " .. tostring(err))
+					-- раунд всё равно запускаем, иначе startRound (и сброс мира) повторялся бы каждую секунду
+					if not active then
+						active = true
+						endsAt = now() + R.Duration
+						GameState:SetAttribute("Round_State", "Active")
+						GameState:SetAttribute("Round_EndsAt", endsAt)
+					end
+				end
 			end
 		end
 	end)

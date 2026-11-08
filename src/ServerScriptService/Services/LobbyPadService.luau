@@ -104,7 +104,9 @@ function LobbyPadService.init()
 	task.spawn(function()
 		while true do
 			task.wait(TICK)
-			step()
+			-- ошибка в окне покупки (сервис доната, нет Remote) не должна навсегда выключить плиты
+			local ok, err = pcall(step)
+			if not ok then warn("[LobbyPadService] " .. tostring(err)) end
 		end
 	end)
 end

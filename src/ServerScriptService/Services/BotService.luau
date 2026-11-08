@@ -591,6 +591,7 @@ end
 local planeRayParams = RaycastParams.new()
 planeRayParams.FilterType = Enum.RaycastFilterType.Include
 planeRayParams.IgnoreWater = true
+local planeRayT = -math.huge
 
 local function thinkPilot(st, enemies, now)
 	local model, pst = PlaneService.planeOf(st.model)
@@ -601,12 +602,16 @@ local function thinkPilot(st, enemies, now)
 	local speed = pst.speed or 0
 	local input = {throttle = 1, firing = false}
 
-	local list = {workspace.Terrain}
-	for _, n in ipairs({"Teams", "Neutral", "Nature", "Carriers"}) do
-		local f = workspace.Map:FindFirstChild(n)
-		if f then table.insert(list, f) end
+	-- список «земли» для луча высоты — раз в 5 с, а не на каждый такт каждого пилота
+	if now - planeRayT > 5 then
+		planeRayT = now
+		local list = {workspace.Terrain}
+		for _, n in ipairs({"Teams", "Neutral", "Nature", "Carriers"}) do
+			local f = workspace.Map:FindFirstChild(n)
+			if f then table.insert(list, f) end
+		end
+		planeRayParams.FilterDescendantsInstances = list
 	end
-	planeRayParams.FilterDescendantsInstances = list
 	local g = workspace:Raycast(pos, Vector3.new(0, -800, 0), planeRayParams)
 	local agl = g and (pos.Y - g.Position.Y) or pos.Y
 
@@ -963,6 +968,10 @@ local function manage(now)
 		local st = slot.state
 		if slot.disabled then
 			continue
+		elseif st and not st.model.Parent then
+			-- модель бота удалили в обход смерти (Died не придёт): освобождаем слот, иначе он занят навсегда
+			despawnSlot(slot)
+			slot.respawnAt = now + B.RespawnTime
 		elseif st then
 			-- бот, который должен сидеть, но не сидит (корабль утонул, самолёт пропал) — пересоздать
 			local hum = st.hum

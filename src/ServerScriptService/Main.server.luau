@@ -95,7 +95,11 @@ BazaarService.init() -- военный базар на площади: мага�
 AntiCheatService.init()
 BotService.init()
 
+-- PlayerAdded и цикл по уже вошедшим могут сработать для одного игрока дважды — второй раз пропускаем
+local handled = setmetatable({}, {__mode = "k"})
 local function onPlayer(player)
+	if handled[player] then return end
+	handled[player] = true
 	task.spawn(DataService.load, player)
 	SpawnService.setupPlayer(player)
 end

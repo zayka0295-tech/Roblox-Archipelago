@@ -138,32 +138,36 @@ function TutorialService.init()
 	-- полёт / заплыв: считаем пройденный путь по горизонтали (сумму шагов за штурвалом). Скачки больше MAX_STEP
 	-- (появление на другом аэродроме, перенос) не считаются; вышел из техники — путь сохраняется, но
 	-- точка отсчёта сбрасывается (иначе «сел на базе, встал, появился на острове» — сразу выполнено)
+	local function check(p)
+		if not DataService.isLoaded(p) then return end
+		local pr, step = stateFor(p)
+		if (step ~= 1 and step ~= 2) or pr.done then return end
+		local seat = inVehicle(p, step)
+		if not seat then
+			pr.last = nil
+			return
+		end
+		local pos = seat.Position
+		if pr.last then
+			local stepLen = Vector3.new(pos.X - pr.last.X, 0, pos.Z - pr.last.Z).Magnitude
+			if stepLen <= MAX_STEP then pr.dist = (pr.dist or 0) + stepLen end
+		end
+		pr.last = pos
+		local d = pr.dist or 0
+		if d > (p:GetAttribute("TutProgress") or 0) then p:SetAttribute("TutProgress", math.floor(d)) end
+		if d >= goalOf(step) then
+			pr.done = true
+			p:SetAttribute("TutReady", true)
+			Notifier.send(p, "Task done! Return to the Captain at the barracks", "success")
+		end
+	end
 	task.spawn(function()
 		while true do
 			task.wait(CHECK)
 			for _, p in ipairs(Players:GetPlayers()) do
-				if DataService.isLoaded(p) then
-					local pr, step = stateFor(p)
-					if (step == 1 or step == 2) and not pr.done then
-						local seat = inVehicle(p, step)
-						if not seat then pr.last = nil end
-						if seat then
-							local pos = seat.Position
-							if pr.last then
-								local stepLen = Vector3.new(pos.X - pr.last.X, 0, pos.Z - pr.last.Z).Magnitude
-								if stepLen <= MAX_STEP then pr.dist = (pr.dist or 0) + stepLen end
-							end
-							pr.last = pos
-							local d = pr.dist or 0
-							if d > (p:GetAttribute("TutProgress") or 0) then p:SetAttribute("TutProgress", math.floor(d)) end
-							if d >= goalOf(step) then
-								pr.done = true
-								p:SetAttribute("TutReady", true)
-								Notifier.send(p, "Task done! Return to the Captain at the barracks", "success")
-							end
-						end
-					end
-				end
+				-- ошибка у одного игрока не должна остановить проверку обучения для всех до перезапуска сервера
+				local ok, err = pcall(check, p)
+				if not ok then warn("[TutorialService] " .. tostring(err)) end
 			end
 		end
 	end)

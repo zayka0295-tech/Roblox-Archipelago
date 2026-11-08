@@ -135,13 +135,23 @@ local function onCharacter(player, char)
 	if not hum or not hrp or player.Character ~= char then return end
 
 	local override = SpawnService.placeOverride[player]
+	-- одноразовая: забираем сразу (и устаревшую — если игрок уже не в бою), чтобы не сработала на следующем персонаже
+	SpawnService.placeOverride[player] = nil
 	local kind
+	local placed = false
 	if override and player:GetAttribute("State") == "Deployed" then
-		SpawnService.placeOverride[player] = nil
 		kind = "Drop"
 		AntiCheat.grace(player, 3)
-		override(char, hum, hrp)
-	else
+		-- ошибка в расстановке не должна оставить персонажа без Placed и без возрождения — тогда обычная точка
+		local ok, err = pcall(override, char, hum, hrp)
+		if ok then
+			placed = true
+		else
+			warn("[SpawnService] place override: " .. tostring(err))
+		end
+		if player.Character ~= char then return end
+	end
+	if not placed then
 		local point
 		point, kind = SpawnService.resolve(player)
 		local up = point.Size.Y / 2 + hum.HipHeight + hrp.Size.Y / 2 + 0.5
@@ -212,7 +222,7 @@ function SpawnService.setupPlayer(player)
 	player.CharacterAdded:Connect(function(char)
 		onCharacter(player, char)
 	end)
-	player:LoadCharacter()
+	if player.Parent then player:LoadCharacter() end
 end
 
 -- вступить в команду и сразу появиться (плиты лобби, десант). force — без проверки баланса (уже оплачено).
@@ -231,7 +241,7 @@ function SpawnService.joinAndDeploy(player, teamName, force, place)
 	SpawnService.placeOverride[player] = place
 	player:SetAttribute("State", "Deployed")
 	task.spawn(function()
-		player:LoadCharacter()
+		if player.Parent then player:LoadCharacter() end -- вышел из игры — LoadCharacter бросил бы ошибку
 	end)
 	return true, "Deploy!"
 end
@@ -297,9 +307,10 @@ function SpawnService.init()
 			player:SetAttribute("SpawnChoice", "Base")
 			note = "Your team doesn't hold the island — spawning at base"
 		end
+		SpawnService.placeOverride[player] = nil -- обычный выход в бой: не в грузовой самолёт по старой записи
 		player:SetAttribute("State", "Deployed")
 		task.spawn(function()
-			player:LoadCharacter()
+			if player.Parent then player:LoadCharacter() end
 		end)
 		return result(true, note or "Deploy!")
 	end
@@ -314,7 +325,7 @@ function SpawnService.init()
 		local before = TeamService.getTeamName(player)
 		local team = autoTeam(player)
 		task.spawn(function()
-			player:LoadCharacter()
+			if player.Parent then player:LoadCharacter() end
 		end)
 		if team ~= before then
 			return result(true, "You are in the lobby · moved to " .. Config.Teams[team].DisplayName .. " for balance")

@@ -133,7 +133,9 @@ function ErrorLogService.init()
 		local n = (sent[player] or 0) + 1
 		if n > PER_PLAYER then return end
 		sent[player] = n
-		add("C", msg, trace, src)
+		-- огромные строки от читера не гоняем через utf8/gsub целиком: clip всё равно оставит MAX_LEN
+		local cap = MAX_LEN * 2
+		add("C", msg:sub(1, cap), trace and trace:sub(1, cap), src and src:sub(1, cap))
 	end)
 	Players.PlayerRemoving:Connect(function(p) sent[p] = nil end)
 
