@@ -62,7 +62,11 @@ local function viewportScale()
 end
 local function rescale()
 	local v = viewportScale()
-	for _, s in ipairs(scales) do s.Scale = math.max(v, s:GetAttribute("MinScale") or 0) end
+	-- уничтоженные (Parent = nil) выкидываем из списка, чтобы он не рос
+	for i = #scales, 1, -1 do
+		local s = scales[i]
+		if s.Parent then s.Scale = math.max(v, s:GetAttribute("MinScale") or 0) else table.remove(scales, i) end
+	end
 end
 local replaceRounds -- см. сенсорные кнопки ниже
 local function bindCamera()
@@ -272,6 +276,7 @@ function UI.onHold(b, down, up, move)
 		end
 		lastPos = p
 	end
+	local conns = {} -- глобальные подписки (UserInputService, Heartbeat): снимаем, когда кнопку уничтожат
 	b.InputBegan:Connect(function(i)
 		if not (i.UserInputType == TOUCH or i.UserInputType == Enum.UserInputType.MouseButton1) then return end
 		-- новое нажатие всегда перехватывает кнопку (старое «залипшее» касание сбрасываем)
@@ -292,15 +297,15 @@ function UI.onHold(b, down, up, move)
 			release()
 		end
 	end
-	UserInputService.InputEnded:Connect(ended)
-	UserInputService.TouchEnded:Connect(ended)
+	table.insert(conns, UserInputService.InputEnded:Connect(ended))
+	table.insert(conns, UserInputService.TouchEnded:Connect(ended))
 	local function changed(i)
 		if isTouch() and i.UserInputType == TOUCH and ours(i) then track(i.Position) end
 	end
-	UserInputService.InputChanged:Connect(changed)
-	UserInputService.TouchMoved:Connect(changed)
+	table.insert(conns, UserInputService.InputChanged:Connect(changed))
+	table.insert(conns, UserInputService.TouchMoved:Connect(changed))
 	-- страховка каждый кадр: касание закончилось или его объект обновился без событий
-	RunService.Heartbeat:Connect(function()
+	table.insert(conns, RunService.Heartbeat:Connect(function()
 		if not isTouch() then return end
 		local s = held.UserInputState
 		if s == Enum.UserInputState.End or s == Enum.UserInputState.Cancel then
@@ -308,6 +313,9 @@ function UI.onHold(b, down, up, move)
 		else
 			track(held.Position)
 		end
+	end))
+	b.Destroying:Once(function()
+		for _, c in ipairs(conns) do c:Disconnect() end
 	end)
 	-- кнопку спрятали с зажатым пальцем — отпускаем
 	b:GetPropertyChangedSignal("Visible"):Connect(function()
@@ -748,6 +756,7 @@ end
 local TextService = game:GetService("TextService")
 local TOAST_W, TOAST_TIME, TOAST_MAX, TOAST_GAP = 420, 4, 4, 8
 local TOAST_VISIBLE, TOAST_TIME_BUSY = 1, 2.5 -- сколько карточек сразу; сколько висит, если в очереди ещё 2+
+local TOAST_QUEUE_MAX = 8 -- длиннее очередь не копим: при спаме уведомлений старые выкидываем, иначе отставание на минуты
 local TOAST_KINDS = {
 	success = {color = Color3.fromRGB(80, 215, 130), icon = "check", title = "DONE"},
 	error = {color = Color3.fromRGB(255, 95, 80), icon = "!", title = "HEADS UP", shake = true},
@@ -873,7 +882,10 @@ local function toastIcon(parent, spec, picture)
 	end
 end
 function UI.toast(text, kind, title)
+	-- пустое сообщение (сервер вернул ответ без msg) — не показываем карточку «nil» / пустую
+	if text == nil then return end
 	text = tostring(text)
+	if text == "" then return end
 	local spec = TOAST_KINDS[kind] or TOAST_KINDS.info
 	-- «+N gold» — золотая карточка награды
 	if kind == "success" and text:find("%+%d") and text:lower():find("gold") then spec = TOAST_KINDS.reward end
@@ -904,6 +916,7 @@ function UI.toast(text, kind, title)
 		for _, q in ipairs(toastQueue) do
 			if q[1] == text and q[3] == title then return end
 		end
+		if #toastQueue >= TOAST_QUEUE_MAX then table.remove(toastQueue, 1) end
 		table.insert(toastQueue, {text, kind, title})
 		return
 	end
@@ -950,7 +963,10 @@ function UI.toast(text, kind, title)
 			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 170, 40)), ColorSequenceKeypoint.new(0.45, Color3.fromRGB(255, 245, 190)),
 			ColorSequenceKeypoint.new(0.55, Color3.fromRGB(255, 245, 190)), ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 170, 40)),
 		})}, stroke)
-		TweenService:Create(g, TweenInfo.new(2.2, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1), {Rotation = 360}):Play()
+		-- бесконечный твин: отменяем вместе с карточкой, иначе TweenService держит его и после Destroy
+		local spinTw = TweenService:Create(g, TweenInfo.new(2.2, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1), {Rotation = 360})
+		spinTw:Play()
+		wrap.Destroying:Once(function() spinTw:Cancel() end)
 	end
 	-- пробегающий блик
 	local shine = UI.new("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0}, card)

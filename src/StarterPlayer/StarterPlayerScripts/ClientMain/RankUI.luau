@@ -50,7 +50,7 @@ return function(ctx)
 	local btnLbl = hb.label
 	-- всплывающее «+N XP» слева от кнопки
 	local function floatXP(n, reason)
-		local l = UI.label(frame, ("+%d XP"):format(n) .. (reason and ("  ·  " .. reason) or ""), {
+		local l = UI.label(frame, ("+%d XP"):format(n) .. (reason and ("  ·  " .. tostring(reason)) or ""), {
 			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, btnX - 78, 1, btnY + 33), Size = UDim2.fromOffset(260, 20),
 			TextSize = 15, TextColor3 = GOLD, TextStrokeTransparency = 0.35, TextXAlignment = Enum.TextXAlignment.Right,
 		})
@@ -137,7 +137,11 @@ return function(ctx)
 	local cerTitle = UI.label(cerFrame, "PROMOTED!", {Position = UDim2.fromOffset(0, 0), Size = UDim2.new(1, 0, 0, 50), TextSize = 46, TextColor3 = GOLD, TextStrokeTransparency = 0.2, TextXAlignment = Enum.TextXAlignment.Center})
 	local cerHolder = UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 64), Size = UDim2.fromOffset(150, 150), BackgroundTransparency = 1}, cerFrame)
 	local cerName = UI.label(cerFrame, "", {Position = UDim2.fromOffset(0, 232), Size = UDim2.new(1, 0, 0, 40), TextSize = 32, TextStrokeTransparency = 0.2, TextXAlignment = Enum.TextXAlignment.Center})
+	local cerId = 0
 	local function ceremony(r)
+		if not LIST[r] then return end
+		cerId += 1
+		local my = cerId
 		for _, c in ipairs(cerHolder:GetChildren()) do c:Destroy() end
 		RankBadge.build(cerHolder, r, {Size = UDim2.fromScale(1, 1)}, 150)
 		cerName.Text = string.upper(LIST[r].Name)
@@ -145,9 +149,11 @@ return function(ctx)
 		cerFrame.Visible = true
 		cerScale.Scale = 0.2
 		TweenService:Create(cerScale, TweenInfo.new(0.5, Enum.EasingStyle.Back), {Scale = 1}):Play()
+		-- второе повышение подряд: старый таймер не прячет новую надпись раньше времени
 		task.delay(3.2, function()
+			if cerId ~= my then return end
 			TweenService:Create(cerScale, TweenInfo.new(0.3), {Scale = 0}):Play()
-			task.delay(0.32, function() cerFrame.Visible = false end)
+			task.delay(0.32, function() if cerId == my then cerFrame.Visible = false end end)
 		end)
 	end
 
@@ -228,8 +234,9 @@ return function(ctx)
 			return
 		end
 		shut()
-		ceremony(res.rank)
-		UI.toast(("You are now %s!"):format(LIST[res.rank].Name), "success")
+		local def = LIST[res.rank] or LIST[rank()]
+		ceremony(LIST[res.rank] and res.rank or rank())
+		UI.toast(("You are now %s!"):format(def.Name), "success")
 	end)
 
 	player:GetAttributeChangedSignal("XP"):Connect(function() if gui.Enabled then refresh() end end)
@@ -249,18 +256,19 @@ return function(ctx)
 		if ready ~= wasReady then
 			wasReady = ready
 			refresh()
+			btnStroke.Color = ready and GOLD or UI.Outline
+			if not ready then
+				-- покой: ставим один раз, а не каждый кадр
+				btnScale.Scale = 1
+				btnStroke.Transparency = 0
+				btnGlow.BackgroundTransparency = 1
+			end
 		end
 		if ready then
 			btnScale.Scale = 1 + 0.05 * math.sin(t * 4)
-			btnStroke.Color = GOLD
 			btnStroke.Transparency = 0.4 - 0.4 * math.sin(t * 4)
 			btnGlow.BackgroundTransparency = 0.55 + 0.25 * math.sin(t * 4)
 			acceptStroke.Transparency = 0.5 - 0.5 * math.sin(t * 5)
-		else
-			btnScale.Scale = 1
-			btnStroke.Color = UI.Outline
-			btnStroke.Transparency = 0
-			btnGlow.BackgroundTransparency = 1
 		end
 		acc += dt
 		if acc > 1 then

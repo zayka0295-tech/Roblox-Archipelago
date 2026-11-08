@@ -226,6 +226,7 @@ return function(ctx)
 	local lastTick = 0
 	local acc = 0
 	local spinReady -- что сейчас нарисовано на кнопке (перекрашиваем только при смене)
+	local shownSec -- секунда таймера на подписи (текст меняем раз в секунду, а не каждый кадр)
 	RunService.RenderStepped:Connect(function(dt)
 		local t = os.clock()
 		local left = waitLeft()
@@ -238,27 +239,32 @@ return function(ctx)
 				spinReady = true
 				hb.setColor(SPIN_ON)
 				hb.icon.ImageColor3 = Color3.new(1, 1, 1)
+				badge.Visible = true
+				btnLbl.Text = "DAILY SPIN"
+				btnLbl.TextColor3 = T.Gold
 			end
 			btnScale.Scale = 1 + 0.06 * math.sin(t * 4)
 			hb.glow.BackgroundTransparency = 0.45 - 0.3 * math.sin(t * 4)
 			local ph = t % 3.5
 			btn.Rotation = ph < 0.6 and 10 * math.sin(ph / 0.6 * math.pi * 3) * (1 - ph / 0.6) or 0
-			badge.Visible = true
 			badgeScale.Scale = 1 + 0.12 * math.abs(math.sin(t * 3))
-			btnLbl.Text = "DAILY SPIN"
-			btnLbl.TextColor3 = T.Gold
 		else
 			if spinReady ~= false then
 				spinReady = false
+				shownSec = nil
 				hb.setColor(SPIN_OFF)
 				hb.icon.ImageColor3 = Color3.fromRGB(150, 150, 160) -- приглушённая, пока ждём
+				btnScale.Scale = 1
+				hb.glow.BackgroundTransparency = 1
+				btn.Rotation = 0
+				badge.Visible = false
+				btnLbl.TextColor3 = T.Muted
 			end
-			btnScale.Scale = 1
-			hb.glow.BackgroundTransparency = 1
-			btn.Rotation = 0
-			badge.Visible = false
-			btnLbl.Text = left and clock(left) or ""
-			btnLbl.TextColor3 = T.Muted
+			local sec = left and math.floor(left) or -1
+			if sec ~= shownSec then
+				shownSec = sec
+				btnLbl.Text = left and clock(left) or ""
+			end
 		end
 		if not gui.Enabled then return end
 		-- лампочки бегут (быстрее во время спина)

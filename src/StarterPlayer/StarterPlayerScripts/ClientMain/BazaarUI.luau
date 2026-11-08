@@ -24,7 +24,8 @@ return function(ctx)
 		task.spawn(function()
 			local folder = ReplicatedStorage:WaitForChild("VehiclePreviews", 30)
 			local tpl = folder and folder:WaitForChild(kind, 10)
-			if not tpl then return end
+			-- пока ждали модель, карточку могли уже заменить (showBought) — не держим мёртвую запись в views
+			if not tpl or not vp.Parent then return end
 			local m = tpl:Clone()
 			local team = player.Team and player.Team.Name
 			local tc = team and Config.Teams[team]
@@ -158,10 +159,13 @@ return function(ctx)
 	RunService.RenderStepped:Connect(function()
 		if not panel.Visible and not done.Visible then return end
 		local a = os.clock() * 0.6
-		for _, v in ipairs(views) do
+		local dir = Vector3.new(math.cos(a), 0.45, math.sin(a)).Unit
+		for i = #views, 1, -1 do
+			local v = views[i]
 			if v.vp.Parent then
-				local dir = Vector3.new(math.cos(a), 0.45, math.sin(a)).Unit
 				v.cam.CFrame = CFrame.lookAt(v.center + dir * v.dist, v.center)
+			else
+				table.remove(views, i)
 			end
 		end
 	end)

@@ -77,13 +77,25 @@ Remotes.Notify.OnClientEvent:Connect(function(text, kind)
 end)
 
 for _, name in ipairs({"ErrorReporter", "SpawnFade", "ShotFx", "LeaderboardUI", "HUD", "SpawnSelectionUI", "ShopUI", "HangarUI", "BazaarUI", "ShipControlUI", "TurretUI", "PlaneClient", "SeatCamera", "IslandsUI", "TeamMarkers", "EngineSounds", "Music", "AirRaid", "BaseAnim", "CaptureFlags", "GunClient", "GunPose", "GunViewmodel", "BaseWaypoints", "QuestUI", "DamageNumbers", "RoundUI", "CaptainUI", "GuidePath", "DailySpinUI", "RankUI", "RewardsUI", "CareerUI", "StormFx", "RankTags", "VipChat", "VehicleZoom", "ParachuteUI", "DropMapUI", "SkydivePose", "UniformUI", "JudgeUI", "SwimLimit"}) do
-	ctx.screens[name] = require(script:WaitForChild(name))(ctx)
+	-- ошибка в одном модуле не должна оставлять игрока без всех следующих интерфейсов:
+	-- ловим её и перебрасываем в отдельном потоке (её увидит Output и ErrorReporter)
+	local ok, res = pcall(function()
+		return require(script:WaitForChild(name))(ctx)
+	end)
+	if ok then
+		ctx.screens[name] = res
+	else
+		task.spawn(error, ("[ClientMain] %s failed to start: %s"):format(name, tostring(res)), 0)
+	end
 end
 
 local function route()
 	local state = ctx.state()
-	for _, s in pairs(ctx.screens) do
-		if s.onState then s.onState(state) end
+	for name, s in pairs(ctx.screens) do
+		if type(s) == "table" and s.onState then
+			local ok, err = pcall(s.onState, state)
+			if not ok then task.spawn(error, ("[ClientMain] %s.onState: %s"):format(name, tostring(err)), 0) end
+		end
 	end
 end
 player:GetAttributeChangedSignal("State"):Connect(route)

@@ -146,11 +146,13 @@ return function(ctx)
 			local ok, status = pcall(function()
 				return GroupService:PromptJoinAsync(ctx.Config.Quests.GroupId)
 			end)
+			if ok and (status == Enum.GroupMembershipStatus.Joined or status == Enum.GroupMembershipStatus.AlreadyMember) then
+				task.wait(1) -- дать Roblox записать вступление (busy держим: повторное нажатие не откроет окно ещё раз)
+			end
 			busy = false
 			if not ok then
 				UI.toast("Couldn't open the group window — try again", "error")
 			elseif status == Enum.GroupMembershipStatus.Joined or status == Enum.GroupMembershipStatus.AlreadyMember then
-				task.wait(1) -- дать Roblox записать вступление
 				if not claim(r.id) then
 					UI.toast("You joined! If the reward didn't arrive, press CLAIM again in a few seconds", "info")
 				end

@@ -91,7 +91,10 @@ return function(ctx)
 	end)
 	player:GetPropertyChangedSignal("Team"):Connect(refreshTeam)
 	player:GetAttributeChangedSignal("SpawnChoice"):Connect(refreshTeam)
-	ctx.GameState.AttributeChanged:Connect(refreshTeam)
+	-- из GameState панели нужен только авианосец (остальные атрибуты меняются часто: захват, раунд…)
+	ctx.GameState.AttributeChanged:Connect(function(name)
+		if name:sub(1, 8) == "Carrier_" then refreshTeam() end
+	end)
 	task.spawn(function()
 		while true do
 			task.wait(1)

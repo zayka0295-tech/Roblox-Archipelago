@@ -123,7 +123,11 @@ return function(ctx)
 	end)
 	player:GetAttributeChangedSignal("SpawnChoice"):Connect(refresh)
 	player:GetPropertyChangedSignal("Team"):Connect(refresh)
-	ctx.GameState.AttributeChanged:Connect(refresh)
+	-- GameState меняется часто (облака, прогресс захвата, счёт) — перерисовываем только по авианосцу и владельцам островов;
+	-- таймеры (перестройка авианосца) обновляет цикл ниже раз в секунду
+	ctx.GameState.AttributeChanged:Connect(function(name)
+		if name:sub(1, 8) == "Carrier_" or (name:sub(1, 7) == "Island_" and name:sub(-6) == "_Owner") then refresh() end
+	end)
 	task.spawn(function()
 		while true do
 			task.wait(1)

@@ -48,25 +48,42 @@ return function(ctx)
 		note.Text = my and ("Team treasury: ◆ %d · islands %d"):format(treasury, mine) or "Capture islands to earn gold"
 		note.TextColor3 = my and T.Gold or T.Muted
 	end
-	GameState.AttributeChanged:Connect(refresh)
+	-- фишки островов: цвет владельца; спорный / захватываемый остров мигает (live — только такие, их и крутит Heartbeat)
+	local live = {} -- [id] = {base, contested, capturing}
+	local function paintChip(id)
+		local c = chips[id]
+		local owner = GameState:GetAttribute("Island_" .. id .. "_Owner") or "Neutral"
+		local contested = GameState:GetAttribute("Island_" .. id .. "_Contested")
+		local capturing = GameState:GetAttribute("Island_" .. id .. "_Capturing") or ""
+		local base = colorOf(owner)
+		if contested or capturing ~= "" then
+			live[id] = {base, contested, capturing}
+		else
+			live[id] = nil
+			c.chip.BackgroundColor3 = base
+		end
+	end
+	for id in pairs(chips) do paintChip(id) end
+
+	GameState.AttributeChanged:Connect(function(name)
+		if name:sub(1, 8) == "Islands_" or name:sub(1, 9) == "Treasury_" then refresh() end
+		local id = name:match("^Island_(.+)_Owner$") or name:match("^Island_(.+)_Contested$") or name:match("^Island_(.+)_Capturing$")
+		if id and chips[id] then paintChip(id) end
+	end)
 	player:GetPropertyChangedSignal("Team"):Connect(refresh)
 	refresh()
 
 	local t = 0
 	RunService.Heartbeat:Connect(function(dt)
 		t += dt
+		if next(live) == nil then return end
 		local blink = (math.sin(t * 8) + 1) / 2
-		for id, c in pairs(chips) do
-			local owner = GameState:GetAttribute("Island_" .. id .. "_Owner") or "Neutral"
-			local contested = GameState:GetAttribute("Island_" .. id .. "_Contested")
-			local capturing = GameState:GetAttribute("Island_" .. id .. "_Capturing") or ""
-			local base = colorOf(owner)
+		for id, l in pairs(live) do
+			local base, contested, capturing = l[1], l[2], l[3]
 			if contested then
-				c.chip.BackgroundColor3 = base:Lerp(Color3.fromRGB(255, 200, 60), blink)
-			elseif capturing ~= "" then
-				c.chip.BackgroundColor3 = base:Lerp(colorOf(capturing), blink * 0.7)
+				chips[id].chip.BackgroundColor3 = base:Lerp(Color3.fromRGB(255, 200, 60), blink)
 			else
-				c.chip.BackgroundColor3 = base
+				chips[id].chip.BackgroundColor3 = base:Lerp(colorOf(capturing), blink * 0.7)
 			end
 		end
 	end)

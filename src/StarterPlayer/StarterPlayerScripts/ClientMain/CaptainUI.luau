@@ -50,6 +50,7 @@ return function(ctx)
 		end)
 		local bb = Instance.new("BillboardGui")
 		bb.Name = "CaptainMark"
+		bb.ResetOnSpawn = false -- лежит прямо в PlayerGui: иначе Roblox удаляет его при каждом респавне и «!» пропадает
 		bb.Size = UDim2.fromOffset(120, 34)
 		bb.StudsOffset = Vector3.new(0, 4.4, 0) -- над табличкой NameTag (имя и должность — в модели на карте)
 		bb.AlwaysOnTop = true
@@ -128,8 +129,14 @@ return function(ctx)
 		goal.Visible = deployed and text ~= nil
 		if text then goalLbl.Text = text end
 		-- выгруженные (стриминг) Капитаны убираем из списка
+		-- (снимаем и отметку hooked: если та же модель вернётся, scanCaptains подхватит её заново)
 		for i = #captains, 1, -1 do
-			if not captains[i].model.Parent then captains[i].bb:Destroy() table.remove(captains, i) end
+			local c = captains[i]
+			if not c.model.Parent or not c.bb.Parent then
+				c.bb:Destroy()
+				hooked[c.model] = nil
+				table.remove(captains, i)
+			end
 		end
 		-- машет, пока к нему ведёт дорожка (те же условия, что в GuidePath) и игрок ещё не подошёл
 		local team = ctx.team()

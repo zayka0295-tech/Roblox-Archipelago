@@ -24,7 +24,11 @@ return function(ctx)
 	local shownInGame = false
 	local api = {}
 
+	local dirty = true
 	local function render()
+		-- скрытую панель не пересобираем на каждое обновление сервера — соберём, когда покажут
+		if not panel.Visible then dirty = true return end
+		dirty = false
 		for _, c in ipairs(list:GetChildren()) do
 			if c:IsA("Frame") or c:IsA("TextLabel") then c:Destroy() end
 		end
@@ -68,6 +72,7 @@ return function(ctx)
 
 	function api.onState(state)
 		panel.Visible = state ~= "Lobby" and shownInGame
+		if panel.Visible and dirty then render() end
 	end
 	function api.toggle()
 		shownInGame = not shownInGame

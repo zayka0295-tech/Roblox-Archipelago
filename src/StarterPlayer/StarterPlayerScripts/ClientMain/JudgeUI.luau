@@ -32,13 +32,15 @@ return function(ctx)
 			info.Text = res.msg or ""
 			return
 		end
+		local needed = tonumber(res.needed) or 0
+		local rowsList = type(res.rows) == "table" and res.rows or {}
 		info.Text = ("A teammate is removed from this server when %d of your teammates vote. Votes expire after %d min. Only vote for real cheaters or griefers.")
-			:format(res.needed, math.floor(Config.Judge.VoteTTL / 60))
+			:format(needed, math.floor(Config.Judge.VoteTTL / 60))
 			.. (res.canVote and "" or ("\n" .. (res.reason or "")))
-		if #res.rows == 0 then
+		if #rowsList == 0 then
 			UI.label(list, "No teammates on the server", {Size = UDim2.new(1, 0, 0, 30), TextSize = 15, Font = UI.Medium, TextColor3 = T.Muted})
 		end
-		for i, r in ipairs(res.rows) do
+		for i, r in ipairs(rowsList) do
 			local row = UI.new("Frame", {LayoutOrder = i, Size = UDim2.new(1, -8, 0, 52), BackgroundColor3 = T.Panel2, BorderSizePixel = 0}, list)
 			UI.corner(row, 8)
 			UI.plate(row)
@@ -47,14 +49,15 @@ return function(ctx)
 			UI.label(row, ("@%s · %s"):format(r.user, tc and tc.DisplayName or "lobby"), {
 				Position = UDim2.fromOffset(12, 28), Size = UDim2.new(1, -170, 0, 16), TextSize = 12, Font = UI.Medium, TextColor3 = T.Muted,
 			})
-			UI.label(row, ("%d/%d"):format(r.votes, res.needed), {
+			UI.label(row, ("%d/%d"):format(r.votes or 0, needed), {
 				AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -124, 0.5, 0), Size = UDim2.fromOffset(44, 20),
-				TextSize = 15, TextColor3 = r.votes > 0 and T.Bad or T.Muted, TextXAlignment = Enum.TextXAlignment.Right,
+				TextSize = 15, TextColor3 = (r.votes or 0) > 0 and T.Bad or T.Muted, TextXAlignment = Enum.TextXAlignment.Right,
 			})
 			local b = UI.button(row, "", T.Bad, {AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(104, 36), TextSize = 13})
 			UI.setEnabled(b, res.canVote and not r.protected, r.mine and T.Panel or T.Bad, r.protected and "OWNER" or (r.mine and "UNVOTE" or "VOTE KICK"))
 			b.Activated:Connect(function()
-				if busy then return end
+				-- выключенная кнопка (голосовать нельзя / OWNER) не шлёт голос
+				if busy or not b:GetAttribute("Enabled") then return end
 				busy = true
 				local v = ctx.invoke("Judge", "vote", r.id)
 				busy = false

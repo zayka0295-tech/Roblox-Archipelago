@@ -370,11 +370,20 @@ return function(ctx)
 	end)
 	updateCount()
 	local t = 0
+	local pulsing = true
 	RunService.Heartbeat:Connect(function(dt)
 		t += dt
 		local n = player:GetAttribute("RewardsReady") or 0
-		btnScale.Scale = n > 0 and 1 + 0.06 * math.max(0, math.sin(t * 4)) or 1
-		hb.glow.BackgroundTransparency = n > 0 and 0.45 - 0.3 * math.sin(t * 4) or 1
+		if n > 0 then
+			pulsing = true
+			btnScale.Scale = 1 + 0.06 * math.max(0, math.sin(t * 4))
+			hb.glow.BackgroundTransparency = 0.45 - 0.3 * math.sin(t * 4)
+		elseif pulsing then
+			-- забирать нечего: ставим покой один раз
+			pulsing = false
+			btnScale.Scale = 1
+			hb.glow.BackgroundTransparency = 1
+		end
 		if gui.Enabled and state and math.floor(t * 4) ~= math.floor((t - dt) * 4) then render() end
 	end)
 

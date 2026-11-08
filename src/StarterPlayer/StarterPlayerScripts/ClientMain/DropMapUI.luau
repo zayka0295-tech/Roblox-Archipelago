@@ -134,10 +134,14 @@ return function(ctx)
 		gui.Enabled = true
 	end)
 
+	local shownLeft, shownTarget -- текст таймера меняем, только когда сменилась секунда или выбрана точка
 	RunService.Heartbeat:Connect(function()
-		if not data then return end
+		if not data then shownLeft = nil return end
 		local left = math.max(0, math.ceil(deadline - os.clock()))
-		timerLbl.Text = ("Auto-launch in %d s%s"):format(left, target and "" or " (through the center)")
+		if left ~= shownLeft or target ~= shownTarget then
+			shownLeft, shownTarget = left, target
+			timerLbl.Text = ("Auto-launch in %d s%s"):format(left, target and "" or " (through the center)")
+		end
 		if left <= 0 then send() end
 	end)
 	return {}
