@@ -28,10 +28,6 @@ local function reservedByOther(s, player)
 	return by ~= nil and by ~= player and by.Parent ~= nil and os.clock() < (s.reservedUntil or 0)
 end
 
-local function now()
-	return workspace:GetServerTimeNow()
-end
-
 local function publish(team)
 	local s = states[team]
 	GameState:SetAttribute("Carrier_" .. team, s.state)
@@ -245,11 +241,14 @@ end
 function CarrierService.requestPurchase(player)
 	if not Guard.allow(player, "BuyCarrier") then return fail("Too many requests, please wait") end
 	local team = TeamService.getTeamName(player)
-	if not team or player:GetAttribute("State") ~= "Deployed" then
+	local s = team and states[team]
+	if not s or player:GetAttribute("State") ~= "Deployed" then
 		return fail("Choose a team and deploy first")
 	end
 
-	local term = baseFolder(team).Shipyard:FindFirstChild("ShipTerminal")
+	local base = baseFolder(team)
+	local yard = base and base:FindFirstChild("Shipyard")
+	local term = yard and yard:FindFirstChild("ShipTerminal")
 	local char = player.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -258,7 +257,6 @@ function CarrierService.requestPurchase(player)
 		return fail("Go to your team's shipyard terminal")
 	end
 
-	local s = states[team]
 	if s.busy then return fail("Another player is already purchasing") end
 	if reservedByOther(s, player) then return fail("A player is buying a carrier for the team right now — try again in a minute") end
 	if s.state == "Active" then return fail("Your team's carrier is already afloat") end
@@ -430,6 +428,7 @@ function CarrierService.botPurchase(team)
 	s.model, s.points, s.ctrl = model, points, ctrl
 	s.state = "Active"
 	s.health = C.MaxHealth
+	s.donated = false -- флаг мог остаться от прошлого (донатного) авианосца — тогда новый раунд не убрал бы бесплатный
 	setupHelm(team, model)
 	publish(team)
 	Notifier.team(team, "Bot commander launched a carrier", "success")
@@ -557,11 +556,11 @@ local function step(s, dt)
 	local c = s.ctrl
 	if not c or not c.root.Parent then return end
 
-	if s.driverHum and (s.driverHum.SeatPart == nil or s.driverHum.Health <= 0) then
+	if s.driverHum and (s.driverHum.SeatPart == nil or s.driverHum.Health <= 0 or not s.driverHum:IsDescendantOf(workspace)) then
 		-- капитан пропал без события (смерть/выход)
 		local seat = s.model:FindFirstChild("HelmSeat")
 		local w = seat and seat:FindFirstChild("SeatWeld")
-		if w and s.driverHum.Health <= 0 then w:Destroy() end
+		if w and (s.driverHum.Health <= 0 or not s.driverHum:IsDescendantOf(workspace)) then w:Destroy() end
 		local team = s.model:GetAttribute("Team")
 		releaseDriver(team)
 	end

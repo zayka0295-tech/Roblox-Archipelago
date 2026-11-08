@@ -61,11 +61,12 @@ local function setBombs(st, n)
 	end
 end
 
--- кто-то сидит на месте, кроме пилотского (стрелок бомбардировщика)
+-- кто-то сидит на месте, кроме пилотского (стрелок бомбардировщика).
+-- Список мест собран один раз в makePlane (st.crew): зовётся каждый кадр для пустого самолёта
 local function crewSeats(st)
 	local list = {}
-	for _, s in ipairs(st.model:GetDescendants()) do
-		if s:IsA("Seat") and s ~= st.seat and s.Occupant then table.insert(list, s) end
+	for _, s in ipairs(st.crew or {}) do
+		if s.Occupant and s:IsDescendantOf(st.model) then table.insert(list, s) end
 	end
 	return list
 end
@@ -222,10 +223,11 @@ local function runwayFree(cf, ownerActor, size)
 end
 
 -- кто может сесть за штурвал: владелец, а в самолёт игрока — и любой игрок его команды (бот летает только на своём)
+-- Игрок (и владелец тоже) — только своей команды и в бою: сменил команду через лобби — старый самолёт уже не его
 local function canPilot(st, actor)
-	if actor == st.owner then return true end
-	return isPlayer(actor) and isPlayer(st.owner) and TeamService.getTeamName(actor) == st.team
-		and actor:GetAttribute("State") == "Deployed"
+	if actor == st.owner and not isPlayer(actor) then return true end
+	if not isPlayer(actor) or TeamService.getTeamName(actor) ~= st.team or actor:GetAttribute("State") ~= "Deployed" then return false end
+	return actor == st.owner or isPlayer(st.owner)
 end
 
 -- самолёт, которым игрок сейчас управляет (свой или взятый у союзника)
@@ -305,7 +307,7 @@ local function makePlane(ownerActor, team, cf, kind)
 		model = model, owner = ownerActor, team = team, root = model.Root, seat = model.PilotSeat,
 		health = P.MaxHealth, muzzles = {}, shotN = 0, lastShot = 0, firing = false,
 		isBot = not isPlayer(ownerActor), speed = 0, bank = 0, ai = nil,
-		cfg = P, kind = kind, bombs = 0,
+		cfg = P, kind = kind, bombs = 0, crew = {},
 	}
 	setBombs(st, P.Bombs or 0)
 	for _, d in ipairs(model:GetChildren()) do
@@ -316,6 +318,7 @@ local function makePlane(ownerActor, team, cf, kind)
 	setupSeat(model, st)
 	-- выпрыгнул в воздухе (пилот или стрелок) — парашют военного базара, если куплен
 	for _, s in ipairs(model:GetDescendants()) do
+		if s:IsA("Seat") and s ~= st.seat then table.insert(st.crew, s) end
 		if s:IsA("Seat") or s:IsA("VehicleSeat") then
 			local last
 			s:GetPropertyChangedSignal("Occupant"):Connect(function()
@@ -358,7 +361,9 @@ local function makePlane(ownerActor, team, cf, kind)
 		char:PivotTo(st.seat.CFrame + Vector3.new(0, 3, 0))
 		st.seat:Sit(hum)
 	end)
-	setOwner(st.root, isPlayer(ownerActor) and ownerActor or nil)
+	-- пустой самолёт считает сервер; пилоту физику отдаёт setupSeat, когда он сел
+	-- (иначе, если посадка не удалась, клиент владел бы пустым самолётом)
+	setOwner(st.root, nil)
 	return model, st
 end
 
@@ -379,7 +384,14 @@ function PlaneService.requestSpawn(player, team, where, carrier, kind)
 		Notifier.send(player, ("Plane is getting ready · %d s"):format(math.ceil(P.SpawnCooldown - (now - lastSpawn[player]))), "error")
 		return false
 	end
-	if where == "Carrier" and not CarrierService.isActive(team) then return false end
+	if where == "Carrier" then
+		-- меню могли открыть на авианосце, который уже тонет (новый у команды — другая модель)
+		local info = CarrierService.getInfo(team)
+		if not CarrierService.isActive(team) or not carrier or not info or info.model ~= carrier then
+			Notifier.send(player, "Your team's carrier is not afloat", "error")
+			return false
+		end
+	end
 	if where == "Island" then
 		local def = airfieldIsland()
 		if not def or CaptureService.getOwner(def.Id) ~= team then
@@ -484,6 +496,9 @@ local function rotateToward(a, b, maxAng)
 	return (CFrame.fromAxisAngle(axis.Unit, maxAng) * a).Unit
 end
 
+local botParams = RaycastParams.new() -- общий на всех ботов (каждый кадр, без новых объектов)
+botParams.FilterType = Enum.RaycastFilterType.Exclude
+
 local function botFly(st, dt)
 	local P = st.cfg
 	local ai = st.ai or {throttle = 0, aim = st.root.CFrame.LookVector}
@@ -493,9 +508,9 @@ local function botFly(st, dt)
 	local pos = root.Position
 	local gear = model:GetAttribute("GearHeight") or 6.2
 
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = {model, charOf(st.pilot)}
+	local params = botParams
+	local pc = charOf(st.pilot)
+	params.FilterDescendantsInstances = pc and {model, pc} or {model}
 	local ground = workspace:Raycast(pos, Vector3.new(0, -(gear + 2.5), 0), params)
 	local onGround = ground ~= nil and ground.Material ~= Enum.Material.Water
 	local groundVel = Vector3.zero
@@ -609,8 +624,8 @@ local function step(dt)
 			if byOwner[st.owner] == model then byOwner[st.owner] = nil end
 			continue
 		end
-		if st.pilotHum and (st.pilotHum.Health <= 0 or st.pilotHum.SeatPart ~= st.seat) then
-			-- пилот погиб в кабине: мотор глохнет, самолёт неуправляем
+		if st.pilotHum and (st.pilotHum.Health <= 0 or st.pilotHum.SeatPart ~= st.seat or not st.pilotHum:IsDescendantOf(workspace)) then
+			-- пилот погиб в кабине (или вышел с сервера — персонажа убрали): мотор глохнет, самолёт неуправляем
 			st.pilot, st.pilotHum, st.firing = nil, nil, false
 			st.abandonT = st.abandonT or now
 			st.root.FlightAlign.Enabled = false
@@ -690,8 +705,10 @@ local function step(dt)
 			local impact = hit and -vel.Unit:Dot(hit.Normal) or 0
 			-- лобовой удар — всегда; на большой скорости разбивает и скользящий (посадка — до ~90)
 			if hit and (impact > 0.45 or (speed > 90 and impact > 0.12)) then
+				-- деталь может лежать во вложенной модели самолёта (хвостовая турель) — ищем сам самолёт
 				local other = hit.Instance:FindFirstAncestorOfClass("Model")
-				if other and planes[other] then destroyPlane(other, nil, "crash") end
+				while other and not planes[other] do other = other:FindFirstAncestorOfClass("Model") end
+				if other then destroyPlane(other, nil, "crash") end
 				destroyPlane(model, nil, "crash")
 				continue
 			end
@@ -801,7 +818,8 @@ function PlaneService.init()
 	end
 	for _, team in ipairs(Config.TeamOrder) do
 		local base = workspace.Map.Teams:FindFirstChild(team .. "Base")
-		local term = base and base.Decor:FindFirstChild("AirTerminal")
+		local decor = base and base:FindFirstChild("Decor")
+		local term = decor and decor:FindFirstChild("AirTerminal")
 		local prompt = term and term:FindFirstChild("PlanePrompt")
 		if prompt then
 			hookTerminal(prompt, "Air terminal", function() return team end, "Base", nil)
@@ -811,11 +829,17 @@ function PlaneService.init()
 	local strip = airstrip()
 	local iterm = strip and strip:FindFirstChild("AirTerminal")
 	local iprompt = iterm and iterm:FindFirstChild("PlanePrompt")
-	if iprompt then
-		local def = airfieldIsland()
-		hookTerminal(iprompt, "Airfield " .. (def.Letter or def.Name), function() return CaptureService.getOwner(def.Id) end, "Island", nil)
+	local idef = airfieldIsland()
+	if iprompt and idef then
+		hookTerminal(iprompt, "Airfield " .. (idef.Letter or idef.Name), function() return CaptureService.getOwner(idef.Id) end, "Island", nil)
 	end
-	local carriers = workspace.Map:WaitForChild("Carriers")
+	-- без WaitForChild: если папки нет, init не должен зависнуть (дальше — Remotes самолётов и Heartbeat)
+	local carriers = workspace.Map:FindFirstChild("Carriers")
+	if not carriers then
+		carriers = Instance.new("Folder")
+		carriers.Name = "Carriers"
+		carriers.Parent = workspace.Map
+	end
 	local function hookCarrier(c)
 		local term = c:FindFirstChild("AirTerminal")
 		local prompt = term and term:FindFirstChild("PlanePrompt")
@@ -868,6 +892,9 @@ function PlaneService.init()
 	Players.PlayerRemoving:Connect(function(p) bombNote[p] = nil end)
 
 	ReplicatedStorage.Remotes:WaitForChild("PlaneHit").OnServerEvent:Connect(function(player, part, hitPos)
+		-- тип и грубый лимит — до поиска самолёта: спам от не-пилота не гоняет перебор
+		if typeof(part) ~= "Instance" or typeof(hitPos) ~= "Vector3" then return end
+		if not Guard.bucket(player, "PlaneHitPre", 60, 30) then return end
 		local model, st = flownBy(player)
 		if not st or st.dead or st.pilot ~= player then return end
 		local P = st.cfg
