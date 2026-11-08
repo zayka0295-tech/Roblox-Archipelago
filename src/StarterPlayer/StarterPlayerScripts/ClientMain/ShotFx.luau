@@ -150,7 +150,7 @@ return function(ctx)
 			end
 		end
 	end)
-	ctx.Remotes:WaitForChild("ShellFx").OnClientEvent:Connect(function(o, v, g, cls)
+	local function onShell(o, v, g, cls)
 		if typeof(o) ~= "Vector3" or typeof(v) ~= "Vector3" or type(g) ~= "number" then return end
 		-- авиабомба падает молча (взрыв озвучит Explosion)
 		if cls ~= "Bomb" then
@@ -198,6 +198,15 @@ return function(ctx)
 		p.CFrame = CFrame.new(o)
 		p.Parent = folder
 		table.insert(shells, {o = o, v = v, g = g, t = 0, last = o, part = p})
+	end
+	-- ShellFx(o, v, g, cls) — один снаряд; ShellFx({o, v, g, cls, o, v, g, cls, …}) — пачка (залп за кадр одним пакетом,
+	-- если сервер начнёт так слать — клиент уже понимает оба вида)
+	ctx.Remotes:WaitForChild("ShellFx").OnClientEvent:Connect(function(a, ...)
+		if type(a) == "table" then
+			for i = 1, #a - 3, 4 do onShell(a[i], a[i + 1], a[i + 2], a[i + 3]) end
+		else
+			onShell(a, ...)
+		end
 	end)
 
 	ctx.Remotes:WaitForChild("ShotFx").OnClientEvent:Connect(function(batch)

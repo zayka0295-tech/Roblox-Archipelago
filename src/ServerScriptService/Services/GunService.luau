@@ -42,7 +42,8 @@ end
 -- выдать оружие игроку (в рюкзак), с полным магазином
 function GunService.give(player, key)
 	local gun = Config.Guns[key]
-	local template = ServerStorage.Weapons:FindFirstChild(key)
+	local weapons = ServerStorage:FindFirstChild("Weapons")
+	local template = gun and weapons and weapons:FindFirstChild(key)
 	local backpack = player:FindFirstChildOfClass("Backpack") or player:WaitForChild("Backpack", 5)
 	if not gun or not template or not backpack then return nil end
 	local tool = template:Clone()

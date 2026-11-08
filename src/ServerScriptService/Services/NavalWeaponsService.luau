@@ -255,8 +255,11 @@ function NavalWeaponsService.init()
 
 	local acc = 0
 	RunService.Heartbeat:Connect(function(dt)
-		stepTorpedoes(dt)
-		stepCharges(dt)
+		-- ошибка в уроне (обработчик корабля) не должна останавливать бомбы, сонар и перезарядку этого кадра
+		local ok, err = pcall(stepTorpedoes, dt)
+		if not ok then warn("[NavalWeapons] " .. tostring(err)) end
+		ok, err = pcall(stepCharges, dt)
+		if not ok then warn("[NavalWeapons] " .. tostring(err)) end
 		acc += dt
 		if acc >= 0.5 then
 			acc = 0

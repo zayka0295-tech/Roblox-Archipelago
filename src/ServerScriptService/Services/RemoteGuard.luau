@@ -11,6 +11,7 @@ function Guard.allow(player, key)
 	local now = os.clock()
 	local t = last[player]
 	if not t then
+		if not player.Parent then return false end -- вышел (запоздалый вызов): не заводим запись, которую уже некому чистить
 		t = {}
 		last[player] = t
 	end
@@ -28,6 +29,7 @@ function Guard.bucket(player, key, rate, burst)
 	local now = os.clock()
 	local pb = buckets[player]
 	if not pb then
+		if not player.Parent then return false end -- вышел: см. Guard.allow
 		pb = {}
 		buckets[player] = pb
 	end

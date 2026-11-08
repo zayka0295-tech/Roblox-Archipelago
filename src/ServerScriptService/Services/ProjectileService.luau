@@ -11,9 +11,32 @@ local ShellFx = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ShellFx"
 local shells = {}
 local MAX_LIFE = 15
 
+-- эффекты выстрелов: залп (несколько снарядов за один шаг) уходит клиентам одним пакетом
+-- {o, v, g, cls, ...}; одиночный снаряд — как раньше (ShotFx понимает оба вида). Class — звук выстрела.
+local pendingFx = {}
+local function flushFx()
+	local n = #pendingFx
+	if n == 4 then
+		ShellFx:FireAllClients(pendingFx[1], pendingFx[2], pendingFx[3], pendingFx[4] or nil)
+	elseif n > 4 then
+		ShellFx:FireAllClients(pendingFx)
+	end
+	pendingFx = {}
+end
+local function queueFx(origin, velocity, gravity, class)
+	if #pendingFx == 0 then task.defer(flushFx) end
+	-- false вместо nil: дыра в массиве обрезала бы пакет
+	table.insert(pendingFx, origin) table.insert(pendingFx, velocity)
+	table.insert(pendingFx, gravity) table.insert(pendingFx, class or false)
+end
+
 function ProjectileService.launch(origin, velocity, attacker, W, ignore)
-	table.insert(shells, {pos = origin, vel = velocity, attacker = attacker, W = W, ignore = ignore or {}, t = 0})
-	ShellFx:FireAllClients(origin, velocity, W.Gravity, W.Class) -- Class: звук выстрела на клиенте
+	-- список исключений собираем один раз (раньше — копия на каждый снаряд каждый кадр)
+	local ex = ignore and table.clone(ignore) or {}
+	local fx = workspace:FindFirstChild("Effects")
+	if fx then table.insert(ex, fx) end
+	table.insert(shells, {pos = origin, vel = velocity, attacker = attacker, W = W, ignore = ex, t = 0})
+	queueFx(origin, velocity, W.Gravity, W.Class)
 end
 
 local function explode(pos, s, directInst)
@@ -71,17 +94,17 @@ function ProjectileService.init()
 			s.t += dt
 			local newVel = s.vel + Vector3.new(0, -s.W.Gravity * dt, 0)
 			local newPos = s.pos + (s.vel + newVel) * 0.5 * dt
-			local ignore = table.clone(s.ignore)
-			local fx = workspace:FindFirstChild("Effects")
-			if fx then table.insert(ignore, fx) end
-			params.FilterDescendantsInstances = ignore
+			params.FilterDescendantsInstances = s.ignore
 			local res = workspace:Raycast(s.pos, newPos - s.pos, params)
+			-- ошибка в уроне одного снаряда (обработчик техники и т.п.) не должна обрывать полёт остальных в этом кадре
 			if res then
 				table.remove(shells, i)
-				explode(res.Position, s, res.Instance)
+				local ok, err = pcall(explode, res.Position, s, res.Instance)
+				if not ok then warn("[ProjectileService] " .. tostring(err)) end
 			elseif newPos.Y < 0 then
 				table.remove(shells, i)
-				explode(Vector3.new(newPos.X, 0, newPos.Z), s, nil) -- всплеск в воде
+				local ok, err = pcall(explode, Vector3.new(newPos.X, 0, newPos.Z), s, nil) -- всплеск в воде
+				if not ok then warn("[ProjectileService] " .. tostring(err)) end
 			elseif s.t > MAX_LIFE then
 				table.remove(shells, i)
 			else

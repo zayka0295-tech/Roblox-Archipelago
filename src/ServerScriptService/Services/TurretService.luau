@@ -122,6 +122,10 @@ local function setup(model, owner)
 				if prev and prev.Parent and prev.Health > 0 and st.exit then
 					task.delay(0.15, function()
 						if prev.Parent and not prev.SeatPart and st.exit.Parent then
+							-- серверный перенос: без льготы античит принял бы его за телепорт / проход сквозь стену
+							-- (и вернул к креслу), а урон от падения — за падение
+							local pl = Players:GetPlayerFromCharacter(prev.Parent)
+							if pl then AntiCheat.grace(pl, 1) end
 							prev.Parent:PivotTo(st.exit.CFrame + Vector3.new(0, 3, 0))
 						end
 					end)

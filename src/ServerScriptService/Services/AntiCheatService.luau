@@ -44,12 +44,19 @@ local wallParams = RaycastParams.new()
 wallParams.FilterType = Enum.RaycastFilterType.Include
 wallParams.IgnoreWater = true
 wallParams.RespectCanCollide = true
+-- лестница рядом (Climbing): то, по чему персонаж может лезть, — с ним сталкивается
+local climbParams = OverlapParams.new()
+climbParams.FilterType = Enum.RaycastFilterType.Exclude
+climbParams.RespectCanCollide = true
+climbParams.CollisionGroup = "Characters"
+climbParams.MaxParts = 1
 
 local function stateOf(player)
 	local s = track[player]
 	if not s then
 		s = {graceUntil = 0, floor = 0, strikes = 0}
-		track[player] = s
+		-- вышедшего не запоминаем (grace из отложенных задач других сервисов): запись осталась бы навсегда
+		if player.Parent then track[player] = s end
 	end
 	return s
 end
@@ -123,6 +130,16 @@ local function floorVelocity(char, hrp)
 	return Vector3.zero
 end
 
+-- состояние Climbing присылает клиент: засчитываем, только если рядом есть по чему лезть
+-- (иначе fly-чит с подделанным Climbing поднимается без проверки полёта)
+local function nearClimbable(char, hrp)
+	climbParams.FilterDescendantsInstances = {char}
+	if #workspace:GetPartBoundsInRadius(hrp.Position, 4, climbParams) > 0 then return true end
+	-- склон террейна деталями не находится — короткий луч вперёд
+	rayParams.FilterDescendantsInstances = {char}
+	return workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 4, rayParams) ~= nil
+end
+
 local function jumpHeight(hum)
 	if hum.UseJumpPower then return hum.JumpPower ^ 2 / (2 * workspace.Gravity) end
 	return hum.JumpHeight
@@ -156,7 +173,8 @@ local function checkAir(player, s, now, char, hum, hrp)
 	local state = hum:GetState()
 	-- состояние гуманоида присылает клиент: Swimming засчитываем только у воды
 	local swimming = state == Enum.HumanoidStateType.Swimming and hrp.Position.Y < WATER_TOP
-	if swimming or state == Enum.HumanoidStateType.Climbing or player:GetAttribute("Parachute") ~= nil then
+	local climbing = state == Enum.HumanoidStateType.Climbing and nearClimbable(char, hrp)
+	if swimming or climbing or player:GetAttribute("Parachute") ~= nil then
 		s.groundY, s.groundCF, s.groundPart, s.airT, s.highT = hrp.Position.Y, hrp.CFrame, nil, nil, nil
 		return false
 	end
@@ -208,7 +226,7 @@ local function checkAir(player, s, now, char, hum, hrp)
 end
 
 -- сквозь стены неподвижной застройки (часто, своим циклом)
-local function checkNoclip(player, s, now)
+local function checkNoclip(player, s, now, list)
 	local char = player.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -222,14 +240,7 @@ local function checkNoclip(player, s, now)
 	s.nc = pos
 	if not prev then return end
 	local d = pos - prev
-	if d.Magnitude < 0.3 then return end
-	local map = workspace:FindFirstChild("Map")
-	local list = {}
-	for _, n in ipairs({"Teams", "Neutral"}) do
-		local f = map and map:FindFirstChild(n)
-		if f then table.insert(list, f) end
-	end
-	if #list == 0 then return end
+	if d.Magnitude < 0.3 or #list == 0 then return end
 	wallParams.FilterDescendantsInstances = list
 	for _, dy in ipairs(NOCLIP_RAYS) do
 		local o = Vector3.new(0, dy, 0)
@@ -339,8 +350,15 @@ function AntiCheat.init()
 		while true do
 			task.wait(NOCLIP_STEP)
 			local now = os.clock()
+			-- неподвижная застройка — один список на шаг, а не на каждого игрока
+			local map = workspace:FindFirstChild("Map")
+			local list = {}
+			for _, n in ipairs({"Teams", "Neutral"}) do
+				local f = map and map:FindFirstChild(n)
+				if f then table.insert(list, f) end
+			end
 			for _, p in ipairs(Players:GetPlayers()) do
-				local ok, err = pcall(checkNoclip, p, stateOf(p), now)
+				local ok, err = pcall(checkNoclip, p, stateOf(p), now, list)
 				if not ok then warn("[AntiCheat] " .. tostring(err)) end
 			end
 		end
