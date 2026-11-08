@@ -90,6 +90,18 @@ function UI.scale(frame, minScale)
 	return s
 end
 
+-- появление «пружинкой» рамки с UI.scale: анимируем её же UIScale (от from·масштаб экрана до масштаба экрана).
+-- Второй UIScale на той же рамке Roblox не применяет — свой UIScale для анимации окна не вешать.
+function UI.pop(frame, from, t, style)
+	local s = frame:FindFirstChildOfClass("UIScale")
+	if not s then return nil end
+	local base = math.max(viewportScale(), s:GetAttribute("MinScale") or 0)
+	s.Scale = base * from
+	local tw = TweenService:Create(s, TweenInfo.new(t, style or Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = base})
+	tw:Play()
+	return tw
+end
+
 ------------------------------------------------------------------ сенсорное управление
 -- Как в мобильных шутерах: слева джойстик, справа круглые кнопки дугой вокруг стандартной
 -- кнопки прыжка Roblox (она же — выход из техники). Пешком ходим стандартным джойстиком Roblox,
@@ -265,7 +277,10 @@ function UI.onHold(b, down, up, move)
 		if not held then return end
 		held, lastPos = nil, nil
 		b:SetAttribute("Held", false)
-		b.BackgroundTransparency = 0.3
+		-- «отжать» как в roundButton: у кнопки-картинки фон прозрачный (1) — возвращаем масштаб картинки,
+		-- а не фон 0.3 (иначе после первого нажатия под картинкой оставался тёмный круг)
+		local s = b:FindFirstChild("Icon") and b.Icon:FindFirstChildOfClass("UIScale")
+		if s then s.Scale = 1 else b.BackgroundTransparency = 0.3 end
 		if up then up() end
 	end
 	local function track(p)
@@ -911,7 +926,8 @@ function UI.toast(text, kind, title)
 		return
 	end
 	-- занято: в очередь (такое же сообщение там уже есть — второе не нужно)
-	if #toastHolder:GetChildren() <= 1 then toastShown = 0 end -- карточек нет (кроме UIListLayout) — счётчик не врёт
+	-- карточек нет совсем — счётчик не врёт (кроме карточек в Holder лежат UIListLayout и UIScale, поэтому считаем рамки)
+	if not toastHolder:FindFirstChildWhichIsA("GuiObject") then toastShown = 0 end
 	if toastShown >= TOAST_VISIBLE then
 		for _, q in ipairs(toastQueue) do
 			if q[1] == text and q[3] == title then return end

@@ -132,8 +132,8 @@ return function(ctx)
 	---------------------------------------------------------------- «PROMOTED»
 	local cer = UI.screen("RankPromotion", 60)
 	local cerFrame = UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.42), Size = UDim2.fromOffset(520, 300), BackgroundTransparency = 1, Visible = false}, cer)
-	UI.scale(cerFrame, 0.6)
-	local cerScale = UI.new("UIScale", {}, cerFrame)
+	-- один UIScale на рамку (второй Roblox не применяет): и масштаб под экран, и анимация надписи — через него (UI.pop)
+	local cerScale = UI.scale(cerFrame, 0.6)
 	local cerTitle = UI.label(cerFrame, "PROMOTED!", {Position = UDim2.fromOffset(0, 0), Size = UDim2.new(1, 0, 0, 50), TextSize = 46, TextColor3 = GOLD, TextStrokeTransparency = 0.2, TextXAlignment = Enum.TextXAlignment.Center})
 	local cerHolder = UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 64), Size = UDim2.fromOffset(150, 150), BackgroundTransparency = 1}, cerFrame)
 	local cerName = UI.label(cerFrame, "", {Position = UDim2.fromOffset(0, 232), Size = UDim2.new(1, 0, 0, 40), TextSize = 32, TextStrokeTransparency = 0.2, TextXAlignment = Enum.TextXAlignment.Center})
@@ -147,8 +147,7 @@ return function(ctx)
 		cerName.Text = string.upper(LIST[r].Name)
 		cerName.TextColor3 = RankBadge.textColor(r)
 		cerFrame.Visible = true
-		cerScale.Scale = 0.2
-		TweenService:Create(cerScale, TweenInfo.new(0.5, Enum.EasingStyle.Back), {Scale = 1}):Play()
+		UI.pop(cerFrame, 0.2, 0.5)
 		-- второе повышение подряд: старый таймер не прячет новую надпись раньше времени
 		task.delay(3.2, function()
 			if cerId ~= my then return end
@@ -226,10 +225,11 @@ return function(ctx)
 		if busy or not accept:GetAttribute("Enabled") then return end
 		busy = true
 		UI.setEnabled(accept, false, T.Good, "…")
-		local ok, res = pcall(function() return remote:InvokeServer("confirm") end)
+		-- ctx.invoke: pcall и таймаут (зависший сервер не оставляет кнопку «…» навсегда)
+		local res = ctx.invoke(remote.Name, "confirm")
 		busy = false
-		if not ok or type(res) ~= "table" or not res.ok then
-			UI.toast(type(res) == "table" and res.msg or "Promotion failed — try again", "error")
+		if not res.ok then
+			UI.toast(res.msg or "Promotion failed — try again", "error")
 			refresh()
 			return
 		end

@@ -102,7 +102,13 @@ return function(ctx)
 	end
 
 	------------------------------------------------------------ строка задания (под левой колонкой HUD)
-	local side = player.PlayerGui:WaitForChild("HUD"):WaitForChild("Side")
+	-- HUD создан раньше (init); не запустился — своя колонка, а не вечный WaitForChild, который остановил бы загрузку следующих модулей
+	local hud = player.PlayerGui:FindFirstChild("HUD")
+	local side = hud and hud:FindFirstChild("Side")
+	if not side then
+		side = UI.new("Frame", {Name = "Side", Position = UDim2.fromOffset(16, 72), Size = UDim2.fromOffset(250, 300), BackgroundTransparency = 1}, UI.screen("CaptainTask", 10))
+		UI.scale(side)
+	end
 	local goal = UI.panel(side, {Name = "CaptainTask", Position = UDim2.fromOffset(0, 200), Size = UDim2.new(1, 0, 0, 56), Visible = false})
 	goal.BackgroundTransparency = 0.2
 	UI.stroke(goal, T.Gold, 1)

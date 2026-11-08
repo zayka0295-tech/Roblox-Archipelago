@@ -103,7 +103,9 @@ return function(ctx)
 	end)
 
 	btnSpawn.Activated:Connect(function()
-		ctx.screens.SpawnSelectionUI.open("change")
+		-- модуль выбора точки мог не запуститься (init ловит ошибки модулей) — тогда кнопка просто ничего не делает
+		local sel = ctx.screens.SpawnSelectionUI
+		if sel then sel.open("change") end
 	end)
 	local busy = false
 	btnLobby.Activated:Connect(function()

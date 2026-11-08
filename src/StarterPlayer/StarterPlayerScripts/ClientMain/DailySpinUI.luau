@@ -203,8 +203,9 @@ return function(ctx)
 		spinning = true
 		winner = nil
 		UI.setEnabled(spinBtn, false, T.Good, "…")
-		local ok, res = pcall(function() return remote:InvokeServer() end)
-		if not ok or type(res) ~= "table" or not res.ok or not S.Prizes[res.index] then
+		-- ctx.invoke: pcall и таймаут (зависший сервер не держит колесо в «крутится» навсегда)
+		local res = ctx.invoke(remote.Name)
+		if not res.ok or not S.Prizes[res.index] then
 			spinning = false
 			UI.toast(ERR[type(res) == "table" and res.err] or "Spin failed — try again", "error")
 			refreshSpinBtn()

@@ -7,7 +7,6 @@
 -- Ступени — Config.Career.Stages. Данные и награды — сервер (Remotes.Career).
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
 local RankBadge = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("RankBadge"))
 
 -- облик скульптуры на каждой ступени
@@ -341,7 +340,6 @@ return function(ctx)
 	-- подложка: нажатие по пустому месту окна не проваливается в затемнение (а оно закрывает окно)
 	UI.new("TextButton", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 0}, panel)
 	UI.new("UIGradient", {Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(46, 40, 30), Color3.fromRGB(16, 21, 29))}, panel)
-	local panelScale = UI.new("UIScale", {}, panel)
 	local title = UI.label(panel, "HALL OF HONOR", {Position = UDim2.fromOffset(0, 12), Size = UDim2.new(1, 0, 0, 38), TextSize = 32, TextColor3 = T.Gold, TextXAlignment = Enum.TextXAlignment.Center})
 	UI.new("UIGradient", {Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 240, 160), Color3.fromRGB(255, 150, 40))}, title)
 	UI.label(panel, "Every tier makes your statue grander · tap a stage or medal to preview it", {Position = UDim2.fromOffset(0, 50), Size = UDim2.new(1, 0, 0, 18),
@@ -485,8 +483,7 @@ return function(ctx)
 		selStage = nil
 		for _, r in ipairs(rows) do r.sel = nil end
 		gui.Enabled = true
-		panelScale.Scale = 0.85
-		TweenService:Create(panelScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+		UI.pop(panel, 0.85, 0.3) -- через UIScale от UI.scale: второй UIScale на окне Roblox не применяет
 		fetch()
 	end
 	local function closeUI() gui.Enabled = false end

@@ -77,10 +77,14 @@ stroke.Parent = status
 local barBg = Instance.new("Frame")
 barBg.AnchorPoint = Vector2.new(0.5, 1)
 barBg.Position = UDim2.new(0.5, 0, 1, -36)
-barBg.Size = UDim2.new(0, 360, 0, 10)
+-- 360 пикселей, но на узком экране — с отступом 16 по краям
+barBg.Size = UDim2.new(1, -32, 0, 10)
 barBg.BackgroundColor3 = PANEL
 barBg.BorderSizePixel = 0
 barBg.Parent = bg
+local barMax = Instance.new("UISizeConstraint")
+barMax.MaxSize = Vector2.new(360, math.huge)
+barMax.Parent = barBg
 Instance.new("UICorner", barBg).CornerRadius = UDim.new(1, 0)
 local bar = Instance.new("Frame")
 bar.Size = UDim2.fromScale(0, 1)

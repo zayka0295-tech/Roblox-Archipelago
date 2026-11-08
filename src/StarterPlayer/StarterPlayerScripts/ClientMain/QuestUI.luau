@@ -126,8 +126,10 @@ return function(ctx)
 		for i = #current + 1, #rows do rows[i].row.Visible = false end
 	end
 
+	local claimGen = 0 -- растёт с каждым CLAIM: ответ «get», отправленный до него, — старый, его не рисуем
 	local function claim(id)
 		busy = true
+		claimGen += 1
 		local res = ctx.invoke("Quests", "claim", id)
 		busy = false
 		UI.toast(res.msg or "", res.ok and "success" or "error")
@@ -182,7 +184,9 @@ return function(ctx)
 	end
 	refresh = function()
 		if busy then return end
+		local gen = claimGen
 		local res = ctx.invoke("Quests", "get")
+		if gen ~= claimGen then return end
 		if res.list then render(res.list) end -- не вышло — просто повторим в следующий раз
 	end
 	close.Activated:Connect(closeUI)

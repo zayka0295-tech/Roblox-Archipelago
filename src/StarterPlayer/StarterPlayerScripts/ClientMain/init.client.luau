@@ -60,21 +60,40 @@ function ctx.islandStatus(team)
 	return false, ("Point %s held by the enemy"):format(def.Letter), def
 end
 
--- безопасный вызов RemoteFunction
+-- безопасный вызов RemoteFunction: ошибка или нет ответа дольше INVOKE_TIMEOUT — {ok = false}
+-- (иначе зависший обработчик сервера навсегда оставлял кнопку «занятой»; поздний ответ просто не ждём)
+local INVOKE_TIMEOUT = 30
 function ctx.invoke(name, ...)
 	local args = table.pack(...)
-	local ok, res = pcall(function()
-		return Remotes[name]:InvokeServer(table.unpack(args, 1, args.n))
+	local thread = coroutine.running()
+	local finished = false
+	local function finish(ok, res)
+		if finished then return end
+		finished = true
+		-- defer: ошибка может прийти сразу, ещё до того, как этот поток уснул в coroutine.yield
+		task.defer(thread, ok, res)
+	end
+	task.spawn(function()
+		finish(pcall(function()
+			return Remotes[name]:InvokeServer(table.unpack(args, 1, args.n))
+		end))
 	end)
+	task.delay(INVOKE_TIMEOUT, finish, false, "timeout")
+	local ok, res = coroutine.yield()
 	if not ok or type(res) ~= "table" then
 		return {ok = false, msg = "Server did not respond, try again"}
 	end
 	return res
 end
 
-Remotes.Notify.OnClientEvent:Connect(function(text, kind)
-	UI.toast(text, kind)
-end)
+local notify = Remotes:WaitForChild("Notify", 10)
+if notify then
+	notify.OnClientEvent:Connect(function(text, kind)
+		UI.toast(text, kind)
+	end)
+else
+	warn("[ClientMain] Remotes.Notify not found — server notifications are off")
+end
 
 for _, name in ipairs({"ErrorReporter", "SpawnFade", "ShotFx", "LeaderboardUI", "HUD", "SpawnSelectionUI", "ShopUI", "HangarUI", "BazaarUI", "ShipControlUI", "TurretUI", "PlaneClient", "SeatCamera", "IslandsUI", "TeamMarkers", "EngineSounds", "Music", "AirRaid", "BaseAnim", "CaptureFlags", "GunClient", "GunPose", "GunViewmodel", "BaseWaypoints", "QuestUI", "DamageNumbers", "RoundUI", "CaptainUI", "GuidePath", "DailySpinUI", "RankUI", "RewardsUI", "CareerUI", "StormFx", "RankTags", "VipChat", "VehicleZoom", "ParachuteUI", "DropMapUI", "SkydivePose", "UniformUI", "JudgeUI", "SwimLimit"}) do
 	-- ошибка в одном модуле не должна оставлять игрока без всех следующих интерфейсов:

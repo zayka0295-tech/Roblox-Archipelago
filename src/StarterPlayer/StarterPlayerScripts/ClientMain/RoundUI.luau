@@ -2,7 +2,6 @@
 -- победитель, награда, личная статистика за раунд, звания с золотом и лучшие игроки.
 -- Всё состояние — атрибуты GameState Round_* (см. RoundService).
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
 
 return function(ctx)
 	local UI, T, Config = ctx.UI, ctx.UI.T, ctx.Config
@@ -18,8 +17,15 @@ return function(ctx)
 	end
 
 	-- полоска крепится под HUD.Stats (и масштабируется вместе с ней)
-	local hud = player.PlayerGui:WaitForChild("HUD")
-	local stats = hud:WaitForChild("Stats")
+	-- HUD создаётся раньше (init); если он не запустился — полоска в своём экране, а не вечное ожидание,
+	-- которое остановило бы загрузку всех следующих модулей
+	local hud = player.PlayerGui:FindFirstChild("HUD")
+	local stats = hud and hud:FindFirstChild("Stats")
+	if not stats then
+		stats = UI.new("Frame", {Name = "Stats", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 12), Size = UDim2.fromOffset(420, 46),
+			BackgroundTransparency = 1}, UI.screen("RoundStrip", 10))
+		UI.scale(stats)
+	end
 	local strip = UI.panel(stats, {Name = "Round", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, 4), Size = UDim2.new(1, 0, 0, 26)})
 	strip.BackgroundTransparency = 0.3
 	local stripLbl = UI.label(strip, "", {Size = UDim2.fromScale(1, 1), TextSize = 15, RichText = true, TextXAlignment = Enum.TextXAlignment.Center})
@@ -58,7 +64,6 @@ return function(ctx)
 	local banner = UI.panel(gui, {Name = "Banner", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.6), Size = UDim2.fromOffset(640, 520), Visible = false})
 	UI.scale(banner, 0.55)
 	UI.new("UIGradient", {Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(36, 46, 66), Color3.fromRGB(16, 21, 29))}, banner)
-	local bannerScale = UI.new("UIScale", {}, banner)
 	UI.padding(banner, 16)
 	local title = UI.label(banner, "", {Size = UDim2.new(1, 0, 0, 46), TextSize = 40, TextXAlignment = Enum.TextXAlignment.Center})
 	local scoreLbl = UI.label(banner, "", {Position = UDim2.fromOffset(0, 48), Size = UDim2.new(1, 0, 0, 24), TextSize = 18, RichText = true, Font = UI.Medium, TextXAlignment = Enum.TextXAlignment.Center})
@@ -171,9 +176,10 @@ return function(ctx)
 			card.head.Text = look[1] .. " " .. look[2]
 			local mine = tt ~= nil and tt.userId == player.UserId
 			if tt then
-				card.who.Text = tt.name
+				-- Text = nil и %d с nil — ошибка, после неё экран итогов не показался бы вовсе
+				card.who.Text = tostring(tt.name or "—")
 				card.who.TextColor3 = Config.Teams[tt.team] and Config.Teams[tt.team].Color or T.Text
-				card.what.Text = ("%d %s"):format(tt.value, look[3])
+				card.what.Text = ("%d %s"):format(tonumber(tt.value) or 0, look[3])
 				card.gold.Text = (tt.gold or 0) > 0 and ("+%d gold"):format(tt.gold) or ""
 			else
 				card.who.Text, card.who.TextColor3, card.what.Text, card.gold.Text = "—", T.Muted, "nobody this round", ""
@@ -185,7 +191,7 @@ return function(ctx)
 		local board = type(res.board) == "table" and res.board or {}
 		for i, labels in ipairs(boardRows) do
 			local b = board[i]
-			local vals = b and {i, b.name, b.kills, b.planes, b.sinks, b.caps, b.score} or {"", "", "", "", "", "", ""}
+			local vals = b and {i, b.name or "", b.kills or 0, b.planes or 0, b.sinks or 0, b.caps or 0, b.score or 0} or {"", "", "", "", "", "", ""}
 			for j, lbl in ipairs(labels) do
 				lbl.Text = tostring(vals[j])
 				local color = T.Text
@@ -198,8 +204,7 @@ return function(ctx)
 		footer.Text = (bonus > 0 and ("Your honours: +%d gold · "):format(bonus) or "") .. "Next round starts soon"
 
 		banner.Visible = true
-		bannerScale.Scale = 0.8
-		TweenService:Create(bannerScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+		UI.pop(banner, 0.8, 0.35) -- через UIScale от UI.scale: второй UIScale на окне Roblox не применяет
 		shown += 1
 		local my = shown
 		task.delay(math.max(8, (Config.Round.Intermission or 20) - 1), function()

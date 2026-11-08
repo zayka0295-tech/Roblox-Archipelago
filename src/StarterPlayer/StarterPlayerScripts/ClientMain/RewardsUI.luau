@@ -51,7 +51,6 @@ return function(ctx)
 	-- подложка: нажатие по пустому месту окна не проваливается в затемнение (а оно закрывает окно)
 	UI.new("TextButton", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 0}, panel)
 	UI.new("UIGradient", {Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(36, 46, 66), Color3.fromRGB(16, 21, 29))}, panel)
-	local panelScale = UI.new("UIScale", {}, panel)
 	UI.ribbon(panel, "REWARDS", {Position = UDim2.new(0.5, 0, 0, 14), Size = UDim2.fromOffset(330, 70)})
 	local close = UI.button(panel, "X", T.Panel2, {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 10), Size = UDim2.fromOffset(38, 38), TextSize = 20})
 	UI.stroke(close)
@@ -263,9 +262,12 @@ return function(ctx)
 			st.invite.newGold, st.invite.friendGold, st.invite.count)
 	end
 
+	local claimGen = 0 -- растёт с каждым CLAIM: ответ «get», отправленный до него, — старый, его не рисуем
 	local function fetch()
 		if busy then return end
+		local gen = claimGen
 		local res = ctx.invoke("Rewards", "get")
+		if gen ~= claimGen then return nil end
 		if res.ok and res.state then
 			state, stateAt = res.state, os.clock()
 			render()
@@ -295,6 +297,7 @@ return function(ctx)
 	local function claim(kind, index, popTarget)
 		if busy then return end
 		busy = true
+		claimGen += 1
 		local res = ctx.invoke("Rewards", "claim", kind, index)
 		busy = false
 		UI.toast(res.msg or "", res.ok and "reward" or "error")
@@ -339,8 +342,7 @@ return function(ctx)
 	local function open(tab)
 		gui.Enabled = true
 		setTab(tab or currentTab)
-		panelScale.Scale = 0.85
-		TweenService:Create(panelScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+		UI.pop(panel, 0.85, 0.3) -- через UIScale от UI.scale: второй UIScale на окне Roblox не применяет
 		render()
 		openId += 1
 		local my = openId

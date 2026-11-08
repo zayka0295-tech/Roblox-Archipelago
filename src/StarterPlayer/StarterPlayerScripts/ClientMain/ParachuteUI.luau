@@ -43,18 +43,30 @@ return function(ctx)
 
 	-- витрины над донатными плитами лобби (Map.Lobby*/Pads/*.DisplayChute / DisplayShip): медленно крутятся и покачиваются (только у себя).
 	-- Исходная точка — атрибут Origin (а не GetPivot: до подгрузки модель пустая, и витрина уехала бы в 0,0,0)
-	local function animateShows(t)
+	-- список витрин ищем раз в 2 с (стриминг), а не обходим карту каждый кадр
+	local shows, showsAt = {}, -math.huge
+	local function findShows()
+		table.clear(shows)
 		local map = workspace:FindFirstChild("Map")
 		if not map then return end
 		for _, lobby in ipairs(map:GetChildren()) do
-		local pads = lobby:GetAttribute("LobbyTeam") and lobby:FindFirstChild("Pads")
-		for _, m in ipairs(pads and pads:GetChildren() or {}) do
-			local show = m:FindFirstChild("DisplayChute") or m:FindFirstChild("DisplayShip")
-			local p = show and show:GetAttribute("Origin")
-			if p and show.PrimaryPart then
-				show:PivotTo(CFrame.new(p.X, p.Y + math.sin(t * 1.3) * 0.7, p.Z) * CFrame.Angles(0, t * 0.5, math.sin(t * 0.9) * 0.08))
+			local pads = lobby:GetAttribute("LobbyTeam") and lobby:FindFirstChild("Pads")
+			for _, m in ipairs(pads and pads:GetChildren() or {}) do
+				local show = m:FindFirstChild("DisplayChute") or m:FindFirstChild("DisplayShip")
+				if show then table.insert(shows, show) end
 			end
 		end
+	end
+	local function animateShows(t)
+		if t - showsAt > 2 then
+			showsAt = t
+			findShows()
+		end
+		for _, show in ipairs(shows) do
+			local p = show:GetAttribute("Origin")
+			if p and show.Parent and show.PrimaryPart then
+				show:PivotTo(CFrame.new(p.X, p.Y + math.sin(t * 1.3) * 0.7, p.Z) * CFrame.Angles(0, t * 0.5, math.sin(t * 0.9) * 0.08))
+			end
 		end
 	end
 

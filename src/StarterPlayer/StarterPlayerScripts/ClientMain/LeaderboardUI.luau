@@ -54,15 +54,22 @@ return function(ctx)
 		end
 	end
 
-	ctx.Remotes.LeaderboardUpdated.OnClientEvent:Connect(function(newList)
-		if type(newList) == "table" then
-			data = newList
-			render()
+	-- Remotes — через WaitForChild в своём потоке: прямой индекс падал бы, если они ещё не реплицировались
+	task.spawn(function()
+		local updated = ctx.Remotes:WaitForChild("LeaderboardUpdated", 30)
+		if updated then
+			updated.OnClientEvent:Connect(function(newList)
+				if type(newList) == "table" then
+					data = newList
+					render()
+				end
+			end)
 		end
 	end)
 	task.spawn(function()
+		local get = ctx.Remotes:WaitForChild("GetLeaderboard", 30)
 		local ok, res = pcall(function()
-			return ctx.Remotes.GetLeaderboard:InvokeServer()
+			return get:InvokeServer()
 		end)
 		if ok and type(res) == "table" then
 			data = res
