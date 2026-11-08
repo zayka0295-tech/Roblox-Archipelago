@@ -23,6 +23,8 @@ local votes = {}    -- [UserId цели] = {[UserId голосующего] = в
 local joinedAt = {} -- [игрок] = os.clock() входа
 local banned = {}   -- [UserId] = true — исключён с этого сервера
 local owners = {}   -- [UserId] = true — владелец группы, которой принадлежит игра
+local notifiedAt = {} -- [UserId цели] = os.clock() последнего уведомления «за вас голосуют»
+local NOTIFY_GAP = 10
 
 local store
 pcall(function()
@@ -117,7 +119,8 @@ local function list(player)
 end
 
 local function vote(player, id)
-	local target = type(id) == "number" and Players:GetPlayerByUserId(id)
+	-- целый UserId: NaN/inf/дробное — отказ (дробный id завёл бы отдельную запись голосов против того же игрока)
+	local target = type(id) == "number" and id == math.floor(id) and math.abs(id) < 2 ^ 53 and Players:GetPlayerByUserId(id)
 	if not target or target == player then return fail("Player not found") end
 	local team = TeamService.getTeamName(player)
 	if not team or TeamService.getTeamName(target) ~= team then return fail("You can only vote on your own teammates") end
@@ -135,8 +138,13 @@ local function vote(player, id)
 		exile(target)
 		return {ok = true, msg = target.DisplayName .. " was removed from the server"}
 	end
-	-- цель узнаёт, что за неё голосуют (без имён) — есть шанс исправиться
-	Notifier.send(target, ("Players are voting to remove you from the server: %d/%d"):format(n, need), "error")
+	-- цель узнаёт, что за неё голосуют (без имён) — есть шанс исправиться. Не чаще раза в NOTIFY_GAP сек.:
+	-- иначе «забрать голос / проголосовать снова» по кругу заваливало бы цель тостами
+	local now = os.clock()
+	if now - (notifiedAt[id] or -math.huge) >= NOTIFY_GAP then
+		notifiedAt[id] = now
+		Notifier.send(target, ("Players are voting to remove you from the server: %d/%d"):format(n, need), "error")
+	end
 	return {ok = true, msg = ("Vote counted: %d/%d"):format(n, need)}
 end
 
@@ -163,6 +171,7 @@ function JudgeService.init()
 		-- всё равно — тогда и убираем запись (если он не вернулся), чтобы таблица не росла
 		owners[p.UserId] = nil
 		local id = p.UserId
+		notifiedAt[id] = nil
 		task.delay(J.VoteTTL, function()
 			if not Players:GetPlayerByUserId(id) then votes[id] = nil end
 		end)

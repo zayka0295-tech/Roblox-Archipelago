@@ -6,6 +6,7 @@ local Config = require(ReplicatedStorage.Config.GameConfig)
 
 local Services = script.Parent
 local DataService = require(Services.DataService)
+local Guard = require(Services.RemoteGuard)
 
 local DailySpinService = {}
 local S = Config.DailySpin
@@ -25,6 +26,8 @@ end
 
 function DailySpinService.init()
 	ReplicatedStorage.Remotes:WaitForChild("DailySpin").OnServerInvoke = function(player)
+		-- спам вызовами: отказ без обращения к профилю (клиент покажет «Spin failed — try again»)
+		if not Guard.bucket(player, "DailySpin", 1, 3) then return {ok = false, err = "Busy"} end
 		if not DataService.isLoaded(player) then return {ok = false, err = "NoData"} end
 		local i = pick()
 		local pz = S.Prizes[i]

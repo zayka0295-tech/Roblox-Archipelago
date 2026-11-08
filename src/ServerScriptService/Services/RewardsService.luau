@@ -235,7 +235,9 @@ local function checkReferral(player)
 	end
 	task.spawn(DataService.save, player)
 	Notifier.send(player, ("Welcome! A friend invited you: +%d gold"):format(I.NewPlayerGold), "success")
-	if inviter and DataService.isLoaded(inviter) then
+	-- пригласившему — только если отметка новичка (Flags) правда сохранится: во временной сессии (DataStore
+	-- недоступен) она пропадёт, и тот же аккаунт приносил бы награду при каждом заходе
+	if inviter and DataService.isLoaded(inviter) and player:GetAttribute("DataPersistent") == true then
 		local paid = DataService.apply(inviter, function(data)
 			if data.Invites >= I.MaxRewarded then return nil end
 			data.Invites += 1
@@ -247,6 +249,29 @@ local function checkReferral(player)
 			BadgesService.award(inviter, "InviteFriend")
 		end
 	end
+end
+
+-- шаг учёта времени для сундуков (каждые TICK сек.); новый день — напоминание
+local function tickPlayer(p, day)
+	if not p.Parent or not DataService.isLoaded(p) then return end
+	local opened = {}
+	DataService.apply(p, function(data)
+		roll(data, day)
+		local before = data.GiftSec
+		data.GiftSec += TICK
+		for _, g in ipairs(G.List) do
+			if before < g.Min * 60 and data.GiftSec >= g.Min * 60 then table.insert(opened, g) end
+		end
+		return {}
+	end)
+	for _, g in ipairs(opened) do
+		Notifier.send(p, ("🎁 Gift unlocked for %d minutes of play — open REWARDS"):format(g.Min), "success")
+	end
+	if lastDay[p] and lastDay[p] ~= day then
+		Notifier.send(p, "New day! Fresh daily quests and your streak reward are waiting in REWARDS", "info")
+	end
+	lastDay[p] = day
+	publish(p)
 end
 
 function RewardsService.init()
@@ -274,6 +299,18 @@ function RewardsService.init()
 
 	DataService.Loaded.Event:Connect(function(player)
 		lastDay[player] = today()
+		-- профиль ещё забирается с другого сервера: забор награды пока запрещён (Syncing) — приглашение
+		-- проверим ещё раз, когда сохранение включится (повторно награда не выдаётся — флаг в Flags).
+		-- Подписка до checkReferral: он ждёт ответа IsFriendsWith, а сохранение может включиться в это время
+		if player:GetAttribute("DataPersistent") ~= true then
+			local conn
+			conn = player:GetAttributeChangedSignal("DataPersistent"):Connect(function()
+				if player:GetAttribute("DataPersistent") ~= true then return end
+				conn:Disconnect()
+				checkReferral(player)
+				publish(player)
+			end)
+		end
 		checkReferral(player)
 		publish(player)
 	end)
@@ -284,26 +321,9 @@ function RewardsService.init()
 			task.wait(TICK)
 			local day = today()
 			for _, p in ipairs(Players:GetPlayers()) do
-				if DataService.isLoaded(p) then
-					local opened = {}
-					DataService.apply(p, function(data)
-						roll(data, day)
-						local before = data.GiftSec
-						data.GiftSec += TICK
-						for _, g in ipairs(G.List) do
-							if before < g.Min * 60 and data.GiftSec >= g.Min * 60 then table.insert(opened, g) end
-						end
-						return {}
-					end)
-					for _, g in ipairs(opened) do
-						Notifier.send(p, ("🎁 Gift unlocked for %d minutes of play — open REWARDS"):format(g.Min), "success")
-					end
-					if lastDay[p] and lastDay[p] ~= day then
-						Notifier.send(p, "New day! Fresh daily quests and your streak reward are waiting in REWARDS", "info")
-					end
-					lastDay[p] = day
-					publish(p)
-				end
+				-- ошибка у одного игрока не должна навсегда остановить цикл (сундуки встали бы у всех)
+				local ok, err = pcall(tickPlayer, p, day)
+				if not ok then warn("[RewardsService] tick: " .. tostring(err)) end
 			end
 		end
 	end)

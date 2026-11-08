@@ -54,6 +54,12 @@ local FIELDS = {"Gold", "Kills", "Deaths", "PlaySec", "QuestKills", "QuestDone",
 local BIT_FIELDS = {QuestDone = true, DQDone = true, GiftDone = true, Flags = true, Starter = true, CareerDone = true, Items = true}
 local MAX_FIELDS = {Tutorial = true, LastSpin = true, Rank = true, DQDay = true, DQ1 = true, DQ2 = true, DQ3 = true,
 	Streak = true, StreakLast = true, GiftDay = true, GiftSec = true, Invites = true}
+-- дневные группы наград: при слиянии прогресс разных суток не смешиваем (иначе вчерашние DQDone/DQ* закрыли бы
+-- сегодняшние задания) — если дни разные, группа целиком берётся из более позднего дня
+local DAY_GROUPS = {
+	{day = "DQDay", fields = {"DQ1", "DQ2", "DQ3", "DQDone"}},
+	{day = "GiftDay", fields = {"GiftSec", "GiftDone"}},
+}
 local ATTR_FIELDS = {Diamonds = true, Tutorial = true, LastSpin = true, XP = true, Rank = true, Items = true} -- публикуются атрибутами игрока
 local LOCK_TTL = 180   -- сек.: замок старше этого считается брошенным (сервер упал)
 local LOCK_WAIT = 60   -- сек.: столько ждём освобождения чужого замка при входе
@@ -180,6 +186,7 @@ local function adoptLater(player, p)
 				-- увидят это на своём следующем шаге)
 				warn("[DataService] Studio has no API access (Game Settings → Security → Enable Studio Access to API Services) — test session without saving")
 				store, killsStore = nil, nil
+				DataService.KillsStore = nil -- и таблица лидеров перестаёт опрашивать рейтинг
 				break
 			end
 			if ok and res ~= "locked" then
@@ -189,7 +196,8 @@ local function adoptLater(player, p)
 					return
 				end
 				-- сохранённое + заработанное без сохранения (покупки в это время были запрещены)
-				local stored = readFields(res)
+				local saved = readFields(res)
+				local stored = table.clone(saved)
 				for _, f in ipairs(FIELDS) do
 					if BIT_FIELDS[f] then
 						stored[f] = bit32.bor(stored[f], p.data[f]) -- флаги объединяем, а не складываем
@@ -197,6 +205,13 @@ local function adoptLater(player, p)
 						stored[f] = math.max(stored[f], p.data[f]) -- шаг обучения и ранг — дальний из двух; спин — поздний
 					else
 						stored[f] += math.max(0, p.data[f] - p.base[f])
+					end
+				end
+				for _, g in ipairs(DAY_GROUPS) do
+					if saved[g.day] ~= p.data[g.day] then
+						local src = saved[g.day] > p.data[g.day] and saved or p.data
+						stored[g.day] = src[g.day]
+						for _, f in ipairs(g.fields) do stored[f] = src[f] end
 					end
 				end
 				stored.Gold = math.min(Config.Economy.MaxGold, stored.Gold)
@@ -218,8 +233,7 @@ local function adoptLater(player, p)
 	end)
 end
 
-function DataService.load(player)
-	if profiles[player] then return end
+local function loadProfile(player)
 	local session = HttpService:GenerateGUID(false)
 	local raw, canSave, locked, failed = nil, false, false, false
 	if store then
@@ -238,6 +252,7 @@ function DataService.load(player)
 				-- Studio без доступа к API: дальше DataStore не трогаем, сессии временные, покупки доступны сразу
 				warn("[DataService] Studio has no API access (Game Settings → Security → Enable Studio Access to API Services) — test session without saving")
 				store, killsStore = nil, nil
+				DataService.KillsStore = nil -- и таблица лидеров перестаёт опрашивать рейтинг
 				break
 			else
 				warn(("[DataService] failed to load %s: %s. Retrying in the background; saving stays off until the profile is loaded."):format(player.Name, tostring(res)))
@@ -258,6 +273,7 @@ function DataService.load(player)
 		data = data, canSave = canSave, dirty = false, lockRefresh = os.clock(), session = session,
 		base = table.clone(data), adopting = (locked or failed) and not canSave,
 		saving = false, closing = false, closed = false,
+		savedKills = canSave and data.Kills or nil, -- это число уже в рейтинге: не переписываем его первым же сохранением
 	}
 	profiles[player] = p
 
@@ -284,6 +300,17 @@ function DataService.load(player)
 		end
 		adoptLater(player, p)
 	end
+end
+
+-- загрузка — один раз на игрока: повторный вызов (в Main могут сработать и PlayerAdded, и цикл по уже вошедшим)
+-- завёл бы вторую сессию — она ждала бы замок первой, а потом подменила бы её профиль
+local loading = {}
+function DataService.load(player)
+	if profiles[player] or loading[player] then return end
+	loading[player] = true
+	local ok, err = pcall(loadProfile, player)
+	loading[player] = nil
+	if not ok then warn(("[DataService] load error %s: %s"):format(player.Name, tostring(err))) end
 end
 
 function DataService.isLoaded(player)

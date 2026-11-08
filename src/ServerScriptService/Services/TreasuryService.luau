@@ -20,8 +20,13 @@ function TreasuryService.get(team)
 	return balance[team] or 0
 end
 
+-- сумма — конечное неотрицательное число (NaN/inf/не число навсегда испортили бы баланс команды)
+local function valid(amount)
+	return type(amount) == "number" and amount == amount and amount >= 0 and amount < math.huge
+end
+
 function TreasuryService.add(team, amount, reason)
-	if not balance[team] or amount <= 0 then return end
+	if not balance[team] or not valid(amount) or amount <= 0 then return end
 	balance[team] += amount
 	publish(team)
 	if reason then
@@ -31,7 +36,7 @@ end
 
 -- списать, если хватает; возвращает true/false (атомарно — без await между проверкой и списанием)
 function TreasuryService.spend(team, amount)
-	if not balance[team] or balance[team] < amount then return false end
+	if not balance[team] or not valid(amount) or balance[team] < amount then return false end
 	balance[team] -= amount
 	publish(team)
 	return true
@@ -39,7 +44,7 @@ end
 
 -- вернуть деньги, если покупка не удалась
 function TreasuryService.refund(team, amount)
-	if balance[team] then
+	if balance[team] and valid(amount) then
 		balance[team] += amount
 		publish(team)
 	end
