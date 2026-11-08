@@ -35,7 +35,14 @@ local sent = {} -- [игрок] = сколько ошибок прислал
 -- обрезка до MAX_LEN байт без разрыва UTF-8 (битый UTF-8 DataStore не примет — и весь журнал перестанет писаться)
 local function clip(s)
 	s = tostring(s or "")
-	if not utf8.len(s) then s = s:gsub("[\128-\255]", "?") end
+	if not utf8.len(s) then
+		-- чаще всего битый только хвост (строку уже обрезали по байтам) — срезаем его, а не всю кириллицу в «?»
+		for _ = 1, 3 do
+			s = s:sub(1, -2)
+			if utf8.len(s) then break end
+		end
+		if not utf8.len(s) then s = s:gsub("[\128-\255]", "?") end
+	end
 	if #s <= MAX_LEN then return s end
 	s = s:sub(1, MAX_LEN)
 	for _ = 1, 3 do
@@ -127,15 +134,23 @@ function ErrorLogService.init()
 		if t == Enum.MessageType.MessageWarning and msg:sub(1, 1) == "[" then add("W", msg, "", "") end
 	end)
 
-	ReplicatedStorage.Remotes:WaitForChild("ClientError").OnServerEvent:Connect(function(player, msg, trace, src)
-		if type(msg) ~= "string" or (trace ~= nil and type(trace) ~= "string") or (src ~= nil and type(src) ~= "string") then return end
-		if not Guard.bucket(player, "ClientError", 0.5, 5) then return end
-		local n = (sent[player] or 0) + 1
-		if n > PER_PLAYER then return end
-		sent[player] = n
-		-- огромные строки от читера не гоняем через utf8/gsub целиком: clip всё равно оставит MAX_LEN
-		local cap = MAX_LEN * 2
-		add("C", msg:sub(1, cap), trace and trace:sub(1, cap), src and src:sub(1, cap))
+	-- init зовут первым в Main: без ClientError в Remotes бесконечный WaitForChild здесь остановил бы запуск всего сервера
+	task.spawn(function()
+		local remote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ClientError", 30)
+		if not remote then
+			warn("[ErrorLogService] Remotes.ClientError not found — client errors are not collected")
+			return
+		end
+		remote.OnServerEvent:Connect(function(player, msg, trace, src)
+			if type(msg) ~= "string" or (trace ~= nil and type(trace) ~= "string") or (src ~= nil and type(src) ~= "string") then return end
+			if not Guard.bucket(player, "ClientError", 0.5, 5) then return end
+			local n = (sent[player] or 0) + 1
+			if n > PER_PLAYER then return end
+			sent[player] = n
+			-- огромные строки от читера не гоняем через utf8/gsub целиком: clip всё равно оставит MAX_LEN
+			local cap = MAX_LEN * 2
+			add("C", msg:sub(1, cap), trace and trace:sub(1, cap), src and src:sub(1, cap))
+		end)
 	end)
 	Players.PlayerRemoving:Connect(function(p) sent[p] = nil end)
 

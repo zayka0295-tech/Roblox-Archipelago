@@ -248,15 +248,21 @@ end
 function PreviewService.init()
 	local folder = Instance.new("Folder")
 	folder.Name = "VehiclePreviews"
-	local sources = {Carrier = ServerStorage.Ships:FindFirstChild("AircraftCarrier")}
+	-- нет папки шаблонов — без превью этой техники, но игрушечные модели ниже всё равно строим
+	local ships = ServerStorage:FindFirstChild("Ships")
+	local vehicles = ServerStorage:FindFirstChild("Vehicles")
+	local sources = {Carrier = ships and ships:FindFirstChild("AircraftCarrier")}
 	for kind, P in pairs(Config.Planes) do
-		sources[kind] = ServerStorage.Vehicles:FindFirstChild(P.Model or kind)
+		sources[kind] = vehicles and vehicles:FindFirstChild(P.Model or kind)
 	end
 	for kind in pairs(Config.Ships) do
-		sources[kind] = ServerStorage.Ships:FindFirstChild(kind)
+		sources[kind] = ships and ships:FindFirstChild(kind)
 	end
 	for kind, template in pairs(sources) do
-		if template then strip(template, kind).Parent = folder end
+		if template then
+			local ok, err = pcall(function() strip(template, kind).Parent = folder end)
+			if not ok then warn("[PreviewService] " .. kind .. ": " .. tostring(err)) end
+		end
 	end
 	buildIsland().Parent = folder
 	buildBase().Parent = folder

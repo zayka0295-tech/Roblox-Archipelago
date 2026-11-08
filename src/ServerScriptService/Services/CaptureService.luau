@@ -41,22 +41,32 @@ local function inCaptureZone(isl, hrp, hum)
 	return dx * dx + dz * dz <= isl.radius * isl.radius and p.Y - center.Y <= (C.MaxHeightAboveGround or 25) and p.Y >= center.Y - 10
 end
 
-local function countInZone(isl)
-	local blue, red = 0, 0
-	local function consider(team, hrp, hum)
-		if not inCaptureZone(isl, hrp, hum) then return end
-		if team == "Blue" then blue += 1 elseif team == "Red" then red += 1 end
+-- кто может захватывать (в бою, с командой): {команда, корень, гуманоид} — один раз за такт на все острова
+local function collectActors()
+	local list = {}
+	local function add(team, hrp, hum)
+		if (team == "Blue" or team == "Red") and hrp and hum then table.insert(list, {team, hrp, hum}) end
 	end
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p:GetAttribute("State") == "Deployed" then
 			local char = p.Character
-			consider(TeamService.getTeamName(p), char and char:FindFirstChild("HumanoidRootPart"), char and char:FindFirstChildOfClass("Humanoid"))
+			add(TeamService.getTeamName(p), char and char:FindFirstChild("HumanoidRootPart"), char and char:FindFirstChildOfClass("Humanoid"))
 		end
 	end
 	if C.BotsCount then
 		local bots = workspace:FindFirstChild("Bots")
 		for _, b in ipairs(bots and bots:GetChildren() or {}) do
-			consider(b:GetAttribute("Team"), b:FindFirstChild("HumanoidRootPart"), b:FindFirstChildOfClass("Humanoid"))
+			add(b:GetAttribute("Team"), b:FindFirstChild("HumanoidRootPart"), b:FindFirstChildOfClass("Humanoid"))
+		end
+	end
+	return list
+end
+
+local function countInZone(isl, actors)
+	local blue, red = 0, 0
+	for _, a in ipairs(actors) do
+		if inCaptureZone(isl, a[2], a[3]) then
+			if a[1] == "Blue" then blue += 1 else red += 1 end
 		end
 	end
 	return blue, red
@@ -243,13 +253,16 @@ function CaptureService.init()
 	publishCounts()
 
 	local acc = 0
+	local warnedAt = {} -- [id острова] = когда последний раз писали ошибку
 	RunService.Heartbeat:Connect(function(dt)
 		acc += dt
 		if acc < 0.25 then return end
 		local step = acc
 		acc = 0
-		for _, isl in pairs(islands) do
-			local blue, red = countInZone(isl)
+		local actors = collectActors()
+		-- остров под pcall: сбой у одного (нет детали значка, ошибка в награде) не останавливает захват остальных
+		local function stepIsland(isl)
+			local blue, red = countInZone(isl, actors)
 			local prevC, prevContested, prevCap = isl.control, isl.contested, isl.capturing
 			isl.contested = blue > 0 and red > 0
 			isl.capturing = nil
@@ -290,6 +303,14 @@ function CaptureService.init()
 			end
 			if isl.control ~= prevC or isl.contested ~= prevContested or isl.capturing ~= prevCap then
 				updateVisuals(isl)
+			end
+		end
+		for id, isl in pairs(islands) do
+			local ok, err = pcall(stepIsland, isl)
+			-- одна и та же поломка повторялась бы 4 раза в секунду — пишем не чаще раза в 30 с на остров
+			if not ok and os.clock() - (warnedAt[id] or -math.huge) > 30 then
+				warnedAt[id] = os.clock()
+				warn("[CaptureService] " .. tostring(id) .. ": " .. tostring(err))
 			end
 		end
 	end)

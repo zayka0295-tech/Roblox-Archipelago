@@ -138,16 +138,26 @@ local function onCharacter(player, char)
 	-- одноразовая: забираем сразу (и устаревшую — если игрок уже не в бою), чтобы не сработала на следующем персонаже
 	SpawnService.placeOverride[player] = nil
 	local kind
+	-- возрождение подключаем сразу: ошибка ниже (карта, выдача оружия) не должна оставить игрока мёртвым навсегда
+	-- (CharacterAutoLoads выключен). kind читается в момент смерти — к тому времени он уже известен
+	hum.Died:Connect(function()
+		task.delay(kind == "Lobby" and 1 or Config.Spawn.RespawnTime, function()
+			if player.Parent and player.Character == char then
+				player:LoadCharacter()
+			end
+		end)
+	end)
 	local placed = false
 	if override and player:GetAttribute("State") == "Deployed" then
 		kind = "Drop"
 		AntiCheat.grace(player, 3)
-		-- ошибка в расстановке не должна оставить персонажа без Placed и без возрождения — тогда обычная точка
-		local ok, err = pcall(override, char, hum, hrp)
+		-- ошибка в расстановке не должна оставить персонажа без Placed и без возрождения — тогда обычная точка.
+		-- Расстановка может вернуть false — «не получилось» (место пропало): тоже обычная точка
+		local ok, res = pcall(override, char, hum, hrp)
 		if ok then
-			placed = true
+			placed = res ~= false
 		else
-			warn("[SpawnService] place override: " .. tostring(err))
+			warn("[SpawnService] place override: " .. tostring(res))
 		end
 		if player.Character ~= char then return end
 	end
@@ -179,8 +189,12 @@ local function onCharacter(player, char)
 		ff.Parent = char
 		Debris:AddItem(ff, Config.Spawn.ProtectionSeconds)
 		-- стартовое оружие команды (синие — M4A1, красные — AK-47); require здесь, чтобы не зависеть от порядка загрузки
-		local GunService = require(Services.GunService)
-		GunService.give(player, Config.TeamGun[TeamService.getTeamName(player) or ""] or "Rifle")
+		-- (pcall: сбой выдачи не должен оставить персонажа без группы столкновений и учёта урона ниже)
+		local ok, err = pcall(function()
+			local GunService = require(Services.GunService)
+			GunService.give(player, Config.TeamGun[TeamService.getTeamName(player) or ""] or "Rifle")
+		end)
+		if not ok then warn("[SpawnService] give gun: " .. tostring(err)) end
 	end
 
 	-- корабли и самолёты видны на любом расстоянии (Persistent): чтобы за штурвалом и в кабине
@@ -193,13 +207,6 @@ local function onCharacter(player, char)
 		if d:IsA("BasePart") then d.CollisionGroup = "Characters" end
 	end)
 	CombatService.trackCharacter(player, char, kind)
-	hum.Died:Connect(function()
-		task.delay(kind == "Lobby" and 1 or Config.Spawn.RespawnTime, function()
-			if player.Parent and player.Character == char then
-				player:LoadCharacter()
-			end
-		end)
-	end)
 end
 
 -- в лобби игрок уже в команде: куда меньше игроков (свою не меняем, если команды равны)

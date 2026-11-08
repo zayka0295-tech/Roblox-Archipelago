@@ -131,7 +131,13 @@ function TutorialService.init()
 			prompt.MaxActivationDistance = 12
 			prompt.RequiresLineOfSight = false
 			prompt.Parent = root
-			prompt.Triggered:Connect(talk)
+			prompt.Triggered:Connect(function(player)
+				-- срабатывание приходит от клиента: проверяем, что игрок правда рядом с Капитаном
+				local char = player.Character
+				local hrp = char and char:FindFirstChild("HumanoidRootPart")
+				if not hrp or (hrp.Position - root.Position).Magnitude > prompt.MaxActivationDistance + 10 then return end
+				talk(player)
+			end)
 		end
 	end
 

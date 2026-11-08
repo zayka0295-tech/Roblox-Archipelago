@@ -713,6 +713,7 @@ local function slotSeat(slot)
 	return nil
 end
 
+local baseTurrets = {} -- [команда] = {t = os.clock(), list = зенитки базы по порядку}
 local function refreshTurret(slot)
 	if slot.role == "bsGunner" then
 		local m = ShipService.teamShip("Battleship", slot.team)
@@ -732,13 +733,22 @@ local function refreshTurret(slot)
 		table.sort(list, function(a, b) return a.Name < b.Name end)
 		slot.turret = list[slot.index]
 	elseif slot.role == "baseGunner" then
-		local list = {}
-		local base = workspace.Map.Teams:FindFirstChild(slot.team .. "Base")
-		for _, d in ipairs(base and base:GetDescendants() or {}) do
-			if d:IsA("Model") and d:GetAttribute("BaseTurret") then table.insert(list, d) end
+		-- зенитки базы неподвижны: список раз в 30 с (или если турель пропала), а не GetDescendants всей базы
+		-- каждую секунду для каждого ждущего слота
+		local now = os.clock()
+		local cache = baseTurrets[slot.team]
+		local cached = cache and cache.list[slot.index]
+		if not cache or now - cache.t > 30 or (cached and not cached.Parent) then
+			local list = {}
+			local base = workspace.Map.Teams:FindFirstChild(slot.team .. "Base")
+			for _, d in ipairs(base and base:GetDescendants() or {}) do
+				if d:IsA("Model") and d:GetAttribute("BaseTurret") then table.insert(list, d) end
+			end
+			table.sort(list, function(a, b) return a:GetFullName() < b:GetFullName() end)
+			cache = {t = now, list = list}
+			baseTurrets[slot.team] = cache
 		end
-		table.sort(list, function(a, b) return a:GetFullName() < b:GetFullName() end)
-		slot.turret = list[slot.index]
+		slot.turret = cache.list[slot.index]
 	end
 end
 
@@ -765,7 +775,13 @@ local function spawnSlot(slot)
 	slot.spawning = false
 	if not bot then
 		slot.respawnAt = os.clock() + 5
-			slot.role = slot.baseRole
+		slot.role = slot.baseRole
+		return
+	end
+	-- пока модель собиралась (makeBot ждёт), место бота занял игрок — не спускаем технику зря
+	if slot.disabled then
+		bot:Destroy()
+		slot.role = slot.baseRole
 		return
 	end
 	local hum = bot:FindFirstChildOfClass("Humanoid")

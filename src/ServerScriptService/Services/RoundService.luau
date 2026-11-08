@@ -72,31 +72,41 @@ end
 
 -- всё, что команды накопили за раунд (кроме островов — их сбрасывает CaptureService.resetAll)
 local function resetWorld()
-	local models = CarrierService.roundResetModels()
-	for _, m in ipairs(ShipService.roundResetModels()) do table.insert(models, m) end
-	if #models > 0 then
-		for _, p in ipairs(Players:GetPlayers()) do
-			local char = p.Character
-			if char and p:GetAttribute("State") == "Deployed" and aboard(char, models) then
-				if p:GetAttribute("SpawnChoice") == "Carrier" then p:SetAttribute("SpawnChoice", "Base") end
-				task.spawn(function() if p.Parent then p:LoadCharacter() end end)
+	-- перенос игроков с убираемых кораблей — отдельно: его сбой не должен отменить сам сброс ниже
+	local okMove, errMove = pcall(function()
+		local models = CarrierService.roundResetModels()
+		for _, m in ipairs(ShipService.roundResetModels()) do table.insert(models, m) end
+		if #models > 0 then
+			for _, p in ipairs(Players:GetPlayers()) do
+				local char = p.Character
+				if char and p:GetAttribute("State") == "Deployed" and aboard(char, models) then
+					if p:GetAttribute("SpawnChoice") == "Carrier" then p:SetAttribute("SpawnChoice", "Base") end
+					task.spawn(function() if p.Parent then p:LoadCharacter() end end)
+				end
 			end
 		end
-	end
+	end)
+	if not okMove then warn("[RoundService] reset aboard: " .. tostring(errMove)) end
 	for _, f in ipairs({CarrierService.resetAll, ShipService.resetTeamShips, LogisticsService.resetAll, HeliService.resetAll, TreasuryService.reset}) do
 		local ok, err = pcall(f)
 		if not ok then warn("[RoundService] reset: " .. tostring(err)) end
 	end
 end
 
+-- шаг сброса под pcall: сбой одного (мир, острова) не оставляет раунд без старта, очков с нуля и номера
+local function try(name, f)
+	local ok, err = pcall(f)
+	if not ok then warn("[RoundService] " .. name .. ": " .. tostring(err)) end
+end
+
 local function startRound()
 	roundNo += 1
-	if roundNo > 1 then resetWorld() end
+	if roundNo > 1 then try("resetWorld", resetWorld) end
 	for _, t in ipairs(TEAMS) do score[t], kills[t] = 0, 0 end
 	played = {}
 	stats = {}
-	RankService.newRound()
-	CaptureService.resetAll()
+	try("newRound", RankService.newRound)
+	try("resetIslands", CaptureService.resetAll)
 	active = true
 	endsAt = now() + R.Duration
 	GameState:SetAttribute("Round_Number", roundNo)
@@ -132,10 +142,14 @@ local function endRound()
 		end
 		if top then
 			local gold = R.Awards and R.Awards[t[1]] or 0
-			if gold > 0 then DataService.addGold(top, gold) end
+			-- сбой начисления не должен сорвать награды за победу и экран итогов у всех
+			local ok, err = pcall(function()
+				if gold > 0 then DataService.addGold(top, gold) end
+				if t[1] == "MVP" then BadgesService.award(top, "MVP") end
+			end)
+			if not ok then warn("[RoundService] title: " .. tostring(err)) end
 			bonus[top] = (bonus[top] or 0) + gold
 			table.insert(titles, {key = t[1], name = top.DisplayName, team = TeamService.getTeamName(top), value = best, gold = gold, userId = top.UserId})
-			if t[1] == "MVP" then BadgesService.award(top, "MVP") end
 		end
 	end
 	-- таблица лучших по очкам
@@ -157,17 +171,21 @@ local function endRound()
 	for _, p in ipairs(Players:GetPlayers()) do
 		local sec = winner and played[p] and played[p][winner] or 0
 		local got = 0
-		if winner and TeamService.getTeamName(p) == winner and sec >= R.MinPlaySec then
-			if DataService.addDiamonds(p, R.WinDiamonds) then
-				got = R.WinDiamonds
-				task.spawn(DataService.save, p)
+		-- сбой награды у одного игрока не должен оставить остальных без наград и экрана итогов
+		local ok, err = pcall(function()
+			if winner and TeamService.getTeamName(p) == winner and sec >= R.MinPlaySec then
+				if DataService.addDiamonds(p, R.WinDiamonds) then
+					got = R.WinDiamonds
+					task.spawn(DataService.save, p)
+				end
+				RankService.award(p, "RoundWin")
+			else
+				-- опыт за раунд — и проигравшим (и при ничьей), если столько же были в бою
+				local rec = played[p]
+				if rec and (rec.Blue or 0) + (rec.Red or 0) >= R.MinPlaySec then RankService.award(p, "RoundLoss") end
 			end
-			RankService.award(p, "RoundWin")
-		else
-			-- опыт за раунд — и проигравшим (и при ничьей), если столько же были в бою
-			local rec = played[p]
-			if rec and (rec.Blue or 0) + (rec.Red or 0) >= R.MinPlaySec then RankService.award(p, "RoundLoss") end
-		end
+		end)
+		if not ok then warn("[RoundService] reward: " .. tostring(err)) end
 		if remote then
 			remote:FireClient(p, {
 				winner = winner, blue = score.Blue, red = score.Red, killsBlue = kills.Blue, killsRed = kills.Red,

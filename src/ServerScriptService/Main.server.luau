@@ -57,43 +57,49 @@ local RewardsService = require(Services.RewardsService)
 local CareerService = require(Services.CareerService)
 local BazaarService = require(Services.BazaarService)
 
-DataService.init()
-CarrierService.init()
-CombatService.init()
-SpawnService.init()
-LeaderboardService.init()
-TurretService.init()
-PlaneService.init()
-ProjectileService.init()
-ShipService.init()
-TreasuryService.init()
-CaptureService.init()
-LogisticsService.init()
-HeliService.init() -- после LogisticsService: дополняет его CombatService.onCargoHit
-StormService.init()
-NavalWeaponsService.init()
-AirRaidService.init()
-GunService.init()
-QuestService.init()
-RoundService.init() -- считает убийства за раунд через CombatService.onKill
-TutorialService.init()
-DailySpinService.init()
-FallDamageService.init()
-MonetizationService.init()
-CargoDropService.init() -- регистрирует покупку ParachuteDrop
-DonateShipService.init() -- DonateBattleship / DonateCarrier
-UniformService.init()
-JudgeService.init()
-LobbyPadService.init()
-PreviewService.init() -- мини-модели для HangarUI / ShopUI
-RankService.init()
-VipService.init()
-BadgesService.init()
-RewardsService.init() -- ежедневные задания, серия входов, сундуки, приглашения
-CareerService.init() -- карьерные достижения (статуя на базе)
-BazaarService.init() -- военный базар на площади: магазин за диаманты
-AntiCheatService.init()
-BotService.init()
+-- ошибка в init одного сервиса не должна оставить сервер без остальных (и без появления игроков ниже)
+local function start(name, svc)
+	local ok, err = pcall(svc.init)
+	if not ok then warn(("[Main] %s.init: %s"):format(name, tostring(err))) end
+end
+
+start("DataService", DataService)
+start("CarrierService", CarrierService)
+start("CombatService", CombatService)
+start("SpawnService", SpawnService)
+start("LeaderboardService", LeaderboardService)
+start("TurretService", TurretService)
+start("PlaneService", PlaneService)
+start("ProjectileService", ProjectileService)
+start("ShipService", ShipService)
+start("TreasuryService", TreasuryService)
+start("CaptureService", CaptureService)
+start("LogisticsService", LogisticsService)
+start("HeliService", HeliService) -- после LogisticsService: дополняет его CombatService.onCargoHit
+start("StormService", StormService)
+start("NavalWeaponsService", NavalWeaponsService)
+start("AirRaidService", AirRaidService)
+start("GunService", GunService)
+start("QuestService", QuestService)
+start("RoundService", RoundService) -- считает убийства за раунд через CombatService.onKill
+start("TutorialService", TutorialService)
+start("DailySpinService", DailySpinService)
+start("FallDamageService", FallDamageService)
+start("MonetizationService", MonetizationService)
+start("CargoDropService", CargoDropService) -- регистрирует покупку ParachuteDrop
+start("DonateShipService", DonateShipService) -- DonateBattleship / DonateCarrier
+start("UniformService", UniformService)
+start("JudgeService", JudgeService)
+start("LobbyPadService", LobbyPadService)
+start("PreviewService", PreviewService) -- мини-модели для HangarUI / ShopUI
+start("RankService", RankService)
+start("VipService", VipService)
+start("BadgesService", BadgesService)
+start("RewardsService", RewardsService) -- ежедневные задания, серия входов, сундуки, приглашения
+start("CareerService", CareerService) -- карьерные достижения (статуя на базе)
+start("BazaarService", BazaarService) -- военный базар на площади: магазин за диаманты
+start("AntiCheatService", AntiCheatService)
+start("BotService", BotService)
 
 -- PlayerAdded и цикл по уже вошедшим могут сработать для одного игрока дважды — второй раз пропускаем
 local handled = setmetatable({}, {__mode = "k"})
