@@ -138,6 +138,7 @@ local function makeContainer(h)
 		h.cables[i] = p
 	end
 	h.sway = Vector3.zero
+	h.placeDirty = true -- новый контейнер и тросы нужно поставить под крюк
 end
 local function removeCables(h)
 	for _, p in ipairs(h.cables or {}) do p:Destroy() end
@@ -154,22 +155,32 @@ local function flat(v) return Vector3.new(v.X, 0, v.Z) end
 -- и отстаёт при разгоне (sway)
 local function place(h, dt)
 	local cf = CFrame.new(h.pos) * CFrame.Angles(0, h.yaw, 0) * CFrame.Angles(h.pitch, 0, h.roll or 0)
-	local list, cfs = {}, {}
-	for _, p in ipairs(h.parts) do
-		local off = p.offset
-		if p.spin then
-			off = off * CFrame.Angles(0, (h.rotor + math.rad(p.spin.angle)) * p.spin.dir, 0) * CFrame.new(p.spin.radial, 0, 0)
-		end
-		table.insert(list, p.part)
-		table.insert(cfs, cf * off)
-	end
 	local vel = h.vel or Vector3.zero
-	if h.container and h.container.Parent == h.model then
-		local hook = (cf * CFrame.new(HOOK)).Position
+	local hasCont = h.container and h.container.Parent == h.model
+	local want
+	if hasCont then
 		-- раскачка: груз отстаёт от разгона и плавно возвращается под крюк
-		local want = -Vector3.new(vel.X, 0, vel.Z) * 0.06
+		want = -Vector3.new(vel.X, 0, vel.Z) * 0.06
 		if want.Magnitude > 5 then want = want.Unit * 5 end
 		h.sway += (want - h.sway) * math.min(1, dt * 1.2)
+		if want == Vector3.zero and h.sway.Magnitude < 0.01 then h.sway = Vector3.zero end
+	end
+	-- висит на месте (погрузка): корпус, контейнер и тросы не двигаются — по сети шлём только винты
+	local still = h.lastCF == cf and not h.placeDirty and vel == h.appliedVel and (not hasCont or h.sway == Vector3.zero)
+	h.lastCF, h.placeDirty = cf, false
+	local list, cfs = {}, {}
+	for _, p in ipairs(h.parts) do
+		if p.spin or not still then
+			local off = p.offset
+			if p.spin then
+				off = off * CFrame.Angles(0, (h.rotor + math.rad(p.spin.angle)) * p.spin.dir, 0) * CFrame.new(p.spin.radial, 0, 0)
+			end
+			table.insert(list, p.part)
+			table.insert(cfs, cf * off)
+		end
+	end
+	if hasCont and not still then
+		local hook = (cf * CFrame.new(HOOK)).Position
 		local ccf = CFrame.new(hook + h.sway - Vector3.new(0, CABLE + CONT_H / 2, 0)) * CFrame.Angles(0, h.yaw, 0)
 		h.container:PivotTo(ccf + h.contOff)
 		local sx, sz = h.contSize.X / 2 - 0.4, h.contSize.Z / 2 - 0.6
@@ -181,7 +192,11 @@ local function place(h, dt)
 		end
 	end
 	workspace:BulkMoveTo(list, cfs, Enum.BulkMoveMode.FireCFrameChanged)
-	for _, p in ipairs(list) do p.AssemblyLinearVelocity = vel end
+	-- скорость деталей (для упреждения попаданий) — только когда она изменилась
+	if not still then
+		for _, p in ipairs(list) do p.AssemblyLinearVelocity = vel end
+		h.appliedVel = vel
+	end
 end
 
 local function baseHelipad(team)
@@ -405,6 +420,8 @@ local function step(route, dt)
 	end
 	if not h then
 		if Config.Teams[owner] and os.clock() >= (route.nextAt or 0) and baseHelipad(owner) then
+			-- если постройка упадёт (нет модели контейнера и т.п.) — повтор через 5 с, а не каждый кадр
+			route.nextAt = os.clock() + 5
 			spawnHeli(route, owner)
 		end
 		return

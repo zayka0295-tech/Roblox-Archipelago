@@ -116,37 +116,50 @@ local function berthFree(cf, size)
 end
 
 ------------------------------------------------------------------ мель и препятствия
-local blockParams = RaycastParams.new()
-blockParams.FilterType = Enum.RaycastFilterType.Include
-blockParams.IgnoreWater = true
-local hullParams = OverlapParams.new()
-hullParams.FilterType = Enum.RaycastFilterType.Include
 local SUB_HEIGHT = 25 -- от киля до верха рубки с перископом
+local shipsVer = 0    -- растёт при появлении/удалении корабля: фильтры препятствий пересобираются только тогда
 
--- сколько точек корпуса упираются в мель или препятствие.
--- Погружённая подлодка проходит под кораблями: их проверяем только в объёме её корпуса (от киля до рубки).
-local function countBlocked(st, pivotPos, yaw, keelY)
-	local submerged = st.cfg.CanDive and (st.depth or 0) > 2
+-- фильтры препятствий корабля st. Раньше списки и FilterDescendantsInstances собирались заново
+-- в каждом вызове countBlocked (до 3 раз за кадр на каждый корабль) — теперь только при смене состава кораблей
+local function obstacleParams(st, submerged)
+	local carriers = workspace.Map:FindFirstChild("Carriers")
+	if st.fVer == shipsVer and st.fSub == submerged and st.fCarriers == carriers then
+		return st.fBlock, st.fHull, st.fHasHulls
+	end
 	local list = {workspace.Terrain}
 	for _, n in ipairs({"Teams", "Neutral", "Nature"}) do
 		local f = workspace.Map:FindFirstChild(n)
 		if f then table.insert(list, f) end
 	end
 	local hulls = {}
-	local carriers = workspace.Map:FindFirstChild("Carriers")
 	if carriers then table.insert(submerged and hulls or list, carriers) end
 	for other in pairs(ships) do
 		if other ~= st.model and other.Parent then table.insert(submerged and hulls or list, other) end
 	end
-	blockParams.FilterDescendantsInstances = list
-	hullParams.FilterDescendantsInstances = hulls
+	local bp = st.fBlock or RaycastParams.new()
+	bp.FilterType = Enum.RaycastFilterType.Include
+	bp.IgnoreWater = true
+	bp.FilterDescendantsInstances = list
+	local hp = st.fHull or OverlapParams.new()
+	hp.FilterType = Enum.RaycastFilterType.Include
+	hp.FilterDescendantsInstances = hulls
+	st.fVer, st.fSub, st.fCarriers = shipsVer, submerged, carriers
+	st.fBlock, st.fHull, st.fHasHulls = bp, hp, #hulls > 0
+	return bp, hp, st.fHasHulls
+end
+
+-- сколько точек корпуса упираются в мель или препятствие.
+-- Погружённая подлодка проходит под кораблями: их проверяем только в объёме её корпуса (от киля до рубки).
+local function countBlocked(st, pivotPos, yaw, keelY)
+	local submerged = st.cfg.CanDive and (st.depth or 0) > 2
+	local blockParams, hullParams, hasHulls = obstacleParams(st, submerged)
 	local rot = CFrame.Angles(0, yaw, 0)
 	local n = 0
 	for _, p in ipairs(st.points) do
 		local w = pivotPos + rot:VectorToWorldSpace(p)
 		local r = workspace:Raycast(Vector3.new(w.X, keelY + 90, w.Z), Vector3.new(0, -180, 0), blockParams)
 		local hit = r and r.Position.Y > keelY - 1
-		if not hit and submerged and #hulls > 0 then
+		if not hit and submerged and hasHulls then
 			hit = #workspace:GetPartBoundsInBox(CFrame.new(w.X, keelY + SUB_HEIGHT / 2, w.Z), Vector3.new(2, SUB_HEIGHT, 2), hullParams) > 0
 		end
 		if hit then n += 1 end
@@ -316,6 +329,7 @@ local function spawnShip(kind, team, owner, donor)
 	local seatAttr = m:FindFirstChild("HelmSeat") and m.HelmSeat:GetAttribute("AimTurret")
 	if seatAttr then st.aimTurret = m:FindFirstChild(seatAttr) end
 	ships[m] = st
+	shipsVer += 1
 	TurretService.attachShip(m)
 	setupHelm(st)
 	-- трапы: из воды на палубу (подняться может любой — в т.ч. абордаж)
@@ -352,7 +366,9 @@ function ShipService.requestPurchase(player, kind)
 	if not Guard.allow(player, "BuyShip") then return fail("Too many requests, please wait") end
 	local team = TeamService.getTeamName(player)
 	if not team or player:GetAttribute("State") ~= "Deployed" then return fail("Choose a team and deploy first") end
-	local term = workspace.Map.Teams[team .. "Base"].Shipyard:FindFirstChild("ShipTerminal")
+	local base = workspace.Map.Teams:FindFirstChild(team .. "Base")
+	local yard = base and base:FindFirstChild("Shipyard")
+	local term = yard and yard:FindFirstChild("ShipTerminal")
 	local char = player.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -521,6 +537,7 @@ end
 
 ------------------------------------------------------------------ урон и потопление
 local function forget(st)
+	if ships[st.model] then shipsVer += 1 end
 	ships[st.model] = nil
 	if st.cfg.Team then
 		local t = slotOf(st.kind, st.team)
@@ -636,9 +653,11 @@ local function sink(st, killer)
 		if not SinkFx.run(m, {explosions = big and 5 or 3, radius = big and 22 or 14, width = st.cfg.Beam, length = st.cfg.Length * 0.8,
 			ao = st.ao, lv = st.lv, root = st.root, yaw = st.yaw, pitch = 10, roll = 22, speed = 3.5, floor = -95, timeout = 50,
 			noCollide = true}) then return end
+		-- модель уже убрали (новый раунд) — без сообщения «можно строить новый»
+		local gone = not m.Parent
 		forget(st)
 		if m.Parent then m:Destroy() end
-		if st.cfg.Team then
+		if st.cfg.Team and not gone then
 			Notifier.team(st.team, ("%s has sunk — the shipyard can build a new one"):format(st.cfg.DisplayName), "info")
 		end
 	end)
@@ -658,6 +677,7 @@ end
 local floorParams = RaycastParams.new()
 floorParams.FilterType = Enum.RaycastFilterType.Include
 floorParams.IgnoreWater = true
+local floorReady = false
 
 local function step(st, dt)
 	local cfg = st.cfg
@@ -717,8 +737,11 @@ local function step(st, dt)
 		if (st.driver or st.forceSurface) and st.vertical ~= 0 then
 			st.depth = math.clamp(st.depth - st.vertical * cfg.DiveRate * dt, 0, cfg.DiveDepth)
 		end
-		-- не ниже дна
-		floorParams.FilterDescendantsInstances = {workspace.Terrain, workspace.Map:FindFirstChild("Seabed")}
+		-- не ниже дна (фильтр — один раз: дно не меняется)
+		if not floorReady then
+			floorReady = true
+			floorParams.FilterDescendantsInstances = {workspace.Terrain, workspace.Map:FindFirstChild("Seabed")}
+		end
 		local fl = workspace:Raycast(pos, Vector3.new(0, -200, 0), floorParams)
 		local floorY = fl and fl.Position.Y or -88
 		local maxDepth = math.max(0, st.rootY0 - (floorY + (st.keelBelowRoot - st.rootY0) + 4))
@@ -910,7 +933,8 @@ function ShipService.init()
 	Players.PlayerAdded:Connect(publishPersonal)
 	Players.PlayerRemoving:Connect(function(p)
 		for _, list in pairs(personal[p] or {}) do
-			for _, model in ipairs(list) do
+			-- копия: remove → forget вырезает модель из этого же списка, и следующий корабль пропускался
+			for _, model in ipairs(table.clone(list)) do
 				local st = ships[model]
 				-- корабль уже ведёт другой игрок — оставляем ему (исчезнет, когда опустеет)
 				if model.Parent and st and not st.dead and not (st.driver and st.driver ~= p) then ShipService.remove(model) end

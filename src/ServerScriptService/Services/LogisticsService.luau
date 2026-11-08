@@ -165,6 +165,7 @@ end
 
 -- пути по клеткам уже найденные (острова и базы неподвижны — маршруты повторяются)
 local pathCache = {}
+local pathCacheN = 0
 
 -- путь по морю между двумя точками (список точек, без старта)
 local function findPath(from, to)
@@ -235,6 +236,12 @@ local function findPath(from, to)
 		table.insert(pts, cells[far])
 		anchor = cells[far]
 		k = far + 1
+	end
+	-- старт возвратного рейса — любая клетка, где судно застала потеря острова: кэш не должен расти без конца
+	pathCacheN += 1
+	if pathCacheN > 400 then
+		table.clear(pathCache)
+		pathCacheN = 1
 	end
 	pathCache[cacheKey] = table.clone(pts)
 	table.insert(pts, flat(to))
@@ -452,6 +459,9 @@ local function unload(base, route, st)
 					d.CollisionGroup = "Cargo"
 				end
 			end
+			-- в гнезде уже стоит контейнер прошлой, сорванной разгрузки (судно потопили у крана) — убираем, иначе два в одном месте
+			local old = truck.containers[i]
+			if old and old ~= c and old.Parent then old:Destroy() end
 			c.Parent = truck.model
 			truck.containers[i] = c
 			craneMove(base, {sY = travelY}, b * 0.6, nil)
@@ -827,7 +837,12 @@ local function routeStep(route, now)
 				route.loading = true
 				task.spawn(function()
 					local ok, err = pcall(loadShip, route.crane, route, st)
-					if not ok then warn("[LogisticsService] loading " .. route.id .. ": " .. tostring(err)) end
+					if not ok then
+						warn("[LogisticsService] loading " .. route.id .. ": " .. tostring(err))
+						local carry = route.crane.craneState.carry
+						route.crane.craneState.carry = nil
+						if carry then carry:Destroy() end
+					end
 					route.loading = false
 				end)
 			else
@@ -883,7 +898,13 @@ local function routeStep(route, now)
 				-- ошибка или гибель судна посреди разгрузки не должны навсегда занять причал базы
 				-- (base.busy держит очередь: все следующие суда команды ждали бы вечно)
 				local okRun, ok = pcall(unload, base, route, st)
-				if not okRun then warn("[LogisticsService] unload: " .. tostring(ok)) end
+				if not okRun then
+					warn("[LogisticsService] unload: " .. tostring(ok))
+					-- контейнер, оставшийся на спредере, иначе так и ездил бы за краном
+					local carry = base.craneState.carry
+					base.craneState.carry = nil
+					if carry then carry:Destroy() end
+				end
 				if base.busy == route then base.busy = nil end
 				if st.dead then return end
 				-- деньги — не сейчас, а когда грузовик довезёт контейнеры в ангар
