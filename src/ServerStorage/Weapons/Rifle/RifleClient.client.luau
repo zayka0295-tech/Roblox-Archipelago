@@ -3,6 +3,9 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local tool = script.Parent
+-- выдано через GunService (атрибут Gun): стрельбой управляет GunClient — второй канал огня
+-- слал бы лишние Fire мимо прицела (mouse.Hit) и от третьего лица
+if tool:GetAttribute("Gun") then return end
 local player = Players.LocalPlayer
 local mouse = player:GetMouse()
 local Fire = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Fire")

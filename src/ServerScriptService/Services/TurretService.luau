@@ -69,7 +69,7 @@ local function setup(model, owner)
 		W = W, projectile = projectile, muzzles = muzzles,
 		exit = model:FindFirstChild("TurretExit"),
 		yaw = 0, pitch = math.rad(projectile and 0 or 10), tYaw = 0, tPitch = math.rad(projectile and 0 or 10),
-		firing = false, lastShot = 0, shotN = 0, gunner = nil, gunnerHum = nil, lastInput = 0,
+		firing = false, lastShot = 0, shotN = 0, gunner = nil, gunnerHum = nil,
 	}
 	turrets[model] = st
 
@@ -91,7 +91,8 @@ local function setup(model, owner)
 					return
 				end
 			end
-			if seat.Occupant or TeamService.getTeamName(player) ~= teamOf(st) then return end
+			-- за время ожидания корабль с башней могли потопить/убрать — не переносим к удалённому креслу
+			if seat.Occupant or not seat:IsDescendantOf(workspace) or TeamService.getTeamName(player) ~= teamOf(st) then return end
 			local char = player.Character
 			local hum = char and char:FindFirstChildOfClass("Humanoid")
 			if not hum or hum.Health <= 0 or hum.SeatPart or player:GetAttribute("State") ~= "Deployed" then return end
@@ -213,11 +214,10 @@ end
 -- бот: точка цели и желание стрелять (огонь только когда ствол почти на цели)
 function TurretService.botAim(model, target, wantFire)
 	local st = turrets[model]
-
 	if not st or not st.gunner or st.gunner:IsA("Player") then return end
 	aimAt(st, target)
 	local look = st.gun.CFrame.LookVector
-	local want = st.projectile and (CFrame.Angles(0, 0, 0) and look) or (target - st.gun.Position).Unit
+	local want = st.projectile and look or (target - st.gun.Position).Unit
 	st.firing = wantFire == true and (st.projectile or look:Dot(want) > math.cos(math.rad(6)))
 end
 
@@ -261,14 +261,19 @@ function TurretService.init()
 	end
 
 	local inputT = setmetatable({}, {__mode = "k"}) -- [игрок] = время последнего ввода (до перебора турелей: спам не грузит сервер)
+	local lastFire = setmetatable({}, {__mode = "k"}) -- [игрок] = огонь в последнем принятом пакете
 	ReplicatedStorage.Remotes:WaitForChild("TurretInput").OnServerEvent:Connect(function(player, target, firing)
 		if typeof(target) ~= "Vector3" or not (target.Magnitude < 1e5) then return end -- отсекает NaN/inf в любой координате
 		local now = os.clock()
-		if now - (inputT[player] or 0) < 0.02 then return end
+		local fire = firing == true
+		-- частые пакеты отбрасываем, но смену огня — нет (иначе отпущенная гашетка «залипала» до следующего пакета)
+		if now - (inputT[player] or 0) < 0.02 then
+			if fire == lastFire[player] or not Guard.bucket(player, "TurretToggle", 20, 6) then return end
+		end
 		inputT[player] = now
+		lastFire[player] = fire
 		for _, st in pairs(turrets) do
 			if st.gunner == player then
-				st.lastInput = now
 				aimAt(st, target)
 				if st.firing and firing ~= true then st.firingEnd = now end
 				st.firing = firing == true
@@ -280,11 +285,13 @@ function TurretService.init()
 	-- попадание зенитки, которое увидел стрелок (см. CombatService.checkClientHit). Ствол на сервере следит
 	-- за его прицелом, поэтому допуск по углу небольшой
 	ReplicatedStorage.Remotes:WaitForChild("TurretHit").OnServerEvent:Connect(function(player, part, hitPos)
+		-- лимит и тип — до перебора турелей: спам от не-стрелка не гоняет цикл (клиент шлёт не чаще темпа зенитки)
+		if typeof(part) ~= "Instance" or typeof(hitPos) ~= "Vector3" then return end
+		if not Guard.bucket(player, "TurretHit", 1 / TC.Cooldown * 1.15, 4) then return end
 		for _, st in pairs(turrets) do
 			if st.gunner == player then
 				if st.projectile then return end
 				if not st.firing and os.clock() - (st.firingEnd or 0) > 0.5 then return end
-				if not Guard.bucket(player, "TurretHit", 1 / TC.Cooldown * 1.15, 4) then return end
 				local gun = st.gun
 				if not CombatService.checkClientHit(gun.Position, part, hitPos, TC.Range + 40, gun.CFrame.LookVector, 15) then return end
 				if part:IsDescendantOf(st.owner or st.model) then return end
@@ -300,7 +307,8 @@ function TurretService.init()
 			if not model.Parent then
 				turrets[model] = nil
 			else
-				if st.gunnerHum and (st.gunnerHum.Health <= 0 or (st.seat and st.gunnerHum.SeatPart ~= st.seat)) then
+				-- стрелок умер, встал или его персонаж удалён (вышел из игры) — турель свободна
+				if st.gunnerHum and (not st.gunnerHum.Parent or st.gunnerHum.Health <= 0 or (st.seat and st.gunnerHum.SeatPart ~= st.seat)) then
 					local hadSeat = model:FindFirstChild("TurretSeat") ~= nil
 					st.gunner, st.gunnerHum, st.firing = nil, nil, false
 					if hadSeat then

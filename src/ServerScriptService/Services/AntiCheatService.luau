@@ -31,6 +31,7 @@ local NOCLIP_STEP = 0.1    -- сек. между проверками пути �
 local NOCLIP_RAYS = {-1, 0, 1.5} -- высоты лучей от корня: перепрыгнул перила — верхний свободен
 local SEAT_MAX_DIST = 12   -- студов от кресла: дальше — «сидит» только на сервере (сварку удалили у себя)
 local DEST_SLACK = 12      -- студов запаса у точки серверного переноса (персонаж оседает на палубу)
+local WATER_TOP = 4        -- море — вода террейна ниже Y=0: «плывёт» выше — состояние подделано клиентом (fly-чит)
 
 local track = {} -- [игрок] = {last = CFrame, graceUntil, floor, strikes, ground*, air*, nc}
 local rayParams = RaycastParams.new()
@@ -153,7 +154,9 @@ end
 -- обычный прыжок туда не достаёт, сколько бы раз подряд ни прыгал.
 local function checkAir(player, s, now, char, hum, hrp)
 	local state = hum:GetState()
-	if state == Enum.HumanoidStateType.Swimming or state == Enum.HumanoidStateType.Climbing or player:GetAttribute("Parachute") ~= nil then
+	-- состояние гуманоида присылает клиент: Swimming засчитываем только у воды
+	local swimming = state == Enum.HumanoidStateType.Swimming and hrp.Position.Y < WATER_TOP
+	if swimming or state == Enum.HumanoidStateType.Climbing or player:GetAttribute("Parachute") ~= nil then
 		s.groundY, s.groundCF, s.groundPart, s.airT, s.highT = hrp.Position.Y, hrp.CFrame, nil, nil, nil
 		return false
 	end
@@ -189,7 +192,8 @@ local function checkAir(player, s, now, char, hum, hrp)
 	s.highT = nil
 	-- опоры в пределах прыжка нет: либо падает (с обрыва, с палубы), либо летит
 	if not s.groundY then
-		s.groundY, s.groundCF = y, hrp.CFrame
+		-- старую опору забываем: иначе groundCF(s) вернёт палубу корабля, с которой сошли давно (возврат «телепортом» к ней)
+		s.groundY, s.groundCF, s.groundPart, s.groundOff = y, hrp.CFrame, nil, nil
 	end
 	if not s.airT then s.airT, s.airY = now, y end
 	if y - s.groundY > jh + RISE_EXTRA then

@@ -254,6 +254,7 @@ return function(ctx)
 	end)
 
 	local timer, lastFiring, wasSeated = 0, false, false
+	local sentTarget = nil -- последняя отправленная серверу точка прицела
 
 	RunService.RenderStepped:Connect(function(dt)
 		local seat, hum, char = turretSeat()
@@ -276,6 +277,7 @@ return function(ctx)
 				UserInputService.MouseDeltaSensitivity = 1
 				mouse.Icon = ""
 				fireHeld = false
+				sentTarget, lastFiring = nil, false -- в следующей турели первый кадр отправится сразу
 				setView(nil, false)
 			end
 			return
@@ -356,10 +358,15 @@ return function(ctx)
 			end
 		end
 
+		-- смена огня — сразу; точка прицела — не чаще 20 раз в секунду и только если заметно сдвинулась
+		-- (сервер держит последнюю точку сам), плюс подтверждение раз в 0,25 с.
+		-- Сервер отбрасывает пакеты чаще 0,02 с — смену огня сразу после отправки откладываем на кадр
 		timer += dt
-		if timer >= 0.05 or firing ~= lastFiring then
+		local moved = not sentTarget or (target - sentTarget).Magnitude > 0.3 + (target - cam.CFrame.Position).Magnitude * 0.002
+		if (firing ~= lastFiring and timer >= 0.025) or (timer >= 0.05 and moved) or timer >= 0.25 then
 			timer = 0
 			lastFiring = firing
+			sentTarget = target
 			Input:FireServer(target, firing)
 		end
 	end)

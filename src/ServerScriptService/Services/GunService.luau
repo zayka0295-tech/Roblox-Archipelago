@@ -138,8 +138,9 @@ local function onFire(player, target, hitPart)
 		end
 		if ok then
 			CombatService.tracer(muzzle and muzzle.Position or origin, target, player.UserId, gun.Sound)
-			local kind = CombatService.applyHit(player, hitPart, gun.Damage, nil, gun.Class, target)
-			if kind == "player" or kind == "bot" then
+			-- маркер — только если урон прошёл (не по своим, не по защищённым в безопасной зоне)
+			local kind, applied = CombatService.applyHit(player, hitPart, gun.Damage, nil, gun.Class, target)
+			if (kind == "player" or kind == "bot") and applied then
 				HitMarker:FireClient(player, hitPart.Name == "Head")
 			end
 			return
@@ -155,8 +156,8 @@ local function onFire(player, target, hitPart)
 	-- свой трассер стрелок рисует сам (без задержки), остальным — с сервера
 	CombatService.tracer(muzzle and muzzle.Position or origin, res and res.Position or origin + dir, player.UserId, gun.Sound)
 	if res then
-		local kind = CombatService.applyHit(player, res.Instance, gun.Damage, nil, gun.Class, res.Position)
-		if kind == "player" or kind == "bot" then
+		local kind, applied = CombatService.applyHit(player, res.Instance, gun.Damage, nil, gun.Class, res.Position)
+		if (kind == "player" or kind == "bot") and applied then
 			HitMarker:FireClient(player, res.Instance.Name == "Head")
 		end
 	end
@@ -214,7 +215,10 @@ local function setupRack(part)
 		if player:GetAttribute("State") ~= "Deployed" then return end
 		local char = player.Character
 		local hrp = char and char:FindFirstChild("HumanoidRootPart")
-		if not hrp or (hrp.Position - part.Position).Magnitude > 20 then return end
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		-- мёртвому не продаём: оружие ушло бы в рюкзак, который пропадёт с персонажем
+		if not hrp or not hum or hum.Health <= 0 or (hrp.Position - part.Position).Magnitude > 20 then return end
+		if not player:FindFirstChildOfClass("Backpack") then return end
 		if hasGun(player, key) then
 			Notifier.send(player, ("You already have an %s"):format(gun.DisplayName), "error")
 			return
@@ -228,7 +232,10 @@ local function setupRack(part)
 			end
 			return
 		end
-		GunService.give(player, key)
+		if not GunService.give(player, key) then
+			DataService.addGold(player, gun.Price, true) -- не выдали (нет шаблона/рюкзака) — возвращаем ровно списанное
+			return
+		end
 		Notifier.send(player, ("%s purchased · −%d gold"):format(gun.DisplayName, gun.Price), "success")
 	end)
 end

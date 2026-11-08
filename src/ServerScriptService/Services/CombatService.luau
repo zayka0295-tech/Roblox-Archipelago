@@ -224,6 +224,7 @@ end
 
 -- weaponClass: Rifle / AA / PlaneGun / Medium / Heavy (см. Config.Combat.DamageMatrix)
 -- hitPos — точка попадания (для цифр урона; без неё — центр детали)
+-- возвращает вид цели и (для людей и ботов) прошёл ли урон: свой, в безопасной зоне, уже мёртв — false
 function CombatService.applyHit(attacker, inst, amount, carrierMult, weaponClass, hitPos)
 	local kind, model, victim = CombatService.resolveHit(inst)
 	local pos = hitPos or inst.Position
@@ -239,11 +240,15 @@ function CombatService.applyHit(attacker, inst, amount, carrierMult, weaponClass
 	if kind == "player" then
 		local dmg = amount
 		if inst.Name == "Head" then dmg = math.floor(dmg * 1.5) end
-		if CombatService.damagePlayer(attacker, victim, dmg) then showDamage(attacker, model, pos, dmg) end
+		local ok = CombatService.damagePlayer(attacker, victim, dmg)
+		if ok then showDamage(attacker, model, pos, dmg) end
+		return kind, ok
 	elseif kind == "bot" then
 		local dmg = amount
 		if inst.Name == "Head" then dmg = math.floor(dmg * 1.5) end
-		if CombatService.damageBot(attacker, model, dmg) then showDamage(attacker, model, pos, dmg) end
+		local ok = CombatService.damageBot(attacker, model, dmg)
+		if ok then showDamage(attacker, model, pos, dmg) end
+		return kind, ok
 	elseif kind == "plane" then
 		if CombatService.onPlaneHit then CombatService.onPlaneHit(model, amount, attacker) end
 		if enemy(model) then showDamage(attacker, model, pos, amount) end
