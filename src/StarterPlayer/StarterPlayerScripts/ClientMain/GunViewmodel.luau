@@ -20,10 +20,13 @@ return function(ctx)
 	local hidden = {} -- детали настоящего оружия, спрятанные на своём экране
 	local aim, kick, bob = 0, 0, 0
 
+	local addedConn -- новые детали настоящего оружия (если сервер что-то добавит) — тоже прятать
+
 	local function clear()
 		gunState.vmMuzzleCF = nil
 		if vm then vm:Destroy() vm = nil end
 		vmTool = nil
+		if addedConn then addedConn:Disconnect() addedConn = nil end
 		for p in pairs(hidden) do if p.Parent then p.LocalTransparencyModifier = 0 end end
 		table.clear(hidden)
 	end
@@ -35,7 +38,9 @@ return function(ctx)
 		vm = Instance.new("Model")
 		vm.Name = "Viewmodel"
 		local parts = {}
+		local real = {} -- все детали настоящего оружия (прячем их каждый кадр без GetDescendants)
 		for _, d in ipairs(tool:GetDescendants()) do
+			if d:IsA("BasePart") then table.insert(real, d) end
 			if d:IsA("BasePart") and d.Transparency < 1 then
 				local c = d:Clone()
 				for _, ch in ipairs(c:GetChildren()) do
@@ -59,7 +64,10 @@ return function(ctx)
 			end
 		end
 		vm.Parent = workspace.CurrentCamera
-		vmTool = {tool = tool, parts = parts, sight = sight or (muzzleRel.Y + 0.2), muzzleRel = muzzleRel}
+		vmTool = {tool = tool, parts = parts, real = real, sight = sight or (muzzleRel.Y + 0.2), muzzleRel = muzzleRel}
+		addedConn = tool.DescendantAdded:Connect(function(d)
+			if d:IsA("BasePart") then table.insert(real, d) end
+		end)
 	end
 
 	RunService:BindToRenderStep("GunViewmodel", Enum.RenderPriority.Camera.Value + 2, function(dt)
@@ -72,11 +80,9 @@ return function(ctx)
 		if not vmTool or vmTool.tool ~= tool then build(tool, char) end
 		if not vmTool then return end
 		-- настоящее оружие на своём экране не показываем (у остальных оно на месте)
-		for _, d in ipairs(tool:GetDescendants()) do
-			if d:IsA("BasePart") then
-				hidden[d] = true
-				d.LocalTransparencyModifier = 1
-			end
+		for _, d in ipairs(vmTool.real) do
+			hidden[d] = true
+			d.LocalTransparencyModifier = 1
 		end
 		local camCF = workspace.CurrentCamera.CFrame
 		aim += ((gunState.aiming and 1 or 0) - aim) * math.min(1, dt * 14)

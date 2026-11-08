@@ -18,7 +18,11 @@ local GOLD = Color3.fromRGB(255, 205, 60)
 
 return function(ctx)
 	local player = ctx.player
-	local teams = workspace:WaitForChild("Map"):WaitForChild("Teams")
+	-- Map.Teams ищем по ходу дела: бесконечный WaitForChild здесь остановил бы загрузку всех следующих модулей ClientMain
+	local function teamsFolder()
+		local map = workspace:FindFirstChild("Map")
+		return map and map:FindFirstChild("Teams")
+	end
 
 	-- названия не пишем: у целей есть свои таблички на карте (у Капитана — CaptainMark)
 	local TARGETS = {
@@ -92,7 +96,8 @@ return function(ctx)
 		else
 			key = "Shipyard"
 		end
-		local pos = teams:GetAttribute(team .. "_" .. key)
+		local teams = teamsFolder()
+		local pos = teams and teams:GetAttribute(team .. "_" .. key)
 		if typeof(pos) ~= "Vector3" then return nil end
 		return pos, TARGETS[key]
 	end

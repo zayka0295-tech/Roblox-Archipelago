@@ -37,7 +37,8 @@ return function(ctx)
 		end
 		local want = seat and seat:GetAttribute("CamMinZoom")
 		if want then
-			if not saved then saved = player.CameraMinZoomDistance end
+			-- GunClient мог только что временно поднять мин. зум (убрал оружие, садясь) — берём настоящий
+			if not saved then saved = ctx.origMinZoom or player.CameraMinZoomDistance end
 			if player.CameraMinZoomDistance ~= want then
 				player.CameraMinZoomDistance = math.min(want, player.CameraMaxZoomDistance)
 			end

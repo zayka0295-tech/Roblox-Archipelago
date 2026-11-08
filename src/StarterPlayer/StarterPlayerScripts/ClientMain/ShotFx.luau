@@ -115,13 +115,14 @@ return function(ctx)
 		table.insert(active, {fxPart = p, t = 0, water = water, base = pos, grow = big and 24 or 14})
 	end
 	RunService.RenderStepped:Connect(function(dt)
+		if #shells == 0 then return end
+		local char = player.Character
+		shellParams.FilterDescendantsInstances = char and {folder, char} or {folder} -- раз за кадр, а не на каждый снаряд
 		for i = #shells, 1, -1 do
 			local s = shells[i]
 			s.t += dt
 			local t = s.t
 			local pos = s.o + s.v * t + Vector3.new(0, -0.5 * s.g * t * t, 0)
-			local char = player.Character
-			shellParams.FilterDescendantsInstances = char and {folder, char} or {folder}
 			local hit = workspace:Raycast(s.last, pos - s.last, shellParams)
 			if hit or pos.Y < 0 or t > 15 then
 				table.remove(shells, i)
@@ -164,7 +165,9 @@ return function(ctx)
 			m:PivotTo(CFrame.lookAt(o, o + (v.Magnitude > 1 and v or Vector3.new(0, -1, 0.01))))
 			m.Parent = folder
 			-- свист летит вместе с бомбой (3D), на ударе стихает
-			local whistle, we = SoundFx.loop("BombWhistle", m.PrimaryPart, false)
+			-- без PrimaryPart звук ушёл бы в SoundService: свистел бы «в ушах» у всех и не удалялся вместе с бомбой
+			local whistle, we
+			if m.PrimaryPart then whistle, we = SoundFx.loop("BombWhistle", m.PrimaryPart, false) end
 			if whistle then
 				whistle.Volume = we.volume
 				whistle.PlaybackSpeed = we.pitch[1] + math.random() * (we.pitch[2] - we.pitch[1])

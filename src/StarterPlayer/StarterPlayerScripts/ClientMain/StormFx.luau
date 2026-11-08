@@ -64,6 +64,7 @@ return function(ctx)
 		e.LightEmission = 0.1
 		e.Parent = rain
 		c.rain = rain
+		c.rainEmitter = e
 		clouds[i] = c
 		return c
 	end
@@ -130,8 +131,12 @@ return function(ctx)
 		end
 	end)
 
+	-- дождь (520 частиц/с на облако) издали не разглядеть — дальше RAIN_RANGE от камеры не льём
+	local RAIN_RANGE = S.Radius + 1400
 	RunService.RenderStepped:Connect(function(dt)
 		local t = os.clock()
+		local cam = workspace.CurrentCamera
+		local camPos = cam and cam.CFrame.Position
 		for i = 1, GameState:GetAttribute("StormCount") or 0 do
 			local target = GameState:GetAttribute("Storm" .. i .. "_Pos")
 			if typeof(target) == "Vector3" then
@@ -141,11 +146,12 @@ return function(ctx)
 					p.part.CFrame = CFrame.new(c.pos + p.off + Vector3.new(0, math.sin(t * 0.4 + p.bob) * 2, 0)) * p.yaw
 				end
 				c.rain.CFrame = CFrame.new(c.pos - Vector3.new(0, S.Thickness / 2, 0))
+				local wet = not camPos or (c.rain.Position - camPos).Magnitude < RAIN_RANGE
+				if c.rainEmitter.Enabled ~= wet then c.rainEmitter.Enabled = wet end
 			end
 		end
 		-- тряска камеры от близкого удара
-		if t < shakeUntil then
-			local cam = workspace.CurrentCamera
+		if t < shakeUntil and cam then
 			local k = shakePower * (shakeUntil - t) / 0.5
 			cam.CFrame = cam.CFrame * CFrame.Angles(math.rad((math.random() - 0.5) * 2 * k), math.rad((math.random() - 0.5) * 2 * k), 0)
 		end

@@ -281,16 +281,20 @@ return function(ctx)
 	local sightParams = RaycastParams.new()
 	sightParams.FilterType = Enum.RaycastFilterType.Exclude
 	sightParams.IgnoreWater = false
-	local function predictImpact()
-		local root = flying.root
-		local p = flying.bay and flying.bay.Position or root.Position
-		local v = root.AssemblyLinearVelocity
-		local ignore = {flying.model, player.Character}
+	-- что не должны видеть лучи самолёта: сам самолёт, пилот и клиентские эффекты
+	local function ignoreList(char)
+		local ignore = {flying.model, char}
 		for _, n in ipairs({"ClientFx", "Effects"}) do
 			local f = workspace:FindFirstChild(n)
 			if f then table.insert(ignore, f) end
 		end
-		sightParams.FilterDescendantsInstances = ignore
+		return ignore
+	end
+	local function predictImpact()
+		local root = flying.root
+		local p = flying.bay and flying.bay.Position or root.Position
+		local v = root.AssemblyLinearVelocity
+		sightParams.FilterDescendantsInstances = ignoreList(player.Character)
 		local dt = 0.1
 		for _ = 1, 100 do
 			local nv = v + Vector3.new(0, -BC.Gravity * dt, 0)
@@ -303,10 +307,22 @@ return function(ctx)
 		return nil
 	end
 
+	-- луч земли под шасси (один объект на всё время, а не новый каждый кадр)
+	local groundParams = RaycastParams.new()
+	groundParams.FilterType = Enum.RaycastFilterType.Exclude
+	groundParams.IgnoreWater = false
+
 	RunService.RenderStepped:Connect(function(dt)
 		local seat, hum, model = planeSeat()
 		if seat and not flying then start(seat, hum, model) elseif not seat and flying then stop() end
-		if not flying or not flying.root.Parent then return end
+		-- корень самолёта пропал, а сиденье ещё есть — отпускаем камеру и мышь (иначе зависли бы в Scriptable)
+		if flying and not flying.root.Parent then stop() end
+		if not flying then return end
+		-- курсор держим в центре весь полёт: сел с оружием в руках — GunClient в том же кадре снимает оружие
+		-- и возвращает MouseBehavior = Default (уже после start), и мышь упиралась бы в край экрана
+		if not touchOnly and UserInputService.MouseBehavior ~= Enum.MouseBehavior.LockCenter then
+			UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+		end
 		dt = math.min(dt, 0.1)
 		local root, char = flying.root, player.Character
 
@@ -337,11 +353,8 @@ return function(ctx)
 		local gear = flying.model:GetAttribute("GearHeight") or 6.2
 
 		-- земля под шасси
-		local params = RaycastParams.new()
-		params.FilterType = Enum.RaycastFilterType.Exclude
-		params.FilterDescendantsInstances = {flying.model, char}
-		params.IgnoreWater = false
-		local ground = workspace:Raycast(pos, Vector3.new(0, -(gear + 2.5), 0), params)
+		groundParams.FilterDescendantsInstances = {flying.model, char}
+		local ground = workspace:Raycast(pos, Vector3.new(0, -(gear + 2.5), 0), groundParams)
 		local onGround = ground ~= nil and ground.Material ~= Enum.Material.Water
 		flying.onGround = onGround
 		if onGround and sightOn then setSight(false) end
@@ -471,7 +484,8 @@ return function(ctx)
 		end
 		if sightBtn then sightBtn.Visible = bombs > 0 end
 		if bombs <= 0 and sightOn then setSight(false) end
-		local raw = (maxBombs > 0 and not onGround) and predictImpact() or nil
+		-- до 100 лучей за кадр — только когда точка падения кому-то нужна (есть бомбы: кольцо или прицел)
+		local raw = (bombs > 0 and not onGround) and predictImpact() or nil
 		if not raw then
 			flying.impact = nil
 		elseif not flying.impact or (raw - flying.impact).Magnitude > 400 then
@@ -544,12 +558,7 @@ return function(ctx)
 			local origin = mz.Position
 			local converge = root.Position + root.CFrame.LookVector * 300
 			local dir = (converge - origin).Unit * P.GunRange
-			local ignore = {flying.model, char}
-			for _, n in ipairs({"ClientFx", "Effects"}) do
-				local f = workspace:FindFirstChild(n)
-				if f then table.insert(ignore, f) end
-			end
-			shotParams.FilterDescendantsInstances = ignore
+			shotParams.FilterDescendantsInstances = ignoreList(char)
 			local hit = workspace:Raycast(origin, dir, shotParams)
 			local fx = ctx.screens.ShotFx
 			if fx then fx.streak(origin, hit and hit.Position or origin + dir, "PlaneGun") end

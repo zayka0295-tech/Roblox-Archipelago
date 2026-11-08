@@ -180,15 +180,27 @@ return function(ctx)
 		end
 	end
 	-- убрал оружие — обратно третье лицо на прежнее расстояние
+	local origMinZoom, zoomToken = nil, 0 -- настоящий мин. зум, пока он временно подменён
 	local function restoreCamera()
 		if not savedCam then return end
 		local s = savedCam
 		savedCam = nil
 		player.CameraMode = s.mode == Enum.CameraMode.LockFirstPerson and Enum.CameraMode.Classic or s.mode
-		-- после LockFirstPerson камера остаётся в голове: отодвигаем её через минимальный зум на пару кадров
-		local minZ = player.CameraMinZoomDistance
-		player.CameraMinZoomDistance = math.min(s.dist, player.CameraMaxZoomDistance)
-		task.delay(0.1, function() player.CameraMinZoomDistance = minZ end)
+		-- после LockFirstPerson камера остаётся в голове: отодвигаем её через минимальный зум на пару кадров.
+		-- Исходное значение запоминаем один раз: при быстрой смене оружия (снял–взял–снял за 0,1 с)
+		-- иначе «запомнился» бы временный зум и остался навсегда
+		origMinZoom = origMinZoom or player.CameraMinZoomDistance
+		ctx.origMinZoom = origMinZoom -- SeatCamera (сел в технику с оружием в руках) запомнит настоящее значение, а не временное
+		local temp = math.min(s.dist, player.CameraMaxZoomDistance)
+		player.CameraMinZoomDistance = temp
+		zoomToken += 1
+		local my = zoomToken
+		task.delay(0.1, function()
+			if my ~= zoomToken or not origMinZoom then return end
+			-- за это время мин. зум мог взять на себя SeatCamera (место с CamMinZoom) — тогда его не трогаем
+			if math.abs(player.CameraMinZoomDistance - temp) < 0.01 then player.CameraMinZoomDistance = origMinZoom end
+			origMinZoom, ctx.origMinZoom = nil, nil
+		end)
 	end
 	local function deactivate()
 		if hum and hum.Parent then

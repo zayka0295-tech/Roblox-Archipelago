@@ -15,7 +15,8 @@ local TARGETS = {
 
 return function(ctx)
 	local player = ctx.player
-	local teamsFolder = workspace:WaitForChild("Map"):WaitForChild("Teams")
+	-- Map.Teams ищем в цикле: бесконечный WaitForChild здесь остановил бы загрузку всех следующих модулей ClientMain
+	local teamsFolder = nil
 	local playerGui = player:WaitForChild("PlayerGui")
 
 	local holder = Instance.new("Folder")
@@ -65,6 +66,11 @@ return function(ctx)
 		acc += dt
 		if acc < 0.2 then return end
 		acc = 0
+		if not (teamsFolder and teamsFolder.Parent) then
+			local map = workspace:FindFirstChild("Map")
+			teamsFolder = map and map:FindFirstChild("Teams")
+			if not teamsFolder then return end
+		end
 		local size = labelSize()
 		for _, team in ipairs({"Blue", "Red"}) do
 			local b = teamsFolder:FindFirstChild(team .. "Base")
