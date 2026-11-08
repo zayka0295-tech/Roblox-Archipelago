@@ -31,7 +31,8 @@ function VehiclePreview.new(UI, T, Config, parent, kind, props, zoom)
 	task.spawn(function()
 		local folder = ReplicatedStorage:WaitForChild("VehiclePreviews", 30)
 		local tpl = folder and folder:WaitForChild(kind, 10)
-		if not tpl then return end
+		-- окно с превью могли закрыть (уничтожить), пока ждали шаблон: Parent у уничтоженного заблокирован
+		if not tpl or not vp.Parent then return end
 		model = tpl:Clone()
 		model.Parent = vp
 		-- вид 3/4 сверху-спереди, вся модель в кадре

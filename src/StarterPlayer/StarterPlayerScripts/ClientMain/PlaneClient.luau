@@ -9,6 +9,7 @@
 -- клиент по тому, что видит пилот (PlaneHit), а сервер проверяет его и наносит урон.
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 
 return function(ctx)
 	local UI, T, Config = ctx.UI, ctx.UI.T, ctx.Config
@@ -60,7 +61,6 @@ return function(ctx)
 
 	-- сенсорное управление: круглые кнопки вокруг прыжка (джойстик в самолёте не нужен — курс за камерой)
 	local touchOnly = UI.touchOnly
-	local stick = nil
 	local held = {up = false, down = false, fire = false}
 	local touchBtns = {}
 	local fireDrag -- задаётся ниже, рядом с курсом (aimYaw / aimPitch)
@@ -88,7 +88,6 @@ return function(ctx)
 		for _, b in ipairs(touchBtns) do b.Visible = on end
 		if bombBtn then bombBtn.Visible = on and (P.Bombs or 0) > 0 end
 		if sightBtn then sightBtn.Visible = on and (P.Bombs or 0) > 0 end
-		if stick then stick.request("plane", on) end
 	end
 
 	-- прицел (куда направлен курс) и метка носа (куда стреляют пулемёты)
@@ -122,17 +121,6 @@ return function(ctx)
 
 	------------------------------------------------------------ состояние
 	local flying -- {model, root, ao, lv, seat, hum}
-	local firstPerson = false
-	local charHidden = false
-	local function hideChar(on)
-		local char = player.Character
-		if not char then return end
-		local v = on and 1 or 0
-		for _, d in ipairs(char:GetDescendants()) do
-			if d:IsA("BasePart") or d:IsA("Decal") then d.LocalTransparencyModifier = v end
-		end
-		charHidden = on
-	end
 	local throttle, speed, bank = 0, 0, 0
 	local aimYaw, aimPitch = 0, 0
 	fireDrag = function(d)
@@ -161,7 +149,7 @@ return function(ctx)
 	end
 
 	local function start(seat, hum, model)
-		local root = model:FindFirstChild("Root")
+		local root = model and model:FindFirstChild("Root")
 		if not root then return end
 		P = Config.Planes[model:GetAttribute("PlaneType") or "Fighter"] or Config.Planes.Fighter
 		local rows = {
@@ -227,7 +215,6 @@ return function(ctx)
 			if p.Parent then p.LocalTransparencyModifier = 0 end
 		end
 		flying = nil
-		if charHidden then hideChar(false) end
 		local cam = workspace.CurrentCamera
 		cam.CameraType = Enum.CameraType.Custom
 		local char = player.Character
@@ -319,8 +306,10 @@ return function(ctx)
 		if flying and not flying.root.Parent then stop() end
 		if not flying then return end
 		-- курсор держим в центре весь полёт: сел с оружием в руках — GunClient в том же кадре снимает оружие
-		-- и возвращает MouseBehavior = Default (уже после start), и мышь упиралась бы в край экрана
-		if not touchOnly and UserInputService.MouseBehavior ~= Enum.MouseBehavior.LockCenter then
+		-- и возвращает MouseBehavior = Default (уже после start), и мышь упиралась бы в край экрана.
+		-- Пока открыто меню Roblox (Esc), мышь не трогаем — им пользуются курсором
+		local menuOpen = GuiService.MenuIsOpen
+		if not touchOnly and not menuOpen and UserInputService.MouseBehavior ~= Enum.MouseBehavior.LockCenter then
 			UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
 		end
 		dt = math.min(dt, 0.1)
@@ -339,12 +328,6 @@ return function(ctx)
 		end
 		if held.up then thr += 1 end
 		if held.down then thr -= 1 end
-		-- джойстик: вбок — поворот, вверх/вниз — нос вверх/вниз
-		if stick then
-			local v = stick.vector()
-			if math.abs(v.X) > 0.1 then aimYaw -= v.X * 1.8 * dt end
-			if math.abs(v.Y) > 0.1 then aimPitch = math.clamp(aimPitch + v.Y * 1.3 * dt, -1.35, 1.35) end
-		end
 		throttle = math.clamp(throttle + thr * 0.6 * dt, 0, 1)
 
 		local cf = root.CFrame
@@ -544,7 +527,8 @@ return function(ctx)
 		end
 
 		-- огонь
-		local firing = held.fire or (not touchOnly and not typing and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1))
+		-- клик по пунктам меню Esc — не очередь из пулемётов
+		local firing = held.fire or (not touchOnly and not typing and not menuOpen and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1))
 		if firing ~= lastFiring then
 			lastFiring = firing
 			Fire:FireServer(firing)

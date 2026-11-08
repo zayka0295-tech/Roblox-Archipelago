@@ -135,6 +135,7 @@ return function(ctx)
 	end
 
 	local sentT, sentS, sentV, timer = 0, 0, 0, 0
+	local rows, rowsKey = nil, nil -- строки панели клавиш (ПК) для текущего типа судна
 	RunService.RenderStepped:Connect(function(dt)
 		local seat = helm()
 		panel.Visible = seat ~= nil
@@ -157,25 +158,30 @@ return function(ctx)
 		if touchOnly then
 			showTouch(true, weaponKind, canDive)
 		else
-			local extra = canDive and " · Q/F — dive/surface" or ""
-			if weaponKind == "torpedo" then extra ..= " · LMB/T — torpedo" elseif weaponKind == "depthcharge" then extra ..= " · G — depth charge · Wheel in — gun view" end
-			local noZoom = stype == "Battleship" or (model and model:GetAttribute("IsCarrier"))
-			local base = noZoom and BASE_HINT:gsub(" · RMB — zoom", "") or BASE_HINT -- у штурвала линкора и авианосца зума нет
-			hintLbl.Text = base .. extra
-			local rows = {
-				{"W / S", "Ahead / astern"},
-				{"A / D", "Steer left / right"},
-				{"X", "Full stop"},
-			}
-			if canDive then table.insert(rows, {"Q / F", "Dive / surface"}) end
-			if weaponKind == "torpedo" then
-				table.insert(rows, {"LMB / T", "Fire torpedo"})
-			elseif weaponKind == "depthcharge" then
-				table.insert(rows, {"G", "Drop depth charge"})
-				table.insert(rows, {"Wheel in", "Bow gun view"})
+			local noZoom = (stype == "Battleship" or (model and model:GetAttribute("IsCarrier"))) and true or false
+			-- подсказку и строки клавиш собираем, только когда сменился тип судна (а не новую таблицу каждый кадр)
+			local hintKey = tostring(stype) .. (canDive and "|dive" or "") .. (noZoom and "|nozoom" or "")
+			if hintKey ~= rowsKey then
+				rowsKey = hintKey
+				local extra = canDive and " · Q/F — dive/surface" or ""
+				if weaponKind == "torpedo" then extra ..= " · LMB/T — torpedo" elseif weaponKind == "depthcharge" then extra ..= " · G — depth charge · Wheel in — gun view" end
+				local base = noZoom and BASE_HINT:gsub(" · RMB — zoom", "") or BASE_HINT -- у штурвала линкора и авианосца зума нет
+				hintLbl.Text = base .. extra
+				rows = {
+					{"W / S", "Ahead / astern"},
+					{"A / D", "Steer left / right"},
+					{"X", "Full stop"},
+				}
+				if canDive then table.insert(rows, {"Q / F", "Dive / surface"}) end
+				if weaponKind == "torpedo" then
+					table.insert(rows, {"LMB / T", "Fire torpedo"})
+				elseif weaponKind == "depthcharge" then
+					table.insert(rows, {"G", "Drop depth charge"})
+					table.insert(rows, {"Wheel in", "Bow gun view"})
+				end
+				if not noZoom then table.insert(rows, {"RMB", "Zoom"}) end
+				table.insert(rows, {"Space", "Leave the helm"})
 			end
-			if not noZoom then table.insert(rows, {"RMB", "Zoom"}) end
-			table.insert(rows, {"Space", "Leave the helm"})
 			UI.controls("ship", rows)
 		end
 		if weaponKind == "torpedo" then

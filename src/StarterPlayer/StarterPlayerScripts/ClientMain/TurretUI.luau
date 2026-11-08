@@ -114,6 +114,16 @@ return function(ctx)
 		local seat = hum and hum.SeatPart
 		if seat and (seat:GetAttribute("Turret") or seat:GetAttribute("AimTurret")) then setZoom(not zoomed) end
 	end)
+	-- ЛКМ — по событиям, а не опросом кнопки: клик по окнам интерфейса и меню Esc (processed) не стреляет,
+	-- а короткий клик между кадрами/отправками не теряется (clickLatch — до первой отправки огня)
+	local mouseHeld, clickLatch = false, false
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if processed or input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+		mouseHeld, clickLatch = true, true
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then mouseHeld = false end
+	end)
 
 	-- прицел в центре экрана для сенсорных устройств
 	local cross = UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(22, 22), BackgroundTransparency = 1, Visible = false}, gui)
@@ -284,6 +294,7 @@ return function(ctx)
 		end
 		if not wasSeated then
 			wasSeated = true
+			clickLatch = false -- клик до посадки (по кнопке «сесть» и т.п.) — не выстрел
 			hum:UnequipTools()
 			mouse.Icon = "rbxasset://textures/GunCursor.png"
 			setView(seat, true, aimOnly)
@@ -342,7 +353,24 @@ return function(ctx)
 			end
 			gunMark.Visible = shown
 		end
-		local firing = fireHeld or (not touchOnly and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) and not UserInputService:GetFocusedTextBox())
+		local firing = fireHeld or (not touchOnly and mouseHeld and not UserInputService:GetFocusedTextBox())
+		-- кнопка и так зажата / сервер и так стреляет / на телефоне клик мышью не наш
+		if firing or lastFiring or touchOnly then clickLatch = false end
+		firing = firing or clickLatch
+
+		-- нажатие огня — сразу (до своего попадания ниже: иначе сервер получил бы TurretHit раньше, чем узнал,
+		-- что стрелок стреляет, и отбросил первую пулю); отпускание — не раньше 0,025 с после прошлой отправки
+		-- (сервер пакеты чаще 0,02 с принимает только со сменой огня и по лимиту). Точка прицела — не чаще
+		-- 20 раз в секунду и только если заметно сдвинулась (сервер держит последнюю точку сам), плюс подтверждение раз в 0,25 с
+		timer += dt
+		local moved = not sentTarget or (target - sentTarget).Magnitude > 0.3 + (target - cam.CFrame.Position).Magnitude * 0.002
+		if (firing ~= lastFiring and (firing or timer >= 0.025)) or (timer >= 0.05 and moved) or timer >= 0.25 then
+			timer = 0
+			lastFiring = firing
+			sentTarget = target
+			if firing then clickLatch = false end
+			Input:FireServer(target, firing)
+		end
 
 		-- зенитка (нет WeaponType): свои выстрелы в темпе пулемёта — попали во что-то, сообщаем серверу
 		local turret = seat:FindFirstAncestorOfClass("Model")
@@ -356,18 +384,6 @@ return function(ctx)
 				local res = workspace:Raycast(gun.Position, dir.Unit * TC.Range, shotParams)
 				if res and damageable(res.Instance) then HitRemote:FireServer(res.Instance, res.Position) end
 			end
-		end
-
-		-- смена огня — сразу; точка прицела — не чаще 20 раз в секунду и только если заметно сдвинулась
-		-- (сервер держит последнюю точку сам), плюс подтверждение раз в 0,25 с.
-		-- Сервер отбрасывает пакеты чаще 0,02 с — смену огня сразу после отправки откладываем на кадр
-		timer += dt
-		local moved = not sentTarget or (target - sentTarget).Magnitude > 0.3 + (target - cam.CFrame.Position).Magnitude * 0.002
-		if (firing ~= lastFiring and timer >= 0.025) or (timer >= 0.05 and moved) or timer >= 0.25 then
-			timer = 0
-			lastFiring = firing
-			sentTarget = target
-			Input:FireServer(target, firing)
 		end
 	end)
 	return {}

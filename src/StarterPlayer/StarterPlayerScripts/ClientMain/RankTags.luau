@@ -112,10 +112,13 @@ return function(ctx)
 		local cam = workspace.CurrentCamera
 		local camPos = cam and cam.CFrame.Position
 		for _, t in pairs(tags) do
-			if t.shine then t.shine.Offset = Vector2.new(x, 0) end
-			if camPos and t.head.Parent then
+			-- скрытые (в технике) и дальние таблички не видны — их не трогаем (ботов десятки)
+			if camPos and t.bb.Enabled and t.head.Parent then
 				local d = (t.head.Position - camPos).Magnitude
-				t.scale.Scale = math.clamp(FULL_SIZE_DIST / math.max(d, 1), MIN_SCALE, 1)
+				if d <= t.bb.MaxDistance then
+					if t.shine then t.shine.Offset = Vector2.new(x, 0) end
+					t.scale.Scale = math.clamp(FULL_SIZE_DIST / math.max(d, 1), MIN_SCALE, 1)
+				end
 			end
 		end
 	end)

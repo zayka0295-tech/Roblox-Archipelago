@@ -214,6 +214,8 @@ return function(ctx)
 		gunState.tool = nil
 		tool, gun, hum, hrp = nil, nil, nil, nil
 		firing, aiming = false, false
+		-- клик/касание за миг до того, как убрал оружие (сел, умер), не должен выстрелить при следующем взятии
+		pendingShot, tapRay, dragX, dragY = false, nil, 0, 0
 		gui.Enabled = false
 		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 		UserInputService.MouseIconEnabled = true

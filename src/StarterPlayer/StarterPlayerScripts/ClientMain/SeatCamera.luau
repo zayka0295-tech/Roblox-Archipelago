@@ -22,7 +22,10 @@ return function(ctx)
 			if not savedMode then savedMode = player.CameraMode end
 			player.CameraMode = Enum.CameraMode.LockFirstPerson
 		elseif savedMode then
-			player.CameraMode = savedMode
+			-- сел с оружием в руках: в этом кадре SeatCamera успевает раньше GunClient и запоминает его
+			-- LockFirstPerson — встав, игрок остался бы в первом лице без оружия. Обычный режим камеры
+			-- первым лицом не бывает (так же считает GunClient.restoreCamera)
+			player.CameraMode = savedMode == Enum.CameraMode.LockFirstPerson and Enum.CameraMode.Classic or savedMode
 			savedMode = nil
 		end
 		local model = seat and seat.Name == "HelmSeat" and seat:FindFirstAncestorOfClass("Model")
