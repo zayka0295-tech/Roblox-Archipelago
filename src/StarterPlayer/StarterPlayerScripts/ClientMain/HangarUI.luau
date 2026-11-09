@@ -7,7 +7,7 @@ return function(ctx)
 	local gui = UI.screen("HangarUI", 40)
 	local panel = UI.panel(gui, {
 		Name = "Panel", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.52),
-		Size = UDim2.fromOffset(680, 330), Visible = false,
+		Size = UDim2.fromOffset(680, 130 + 96 * #(Config.PlaneOrder or {"Fighter"})), Visible = false,
 	})
 	UI.scale(panel)
 	UI.padding(panel, 16)
@@ -48,8 +48,11 @@ return function(ctx)
 			local P = Config.Planes[kind]
 			local limit, n = L.PlanesPerTeam or 99, total
 			if kind == "Bomber" and L.BombersPerTeam then limit, n = L.BombersPerTeam, teamPlanes("Bomber") end
+			if P.Heli and L.HelisPerTeam then limit, n = L.HelisPerTeam, teamPlanes(kind) end
 			local full = n >= limit or total >= (L.PlanesPerTeam or 99)
-			r.status.Text = ("Team %s airborne: %d of %d · bombs %d"):format(kind == "Bomber" and "bombers" or "planes", n, limit, P.Bombs or 0)
+			local noun = kind == "Bomber" and "bombers" or P.Heli and "helicopters" or "planes"
+			r.status.Text = P.Heli and ("Team %s airborne: %d of %d · seats 2"):format(noun, n, limit)
+				or ("Team %s airborne: %d of %d · bombs %d"):format(noun, n, limit, P.Bombs or 0)
 			r.status.TextColor3 = full and T.Bad or T.Muted
 			if busy then
 				UI.setEnabled(r.buy, false, T.Good, "…")

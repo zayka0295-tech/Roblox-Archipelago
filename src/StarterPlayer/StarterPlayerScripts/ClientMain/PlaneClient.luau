@@ -68,15 +68,16 @@ return function(ctx)
 		local b = UI.roundButton(gui, slot, text, color)
 		UI.onHold(b, function() held[key] = true end, function() held[key] = false end, move)
 		table.insert(touchBtns, b)
+		return b
 	end
-	local bombBtn, sightBtn
+	local bombBtn, sightBtn, upBtn, downBtn
 	local dropBomb -- задаётся ниже (нужен текущий самолёт)
 	local toggleSight -- тоже
 	if touchOnly then
 		-- зажал FIRE и ведёшь пальцем — курс самолёта идёт за пальцем (как при перетаскивании по экрану)
 		hold("fire", "main", "FIRE", T.Bad, function(d) if fireDrag then fireDrag(d) end end)
-		hold("up", "a2", "GAS\n+")
-		hold("down", "a1", "GAS\n−")
+		upBtn = hold("up", "a2", "GAS\n+")
+		downBtn = hold("down", "a1", "GAS\n−")
 		-- отдельная кнопка сброса бомбы во втором ряду
 		bombBtn = UI.roundButton(gui, "b1", "BOMB", Color3.fromRGB(150, 95, 30))
 		bombBtn.Activated:Connect(function() if dropBomb then dropBomb() end end)
@@ -166,6 +167,19 @@ return function(ctx)
 			table.insert(rows, {"Z", "Bomb sight"})
 		end
 		table.insert(rows, {"Space", "Leave the plane"})
+		if P.Heli then
+			rows = {
+				{"Mouse", "Heading and gun aim"},
+				{"W / S", "Forward / back"},
+				{"A / D", "Strafe left / right"},
+				{"E / Q", "Up / down"},
+				{"Arrows", "Turn / nose up-down"},
+				{"LMB", "Machine gun"},
+				{"Space", "Leave the helicopter"},
+			}
+		end
+		if upBtn then upBtn.Text = P.Heli and "UP" or "GAS\n+" end
+		if downBtn then downBtn.Text = P.Heli and "DOWN" or "GAS\n−" end
 		UI.controls("plane", rows)
 		flying = {model = model, root = root, ao = root:FindFirstChild("FlightAlign"), lv = root:FindFirstChild("FlightDrive"), seat = seat, hum = hum, muzzles = {}, shotN = 0, lastShot = 0,
 			bay = model:FindFirstChild("BombBay"), impact = nil}
@@ -261,7 +275,7 @@ return function(ctx)
 		BombRemote:FireServer(from, root.AssemblyLinearVelocity)
 	end
 	UserInputService.InputBegan:Connect(function(input)
-		if not flying or UserInputService:GetFocusedTextBox() then return end
+		if not flying or UserInputService:GetFocusedTextBox() or P.Heli then return end -- у вертолёта E / Q — вверх / вниз
 		if input.KeyCode == Enum.KeyCode.E then dropBomb() end
 		if input.KeyCode == Enum.KeyCode.Z then toggleSight() end
 	end)
@@ -301,6 +315,177 @@ return function(ctx)
 	groundParams.FilterType = Enum.RaycastFilterType.Exclude
 	groundParams.IgnoreWater = false
 
+	-- огонь пулемётов (самолёт и вертолёт): смена нажатия — серверу, свои пули — сразу и точно из стволов
+	local function gunStep(root, char, typing, menuOpen)
+		-- клик по пунктам меню Esc — не очередь из пулемётов
+		local firing = held.fire or (not touchOnly and not typing and not menuOpen and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1))
+		if firing ~= lastFiring then
+			lastFiring = firing
+			Fire:FireServer(firing)
+		end
+		local now = os.clock()
+		if firing and #flying.muzzles > 0 and now - flying.lastShot >= P.GunCooldown then
+			flying.lastShot = now
+			local mz = flying.muzzles[(flying.shotN % #flying.muzzles) + 1]
+			flying.shotN += 1
+			local origin = mz.Position
+			local converge = root.Position + root.CFrame.LookVector * 300
+			local dir = (converge - origin).Unit * P.GunRange
+			shotParams.FilterDescendantsInstances = ignoreList(char)
+			local hit = workspace:Raycast(origin, dir, shotParams)
+			local fx = ctx.screens.ShotFx
+			if fx then fx.streak(origin, hit and hit.Position or origin + dir, "PlaneGun") end
+			-- попал во что-то живое или в технику — сообщаем серверу (он проверит и нанесёт урон)
+			if hit and damageable(hit.Instance) then HitRemote:FireServer(hit.Instance, hit.Position) end
+		end
+	end
+
+	-- вертолёт (P.Heli): висит на месте без ввода. W/S — вперёд/назад, A/D — вбок, E/Q — вверх/вниз,
+	-- мышь — курс (рыскание) и прицел: нос с пулемётом наклоняется за прицелом в пределах AimPitchMin..Max.
+	-- Корпус кренится и клюёт носом от скорости. На телефоне — стик Roblox (движение) и кнопки UP/DOWN
+	local heliVel = Vector3.zero
+	local controls
+	local function moveVector()
+		if not controls then
+			local ok, pm = pcall(function() return require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule", 1)) end)
+			controls = ok and pm and pm:GetControls() or false
+		end
+		local ok, v = pcall(function() return controls and controls:GetMoveVector() end)
+		return ok and v or Vector3.zero
+	end
+	local function heliStep(dt, root, char, typing, menuOpen)
+		local mx, mz, climb = 0, 0, 0
+		if not typing then
+			if key(Enum.KeyCode.W) then mz += 1 end
+			if key(Enum.KeyCode.S) then mz -= 1 end
+			if key(Enum.KeyCode.D) then mx += 1 end
+			if key(Enum.KeyCode.A) then mx -= 1 end
+			if key(Enum.KeyCode.E) then climb += 1 end
+			if key(Enum.KeyCode.Q) then climb -= 1 end
+			if key(Enum.KeyCode.Left) then aimYaw += 2.0 * dt end
+			if key(Enum.KeyCode.Right) then aimYaw -= 2.0 * dt end
+			if key(Enum.KeyCode.Up) then aimPitch = math.clamp(aimPitch + 1.5 * dt, -1.35, 1.35) end
+			if key(Enum.KeyCode.Down) then aimPitch = math.clamp(aimPitch - 1.5 * dt, -1.35, 1.35) end
+		end
+		if touchOnly then
+			local mv = moveVector()
+			mx += mv.X
+			mz -= mv.Z
+		end
+		if held.up then climb += 1 end
+		if held.down then climb -= 1 end
+		mx, mz, climb = math.clamp(mx, -1, 1), math.clamp(mz, -1, 1), math.clamp(climb, -1, 1)
+
+		local pos = root.Position
+		local gear = flying.model:GetAttribute("GearHeight") or 6
+		groundParams.FilterDescendantsInstances = ignoreList(char)
+		local ground = workspace:Raycast(pos, Vector3.new(0, -(gear + 1.5), 0), groundParams)
+		local onGround = ground ~= nil and ground.Material ~= Enum.Material.Water
+		flying.onGround = onGround
+		if not flying.heliInit then
+			-- сел в вертолёт: скорость — как у него сейчас (пересел в зависший в воздухе — не дёргается)
+			flying.heliInit = true
+			local v = root.AssemblyLinearVelocity
+			heliVel = Vector3.new(v.X, 0, v.Z)
+		end
+
+		-- курс: нос догоняет прицел
+		local look = root.CFrame.LookVector
+		local yaw = math.atan2(-look.X, -look.Z)
+		if onGround and climb <= 0 then
+			-- на земле не крутимся: стоим, пока не начали взлёт
+		else
+			local d = (aimYaw - yaw + math.pi) % (2 * math.pi) - math.pi
+			yaw += math.clamp(d, -math.rad(P.TurnRate) * dt, math.rad(P.TurnRate) * dt)
+		end
+		local heading = CFrame.Angles(0, yaw, 0)
+		local fwd, right = heading.LookVector, heading.RightVector
+
+		-- горизонтальная скорость
+		local want = Vector3.zero
+		local limitMsg
+		if not (onGround and climb <= 0) then
+			want = fwd * mz * (mz > 0 and P.MaxSpeed or P.SideSpeed) + right * mx * P.SideSpeed
+		end
+		if math.abs(pos.X) > P.BoundsX or math.abs(pos.Z) > P.BoundsZ then
+			want = Vector3.new(-pos.X, 0, -pos.Z).Unit * P.SideSpeed
+			limitMsg = "Map edge — turn back"
+		end
+		local dv = want - heliVel
+		local maxDv = P.Acceleration * dt * (want.Magnitude < heliVel.Magnitude and 1.4 or 1)
+		if dv.Magnitude > maxDv then dv = dv.Unit * maxDv end
+		heliVel += dv
+		if onGround and climb <= 0 then heliVel = Vector3.zero end
+
+		-- вертикаль: без ввода — держит высоту; над водой ниже 2 студов не опускается
+		local vy = climb * P.Climb
+		if onGround and climb <= 0 then
+			vy = (ground.Position.Y + gear - pos.Y) * 6
+		end
+		if pos.Y > P.MaxAltitude then
+			vy = math.min(vy, 0)
+			limitMsg = "Altitude ceiling"
+		end
+		if pos.Y - gear < 2 then vy = math.max(vy, (2 - (pos.Y - gear)) * 4) end
+		local groundVel = Vector3.zero
+		if onGround and ground.Instance:IsA("BasePart") then
+			local gv = ground.Instance:GetVelocityAtPosition(ground.Position)
+			groundVel = Vector3.new(gv.X, 0, gv.Z) -- палуба авианосца
+		end
+		-- турбулентность в грозовом облаке
+		local bump = Vector3.zero
+		if flying.model:GetAttribute("InStorm") then
+			bump = Vector3.new(math.noise(os.clock() * 2.1, 3.3) * 20, math.noise(os.clock() * 3.1, 9.9) * 25, math.noise(os.clock() * 2.4, 5.1) * 20)
+		end
+		if flying.lv then flying.lv.VectorVelocity = heliVel + Vector3.new(0, vy, 0) + groundVel + bump end
+
+		-- наклон корпуса: нос за прицелом, клюёт от скорости вперёд, крен от бокового движения
+		local fwdFrac = heliVel:Dot(fwd) / P.MaxSpeed
+		local sideFrac = heliVel:Dot(right) / P.SideSpeed
+		local pitch, roll = 0, 0
+		if not onGround then
+			pitch = math.clamp(aimPitch, math.rad(P.AimPitchMin), math.rad(P.AimPitchMax)) - fwdFrac * math.rad(P.MaxTilt) * 0.5
+			roll = -sideFrac * math.rad(P.MaxTilt)
+		end
+		bank += (roll - bank) * math.min(1, dt * 4)
+		if flying.ao then flying.ao.CFrame = heading * CFrame.Angles(pitch, 0, 0) * CFrame.Angles(0, 0, bank) end
+
+		-- камера за вертолётом, смотрит по прицелу (позиция привязана жёстко, сглажено только направление)
+		local cam = workspace.CurrentCamera
+		local aimDir = CFrame.fromOrientation(aimPitch, aimYaw, 0).LookVector
+		camDir = camDir and camDir:Lerp(aimDir, 1 - math.exp(-10 * dt)) or aimDir
+		if camDir.Magnitude < 0.01 then camDir = aimDir end
+		camDir = camDir.Unit
+		local camDist = P.CamDistance or 40
+		local camPos = pos - camDir * camDist + Vector3.new(0, 10, 0)
+		cam.CFrame = CFrame.lookAt(camPos, camPos + camDir)
+
+		-- метки: круг — прицел, точка — куда смотрит пулемёт (сходимость на 300 студов, как у сервера)
+		local a, aOn = cam:WorldToViewportPoint(pos + aimDir * 300)
+		local n, nOn = cam:WorldToViewportPoint(pos + root.CFrame.LookVector * 300)
+		aimMark.Visible, noseMark.Visible, bombMark.Visible = aOn, nOn, false
+		aimMark.Position = UDim2.fromOffset(a.X, a.Y)
+		noseMark.Position = UDim2.fromOffset(n.X, n.Y)
+
+		-- приборы
+		speed = heliVel.Magnitude
+		local alt = ground and (pos.Y - gear - ground.Position.Y) or (pos.Y - gear)
+		flightLbl.Text = ("%d km/h · %d m"):format(math.floor(speed * 4), math.max(0, math.floor(pos.Y)))
+		thrBar.Size = UDim2.fromScale(math.clamp(speed / P.MaxSpeed, 0, 1), 1)
+		local hp = (flying.model:GetAttribute("Health") or 0) / (flying.model:GetAttribute("MaxHealth") or 1)
+		hpBar.Size = UDim2.fromScale(math.clamp(hp, 0, 1), 1)
+		hpBar.BackgroundColor3 = hp > 0.5 and T.Good or (hp > 0.25 and T.Gold or T.Bad)
+		statusLbl.Text = hp > 0.25 and ("Hull %d%%"):format(math.floor(hp * 100 + 0.5)) or ('<font color="#eb554b">Hull %d%%</font>'):format(math.floor(hp * 100 + 0.5))
+		if limitMsg then
+			warn.Text, warn.TextColor3, warn.Visible = limitMsg, T.Gold, true
+		elseif onGround and alt < 1 then
+			warn.Text, warn.TextColor3, warn.Visible = touchOnly and "Hold UP to take off" or "Hold E to take off", T.Gold, true
+		else
+			warn.Visible = false
+		end
+		gunStep(root, char, typing, menuOpen)
+	end
+
 	RunService.RenderStepped:Connect(function(dt)
 		local seat, hum, model = planeSeat()
 		if seat and not flying then start(seat, hum, model) elseif not seat and flying then stop() end
@@ -319,6 +504,10 @@ return function(ctx)
 
 		-- ввод
 		local typing = UserInputService:GetFocusedTextBox() ~= nil
+		if P.Heli then
+			heliStep(dt, root, char, typing, menuOpen)
+			return
+		end
 		local thr = 0
 		if not typing then
 			if key(Enum.KeyCode.W) then thr += 1 end
@@ -538,34 +727,15 @@ return function(ctx)
 		end
 
 		-- огонь
-		-- клик по пунктам меню Esc — не очередь из пулемётов
-		local firing = held.fire or (not touchOnly and not typing and not menuOpen and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1))
-		if firing ~= lastFiring then
-			lastFiring = firing
-			Fire:FireServer(firing)
-		end
-		-- свои пули — сразу и точно из стволов
-		local now = os.clock()
-		if firing and #flying.muzzles > 0 and now - flying.lastShot >= P.GunCooldown then
-			flying.lastShot = now
-			local mz = flying.muzzles[(flying.shotN % #flying.muzzles) + 1]
-			flying.shotN += 1
-			local origin = mz.Position
-			local converge = root.Position + root.CFrame.LookVector * 300
-			local dir = (converge - origin).Unit * P.GunRange
-			shotParams.FilterDescendantsInstances = ignoreList(char)
-			local hit = workspace:Raycast(origin, dir, shotParams)
-			local fx = ctx.screens.ShotFx
-			if fx then fx.streak(origin, hit and hit.Position or origin + dir, "PlaneGun") end
-			-- попал во что-то живое или в технику — сообщаем серверу (он проверит и нанесёт урон)
-			if hit and damageable(hit.Instance) then HitRemote:FireServer(hit.Instance, hit.Position) end
-		end
+		gunStep(root, char, typing, menuOpen)
 	end)
 
 	-- винты всех самолётов с работающим мотором крутятся (визуально, у каждого клиента) — каждый кадр;
-	-- кнопки и шасси — 5 раз в секунду (перебор деталей каждый кадр ни к чему)
+	-- кнопки и шасси — 5 раз в секунду (перебор деталей каждый кадр ни к чему).
+	-- Моторы PropMotor* (воздушные винты) крутятся вокруг Z; у вертолёта RotorMotor / TailRotorMotor —
+	-- вокруг оси из атрибута SpinAxis со скоростью ×SpinRate
 	local angle, slowAcc = 0, 0
-	local motorCache = setmetatable({}, {__mode = "k"}) -- [самолёт] = {{мотор, исходный C0}}
+	local motorCache = setmetatable({}, {__mode = "k"}) -- [самолёт] = {{мотор, исходный C0, ось, скорость}}
 	local function motorsOf(plane)
 		local list = motorCache[plane]
 		if list then return list end
@@ -573,9 +743,9 @@ return function(ctx)
 		if not root then return {} end
 		list = {}
 		for _, motor in ipairs(root:GetChildren()) do
-			if motor:IsA("Motor6D") and motor.Name:sub(1, 9) == "PropMotor" then
+			if motor:IsA("Motor6D") and (motor.Name:sub(1, 9) == "PropMotor" or motor:GetAttribute("SpinAxis")) then
 				local base = motor:GetAttribute("BaseC0")
-				table.insert(list, {motor, typeof(base) == "CFrame" and base or CFrame.new(0, 0, -9.5)})
+				table.insert(list, {motor, typeof(base) == "CFrame" and base or CFrame.new(0, 0, -9.5), motor:GetAttribute("SpinAxis") or "Z", motor:GetAttribute("SpinRate") or 1})
 			end
 		end
 		motorCache[plane] = list
@@ -592,7 +762,10 @@ return function(ctx)
 		local meSeated = myHum ~= nil and myHum.SeatPart ~= nil
 		for _, plane in ipairs(f:GetChildren()) do
 			if plane:GetAttribute("EngineOn") then
-				for _, m in ipairs(motorsOf(plane)) do m[1].C0 = m[2] * CFrame.Angles(0, 0, angle) end
+				for _, m in ipairs(motorsOf(plane)) do
+					local a = m[4] == 1 and angle or (os.clock() * 40 * m[4]) % (math.pi * 2) -- без скачка при обороте angle
+					m[1].C0 = m[2] * (m[3] == "Y" and CFrame.Angles(0, a, 0) or m[3] == "X" and CFrame.Angles(a, 0, 0) or CFrame.Angles(0, 0, a))
+				end
 			end
 			if not slow then continue end
 			-- кнопка «сесть стрелком» бомбардировщика: не для пилота этого самолёта и не когда место занято (только у меня)
@@ -619,6 +792,14 @@ return function(ctx)
 					local ps = plane:FindFirstChild("PilotSeat")
 					board.Enabled = ps ~= nil and ps.Occupant == nil
 				end
+			end
+			-- «сесть пассажиром» (вертолёт): не показываем, пока я сам где-то сижу (иначе E пилота — это кнопка)
+			local door = plane:FindFirstChild("Door")
+			local pp = door and door:FindFirstChild("PassengerPrompt")
+			if pp then
+				local ps = plane:FindFirstChild("PassengerSeat")
+				local want = not meSeated and ps ~= nil and ps.Occupant == nil and plane:GetAttribute("IsPlane") == true
+				if pp.Enabled ~= want then pp.Enabled = want end
 			end
 			local gearUp = plane:GetAttribute("GearUp") == true
 			if plane:GetAttribute("GearState") ~= gearUp then

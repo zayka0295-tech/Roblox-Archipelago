@@ -351,8 +351,46 @@ Config.Planes = {
 		SpawnBox = Vector3.new(56, 20, 44),
 		CrashBox = Vector3.new(50, 4, 38),
 	},
+	-- транспортно-боевой вертолёт (Heli = true: свой режим полёта в PlaneClient — зависание, вверх/вниз, вбок):
+	-- пилот и один пассажир, курсовой пулемёт как у истребителя. Взлетает с вертолётных площадок базы
+	-- (Decor.Helipad.PadN), с палубы авианосца и с аэродрома острова — вертикально, без разбега
+	Heli = {
+		Heli = true,
+		DisplayName = "Kestrel helicopter",
+		Description = "Takes off anywhere and hovers. Pilot plus one passenger, nose machine gun.",
+		Model = "Helicopter",
+		Price = 450,
+		SpawnCooldown = 12,
+		Bombs = 0,
+		MaxHealth = 420,
+		MaxSpeed = 75,           -- вперёд, студ/с
+		SideSpeed = 35,          -- вбок и назад
+		Climb = 28,              -- вверх / вниз
+		Acceleration = 30,       -- разгон по горизонтали
+		TurnRate = 90,           -- °/с — рыскание за мышью
+		MaxTilt = 12,            -- наклон корпуса от разгона, °
+		AimPitchMin = -30,       -- нос (и пулемёт) за прицелом вниз / вверх, °
+		AimPitchMax = 12,
+		StallSpeed = 0,
+		TakeoffSpeed = 20,       -- для серверной проверки «шасси убраны» (у вертолёта их нет)
+		ReverseSpeed = 0,
+		GroundBrake = 0,
+		RollRate = 120,
+		MaxBank = 20,
+		GunDamage = 9,           -- пулемёт — как у истребителя
+		GunCooldown = 0.07,
+		GunRange = 900,
+		CrashSpeed = 45,         -- посадка медленнее — не крушение
+		AbandonDespawn = 120,
+		MaxAltitude = 700,
+		BoundsX = 4200,
+		BoundsZ = 2150,
+		CamDistance = 40,
+		SpawnBox = Vector3.new(44, 16, 44),
+		CrashBox = Vector3.new(9, 6, 30),
+	},
 }
-Config.PlaneOrder = {"Fighter", "Bomber"}
+Config.PlaneOrder = {"Fighter", "Bomber", "Heli"}
 
 -- Авиабомбы (истребитель — 1, бомбардировщик — 10): сброс на E / кнопка BOMB, падают по баллистике
 -- со скоростью самолёта. Урон по площади (таблица Combat.DamageMatrix.Bomb): полный залп бомбардировщика
@@ -518,6 +556,7 @@ Config.SubWeapons = {
 Config.Limits = {
 	PlanesPerTeam = 12,          -- у каждого игрока при этом не больше 1 своего самолёта
 	BombersPerTeam = 3,          -- из них бомбардировщиков
+	HelisPerTeam = 4,            -- из них вертолётов
 	GunboatsPerTeam = 8,
 	SubmarinesPerTeam = 6,
 	PersonalShipsPerPlayer = 2,  -- катера + подлодки одного игрока одновременно

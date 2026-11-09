@@ -112,7 +112,8 @@ local function destroyPlane(model, killer, reason)
 		model:Destroy()
 		return
 	end
-	Notifier.send(st.owner, reason == "shot" and "Your plane was shot down!" or "The plane crashed", "error")
+	local noun = st.cfg.Heli and "helicopter" or "plane"
+	Notifier.send(st.owner, reason == "shot" and ("Your %s was shot down!"):format(noun) or ("The %s crashed"):format(noun), "error")
 	-- личная награда тому, кто сбил вражеский самолёт
 	local shooter = killer or (st.lastHitBy and os.clock() - (st.lastHitT or 0) < Config.Combat.KillCreditWindow and st.lastHitBy)
 	local R = Config.Economy.Rewards or {}
@@ -162,8 +163,38 @@ end
 local airfieldIsland = Islands.airfield
 local airstrip = Islands.airstrip
 
+-- вертолёт на базе: свободная площадка Decor.Helipad.PadN (диск HeliPad / основание PadBase).
+-- Возвращает CFrame: низ полозьев на площадке, нос к центру карты
+local function heliPadSpot(team, P)
+	local base = workspace.Map.Teams:FindFirstChild(team .. "Base")
+	local helipad = base and base.Decor:FindFirstChild("Helipad")
+	if not helipad then return nil end
+	local ov = OverlapParams.new()
+	ov.FilterType = Enum.RaycastFilterType.Include
+	ov.FilterDescendantsInstances = {folder()}
+	local gear = ServerStorage.Vehicles[P.Model]:GetAttribute("GearHeight") or 6
+	local pads = {}
+	for _, m in ipairs(helipad:GetChildren()) do
+		local disk = m.Name:match("^Pad%d") and (m:FindFirstChild("HeliPad") or m:FindFirstChild("PadBase"))
+		if disk then table.insert(pads, {m, disk}) end
+	end
+	table.sort(pads, function(a, b) return a[1].Name < b[1].Name end)
+	for _, pd in ipairs(pads) do
+		local disk = pd[2]
+		local top = disk.Position.Y + (disk.Name == "HeliPad" and disk.Size.X or disk.Size.Y) / 2
+		local pos = Vector3.new(disk.Position.X, top + gear + 0.3, disk.Position.Z)
+		local cf = CFrame.lookAt(pos, Vector3.new(0, pos.Y, 0))
+		if #workspace:GetPartBoundsInBox(cf, P.SpawnBox, ov) == 0 then return cf end
+	end
+	return nil
+end
+
 local function spawnCFrame(team, where, carrier, P)
 	P = P or Config.Planes.Fighter
+	if P.Heli and where == "Base" then
+		local cf = heliPadSpot(team, P)
+		if cf then return cf end
+	end
 	local marker
 	if where == "Carrier" then
 		marker = carrier and carrier:FindFirstChild("PlaneSpawn")
@@ -343,10 +374,49 @@ local function makePlane(ownerActor, team, cf, kind)
 	-- турель стрелка (бомбардировщик) — как башни кораблей
 	TurretService.attachShip(model)
 
+	-- место пассажира (вертолёт): садится союзник кнопкой у двери; враг на месте не удержится.
+	-- Пассажир гибнет вместе с вертолётом и не даёт ему самоуничтожиться (как стрелок, через st.crew)
+	local pseat = model:FindFirstChild("PassengerSeat")
+	if pseat and pseat:IsA("Seat") then
+		local pp = Instance.new("ProximityPrompt")
+		pp.Name = "PassengerPrompt"
+		pp.ActionText = "Board as passenger"
+		pp.ObjectText = P.DisplayName
+		pp.HoldDuration = 0.25
+		pp.MaxActivationDistance = 14
+		pp.RequiresLineOfSight = false
+		pp.Parent = model:FindFirstChild("Door") or pseat
+		local function ally(actor)
+			return isPlayer(actor) and TeamService.getTeamName(actor) == st.team and actor:GetAttribute("State") == "Deployed"
+		end
+		pseat:GetPropertyChangedSignal("Occupant"):Connect(function()
+			if st.dead then return end
+			local hum = pseat.Occupant
+			pp.Enabled = hum == nil
+			if hum and not ally(Players:GetPlayerFromCharacter(hum.Parent)) then
+				local w = pseat:FindFirstChild("SeatWeld")
+				if w then w:Destroy() end
+			end
+		end)
+		pp.Triggered:Connect(function(player)
+			if st.dead or not planes[model] or pseat.Occupant or not AntiCheat.atPrompt(player, pp) then return end
+			if not ally(player) then
+				Notifier.send(player, "This is an enemy helicopter", "error")
+				return
+			end
+			local char = player.Character
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			if not hum or hum.Health <= 0 or hum.SeatPart then return end
+			AntiCheat.grace(player)
+			char:PivotTo(pseat.CFrame + Vector3.new(0, 3, 0))
+			pseat:Sit(hum)
+		end)
+	end
+
 	-- вернуться в свой самолёт по E
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "BoardPrompt"
-	prompt.ActionText = "Board plane"
+	prompt.ActionText = P.Heli and "Board as pilot" or "Board plane"
 	prompt.ObjectText = P.DisplayName
 	prompt.HoldDuration = 0.25
 	prompt.MaxActivationDistance = 16
@@ -425,6 +495,11 @@ function PlaneService.requestSpawn(player, team, where, carrier, kind)
 		Notifier.send(player, ("%d team bombers are already airborne — that's the limit"):format(bcap), "error")
 		return false
 	end
+	local hcap = P.Heli and Config.Limits and Config.Limits.HelisPerTeam
+	if hcap and PlaneService.teamCount(team, player, kind) >= hcap then
+		Notifier.send(player, ("%d team helicopters are already airborne — that's the limit"):format(hcap), "error")
+		return false
+	end
 	local paid, why = DataService.spendGold(player, P.Price)
 	if not paid then
 		Notifier.send(player, why == "NotEnough" and ("Requires %d gold"):format(P.Price)
@@ -454,7 +529,8 @@ function PlaneService.requestSpawn(player, team, where, carrier, kind)
 	AntiCheat.grace(player)
 	char:PivotTo(st.seat.CFrame + Vector3.new(0, 3, 0))
 	st.seat:Sit(hum)
-	Notifier.send(player, P.DisplayName .. " ready · W — throttle, mouse — heading, LMB — fire, E — drop bomb", "success")
+	Notifier.send(player, P.Heli and (P.DisplayName .. " ready · E / Q — up / down, WASD — move, mouse — heading, LMB — fire")
+		or (P.DisplayName .. " ready · W — throttle, mouse — heading, LMB — fire, E — drop bomb"), "success")
 	return true
 end
 
