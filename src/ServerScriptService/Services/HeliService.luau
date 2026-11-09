@@ -199,10 +199,23 @@ local function place(h, dt)
 	end
 end
 
+-- площадки базы: Decor.Helipad.Pad1..Pad4 (сетка 2×2, у каждой PadBase + диск HeliPad), зона выгрузки ContainerDrop
+local function basePads(helipad)
+	local pads = {}
+	for i = 1, 16 do
+		local m = helipad:FindFirstChild("Pad" .. i)
+		if not m then break end
+		table.insert(pads, m)
+	end
+	return pads
+end
+
 local function baseHelipad(team)
 	local base = workspace.Map.Teams:FindFirstChild(team .. "Base")
-	local pad = base and base.Decor:FindFirstChild("Helipad")
-	return pad and pad:FindFirstChild("HeliPad"), pad and pad:FindFirstChild("ContainerDrop")
+	local helipad = base and base.Decor:FindFirstChild("Helipad")
+	if not helipad then return nil, nil end
+	local first = basePads(helipad)[1]
+	return first and first:FindFirstChild("HeliPad"), helipad:FindFirstChild("ContainerDrop")
 end
 
 -- выплата за доставленный контейнер — как у грузовых судов
@@ -504,14 +517,15 @@ function HeliService.init()
 			end
 		end
 	end
-	-- модель грузового вертолёта на стоянке у площадки базы (DisplayPad): просто для вида, не груз и не цель
+	-- модели грузовых вертолётов на стоянке — по одной на каждой площадке базы (PadN.PadBase): для вида, не груз и не цель
 	for _, team in ipairs(Config.TeamOrder) do
 		local base = workspace.Map.Teams:FindFirstChild(team .. "Base")
 		local helipad = base and base.Decor:FindFirstChild("Helipad")
-		local pad = helipad and helipad:FindFirstChild("DisplayPad")
-		if pad then
+		for i, padModel in ipairs(helipad and basePads(helipad) or {}) do
+			local pad = padModel:FindFirstChild("PadBase")
+			if not pad then continue end
 			local m, parts = buildHeli(team)
-			m.Name = "ParkedCargoHeli"
+			m.Name = "ParkedCargoHeli" .. i
 			m.ModelStreamingMode = Enum.ModelStreamingMode.Default
 			for _, k in ipairs({"IsCargo", "Team", "CargoType", "MaxHealth", "Health"}) do m:SetAttribute(k, nil) end
 			local cf = CFrame.new(pad.Position + Vector3.new(0, pad.Size.Y / 2 + 7.25, 0)) * pad.CFrame.Rotation -- колёса на площадке
@@ -520,7 +534,7 @@ function HeliService.init()
 				if p.spin then off = off * CFrame.Angles(0, math.rad(p.spin.angle) * p.spin.dir, 0) * CFrame.new(p.spin.radial, 0, 0) end
 				p.part.CFrame = cf * off
 			end
-			m.Parent = helipad
+			m.Parent = padModel
 		end
 	end
 	-- урон по вертолётам — через тот же вызов, что и по грузовым судам
