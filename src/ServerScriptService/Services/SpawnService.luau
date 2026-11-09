@@ -255,6 +255,21 @@ end
 
 function SpawnService.init()
 	Players.PlayerRemoving:Connect(function(p) SpawnService.placeOverride[p] = nil end)
+	-- для затемнения при появлении (клиент, SpawnFade): сколько деталей у базы, где её центр и радиус —
+	-- клиент открывает мир, когда база вокруг догрузилась стримингом, а не собирается на глазах
+	local teamsFolder = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Teams")
+	for _, base in ipairs(teamsFolder and teamsFolder:GetChildren() or {}) do
+		if base:IsA("Model") then
+			local n = 0
+			for _, d in ipairs(base:GetDescendants()) do
+				if d:IsA("BasePart") then n += 1 end
+			end
+			local cf, size = base:GetBoundingBox()
+			base:SetAttribute("PartCount", n)
+			base:SetAttribute("Center", cf.Position)
+			base:SetAttribute("Radius", Vector3.new(size.X, 0, size.Z).Magnitude / 2)
+		end
+	end
 	-- площадки перрона — в цвет владельца острова; потеряли остров — выбравшим его игрокам точка «база»
 	local NEUTRAL_PAD = Color3.fromRGB(150, 155, 165)
 	local function paintPads(owner)

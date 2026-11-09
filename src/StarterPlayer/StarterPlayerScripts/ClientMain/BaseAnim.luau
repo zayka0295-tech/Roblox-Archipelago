@@ -24,6 +24,13 @@ return function(ctx)
 		local pos = p.Position
 		local center = (mn and mx) and (mn + mx) / 2 or pos + p.CFrame.LookVector * 50
 		local lens = p.Parent and p.Parent:FindFirstChild("Lens")
+		-- луч прожектора движется каждый кадр: с тенями движок пересчитывает их карты постоянно и при
+		-- нехватке бюджета теней (их на базе ~20) тени и свет по всей базе мигают. Движущемуся свету тени не нужны
+		for _, part in ipairs({p, lens}) do
+			for _, l in ipairs(part:GetDescendants()) do
+				if l:IsA("Light") then l.Shadows = false end
+			end
+		end
 		lamps[p] = {
 			pos = pos,
 			baseYaw = math.atan2(center.X - pos.X, center.Z - pos.Z),
