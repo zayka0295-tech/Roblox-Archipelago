@@ -75,8 +75,12 @@ return function(ctx)
 		panel.Position = UDim2.new(0.5, 0, 1, -10)
 		panel.Size = UDim2.fromOffset(170, 58)
 	end
-	panel.BackgroundColor3 = Color3.fromRGB(16, 19, 26)
-	panel.BackgroundTransparency = 0.25
+	panel.BackgroundColor3 = Color3.fromRGB(26, 74, 160)
+	panel.BackgroundTransparency = 0.1
+	local ps = Instance.new("UIStroke")
+	ps.Color = Color3.fromRGB(13, 27, 61)
+	ps.Thickness = 3
+	ps.Parent = panel
 	panel.Parent = gui
 	local c = Instance.new("UICorner")
 	c.CornerRadius = UDim.new(0, 10)

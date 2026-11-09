@@ -12,9 +12,9 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 -- палитра под рамки окон (тёмно-синий металл с золотом)
 UI.T = {
-	Panel = Color3.fromRGB(18, 34, 70),
-	Panel2 = Color3.fromRGB(12, 24, 52),
-	Line = Color3.fromRGB(70, 98, 148),
+	Panel = Color3.fromRGB(18, 50, 112),
+	Panel2 = Color3.fromRGB(22, 60, 133),
+	Line = Color3.fromRGB(13, 27, 61),
 	Text = Color3.fromRGB(232, 238, 245),
 	Muted = Color3.fromRGB(190, 212, 245),
 	Accent = Color3.fromRGB(110, 200, 255),
@@ -571,6 +571,7 @@ end
 -- картинка кнопки по её цвету: так старый код, перекрашивающий BackgroundColor3, сам меняет картинку
 local function buttonSkin(c)
 	if c == UI.T.Disabled then return SKIN.Gray end
+	if c == UI.T.Panel or c == UI.T.Panel2 then return SKIN.Plate end
 	local h, s, v = c:ToHSV()
 	if v < 0.36 then return SKIN.Plate end
 	if s < 0.22 then return SKIN.Gray end
@@ -605,6 +606,8 @@ function UI.button(parent, text, color, props)
 		local function recolor()
 			local base = b:GetAttribute("BaseColor") or b.BackgroundColor3
 			local c = FAMILY[buttonSkin(base)] or CT.Green
+			-- закрыть / назад — красные, как крестик
+			if buttonSkin(base) == SKIN.Plate and (b.Text == "CLOSE" or b.Text == "BACK") then c = CT.Red end
 			if not b:GetAttribute("Enabled") or b.BackgroundColor3 == UI.T.Disabled then
 				c = CT.Gray
 			elseif b.BackgroundColor3 ~= base then
