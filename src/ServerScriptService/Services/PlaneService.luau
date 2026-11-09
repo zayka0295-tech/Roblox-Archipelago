@@ -913,11 +913,18 @@ function PlaneService.init()
 	-- терминал открывает меню ангара (HangarUI, как верфь); выбор самолёта — Remotes.BuyPlane.
 	-- Сервер помнит, у какого терминала игрок открыл меню, и выдаёт самолёт только рядом с ним
 	local OpenHangar = ReplicatedStorage.Remotes:WaitForChild("OpenHangar")
-	local hangar = {} -- [игрок] = {team, where, carrier, part}
-	local function hookTerminal(prompt, label, getTeam, where, carrier)
+	-- kinds — какие типы продаёт терминал: аэротерминалы (база, остров, палуба) — самолёты,
+	-- вертолётный терминал базы у площадок — вертолёты
+	local planeKinds, heliKinds = {}, {}
+	for _, k in ipairs(Config.PlaneOrder) do
+		local P = Config.Planes[k]
+		if P then table.insert(P.Heli and heliKinds or planeKinds, k) end
+	end
+	local hangar = {} -- [игрок] = {team, where, carrier, part, kinds}
+	local function hookTerminal(prompt, label, getTeam, where, carrier, kinds)
 		local old = prompt.Parent:FindFirstChild("BomberPrompt")
 		if old then old:Destroy() end
-		prompt.ActionText = "Hangar"
+		prompt.ActionText = kinds == heliKinds and "Helicopters" or "Hangar"
 		prompt.ObjectText = label
 		prompt.Triggered:Connect(function(player)
 			local team = getTeam()
@@ -931,8 +938,8 @@ function PlaneService.init()
 				Notifier.send(player, "This is the other team's terminal", "error")
 				return
 			end
-			hangar[player] = {team = team, where = where, carrier = carrier, part = prompt.Parent}
-			OpenHangar:FireClient(player, team, where)
+			hangar[player] = {team = team, where = where, carrier = carrier, part = prompt.Parent, kinds = kinds}
+			OpenHangar:FireClient(player, team, where, kinds)
 		end)
 	end
 	for _, team in ipairs(Config.TeamOrder) do
@@ -941,7 +948,13 @@ function PlaneService.init()
 		local term = decor and decor:FindFirstChild("AirTerminal")
 		local prompt = term and term:FindFirstChild("PlanePrompt")
 		if prompt then
-			hookTerminal(prompt, "Air terminal", function() return team end, "Base", nil)
+			hookTerminal(prompt, "Air terminal", function() return team end, "Base", nil, planeKinds)
+		end
+		-- вертолётный терминал у площадок (Decor.HeliTerminal.HeliPrompt): вертолёт встаёт на свободную площадку
+		local hterm = decor and decor:FindFirstChild("HeliTerminal")
+		local hprompt = hterm and hterm:FindFirstChild("HeliPrompt")
+		if hprompt then
+			hookTerminal(hprompt, "Heli terminal", function() return team end, "Base", nil, heliKinds)
 		end
 	end
 	-- аэродром на острове: самолёты — только команде, которая им владеет
@@ -950,7 +963,7 @@ function PlaneService.init()
 	local iprompt = iterm and iterm:FindFirstChild("PlanePrompt")
 	local idef = airfieldIsland()
 	if iprompt and idef then
-		hookTerminal(iprompt, "Airfield " .. (idef.Letter or idef.Name), function() return CaptureService.getOwner(idef.Id) end, "Island", nil)
+		hookTerminal(iprompt, "Airfield " .. (idef.Letter or idef.Name), function() return CaptureService.getOwner(idef.Id) end, "Island", nil, planeKinds)
 	end
 	-- без WaitForChild: если папки нет, init не должен зависнуть (дальше — Remotes самолётов и Heartbeat)
 	local carriers = workspace.Map:FindFirstChild("Carriers")
@@ -963,7 +976,7 @@ function PlaneService.init()
 		local term = c:FindFirstChild("AirTerminal")
 		local prompt = term and term:FindFirstChild("PlanePrompt")
 		if prompt then
-			hookTerminal(prompt, "Deck takeoff", function() return c:GetAttribute("Team") end, "Carrier", c)
+			hookTerminal(prompt, "Deck takeoff", function() return c:GetAttribute("Team") end, "Carrier", c, planeKinds)
 		end
 	end
 	ReplicatedStorage.Remotes:WaitForChild("BuyPlane").OnServerInvoke = function(player, kind)
@@ -975,6 +988,7 @@ function PlaneService.init()
 		if not h or not h.part.Parent or not hrp or (hrp.Position - h.part.Position).Magnitude > 25 then
 			return {ok = false, msg = "Go to the air terminal"}
 		end
+		if h.kinds and not table.find(h.kinds, kind) then return {ok = false, msg = "This terminal doesn't have it"} end
 		local ok = PlaneService.requestSpawn(player, h.team, h.where, h.carrier, kind)
 		if ok then hangar[player] = nil end
 		return {ok = ok == true}

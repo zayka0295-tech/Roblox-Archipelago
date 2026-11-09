@@ -457,7 +457,8 @@ return function(ctx)
 		if camDir.Magnitude < 0.01 then camDir = aimDir end
 		camDir = camDir.Unit
 		local camDist = P.CamDistance or 40
-		local camPos = pos - camDir * camDist + Vector3.new(0, 10, 0)
+		-- камера заметно выше, чем у самолёта: высокий вертолёт (винт на мачте) уходит в низ кадра и не закрывает прицел
+		local camPos = pos - camDir * camDist + Vector3.new(0, 16, 0)
 		cam.CFrame = CFrame.lookAt(camPos, camPos + camDir)
 
 		-- метки: круг — прицел, точка — куда смотрит пулемёт (сходимость на 300 студов, как у сервера)

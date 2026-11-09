@@ -76,7 +76,7 @@ return function(ctx)
 			UI.label(row, P.Description or "", {Position = UDim2.fromOffset(124, 24), Size = UDim2.new(1, -314, 0, 30), TextSize = 12, Font = UI.Medium, TextColor3 = T.Muted, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top})
 			local st = UI.label(row, "", {AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 124, 1, 0), Size = UDim2.new(1, -314, 0, 16), TextSize = 12, Font = UI.Medium})
 			local buy = UI.button(row, "TAKE OFF", T.Good, {AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.fromOffset(176, 48), TextSize = 16})
-			rows[kind] = {status = st, buy = buy, preview = preview}
+			rows[kind] = {status = st, buy = buy, preview = preview, row = row}
 			buy.Activated:Connect(function()
 				if busy or not buy:GetAttribute("Enabled") then return end
 				busy = true
@@ -89,8 +89,16 @@ return function(ctx)
 		end
 	end
 
-	function api.open(team)
+	-- kinds — какие типы продаёт этот терминал (nil — все; вертолётный терминал — только вертолёты)
+	function api.open(team, _where, kinds)
 		openTeam = team
+		local shown = 0
+		for kind, r in pairs(rows) do
+			r.row.Visible = type(kinds) ~= "table" or table.find(kinds, kind) ~= nil
+			if r.row.Visible then shown += 1 end
+		end
+		panel.Size = UDim2.fromOffset(680, 130 + 96 * math.max(shown, 1))
+		title.Text = type(kinds) == "table" and #kinds > 0 and Config.Planes[kinds[1]] and Config.Planes[kinds[1]].Heli and "HELICOPTERS" or "HANGAR"
 		local char = player.Character
 		local hrp = char and char:FindFirstChild("HumanoidRootPart")
 		openPos = hrp and hrp.Position
