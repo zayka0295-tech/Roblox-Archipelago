@@ -1,6 +1,6 @@
 -- Вид от первого лица: настоящее оружие и руки персонажа висят у самой камеры и выглядят огромными,
 -- поэтому от первого лица их прячем (только на своём экране) и рисуем перед камерой копию оружия
--- (без рук). От бедра — справа внизу, при прицеливании (ПКМ) — по центру, прицел на линии глаза.
+-- и держащие его руки персонажа. От бедра — справа внизу, при прицеливании (ПКМ) — по центру, прицел на линии глаза.
 local RunService = game:GetService("RunService")
 
 -- где рукоять оружия относительно камеры
@@ -12,6 +12,50 @@ local AIM_Z = -1.3           -- рукоять при прицеливании: 
 local function ramp(x, a, b) return math.clamp((x - a) / (b - a), 0, 1) end
 local function smooth(t) return t * t * (3 - 2 * t) end
 local function magOut(r) return smooth(ramp(r, 0.12, 0.4)) * (1 - smooth(ramp(r, 0.62, 0.86))) end
+
+------------------------------------------------------------------ руки от первого лица
+-- Копии рук персонажа (R15: плечо, предплечье, кисть; R6: рука целиком) с его рубашкой-формой держат копию оружия:
+-- правая — за рукоять (Tool.Grip), левая — за цевьё. Плечи — у нижнего края экрана, локти ставит двухзвенная IK.
+-- плечи в осях камеры — под нижним краем экрана (угол вниз больше половины поля зрения), чтобы обрезов рук не было видно
+local SHOULDER = {Right = Vector3.new(0.6, -2.0, -0.8), Left = Vector3.new(-0.3, -2.2, -1.4)}
+local MAX_ARM_SCALE = 1.6 -- руки копии можно удлинить, чтобы дотянуться до цевья длинного оружия
+local ARM_WIDTH, HAND_WIDTH = 0.55, 0.45 -- толщина копии рук и кистей от исходной
+local POLE = {Right = Vector3.new(0.7, -1, 0.3), Left = Vector3.new(-0.7, -1, 0.3)} -- куда смотрит локоть
+local R15_ARM = {"UpperArm", "LowerArm", "Hand"}
+local KEEP = {SurfaceAppearance = true, SpecialMesh = true, Decal = true}
+
+local function cloneLimb(src)
+	local c = src:Clone()
+	for _, ch in ipairs(c:GetChildren()) do
+		if not KEEP[ch.ClassName] then ch:Destroy() end
+	end
+	c.Anchored, c.CanCollide, c.CanQuery, c.CanTouch, c.CastShadow, c.Massless = true, false, false, false, false, true
+	c.LocalTransparencyModifier = 0
+	c.Transparency = 0
+	return c
+end
+
+-- деталь от точки top до точки bottom (ось Y детали вдоль конечности, как у R15/R6), боком к камере
+local function segmentCF(top, bottom, camRight)
+	local up = top - bottom
+	if up.Magnitude < 1e-3 then up = Vector3.yAxis end
+	up = up.Unit
+	local x = camRight - up * camRight:Dot(up)
+	if x.Magnitude < 1e-3 then x = up:Cross(Vector3.zAxis) end
+	return CFrame.fromMatrix((top + bottom) / 2, x.Unit, up)
+end
+
+-- двухзвенная IK: локоть для плеча s, запястья w, длин a и b и направления локтя pole
+local function elbowPos(s, w, a, b, pole)
+	local d = w - s
+	local len = math.clamp(d.Magnitude, 1e-3, a + b - 1e-3)
+	local dir = d.Unit
+	local along = (a * a - b * b + len * len) / (2 * len)
+	local h = math.sqrt(math.max(0, a * a - along * along))
+	local side = pole - dir * pole:Dot(dir)
+	side = side.Magnitude > 1e-3 and side.Unit or Vector3.yAxis
+	return s + dir * along + side * h
+end
 
 return function(ctx)
 	local player = ctx.player
@@ -63,8 +107,68 @@ return function(ctx)
 				if q.Z < frontZ and (not sight or q.Y > sight) then sight = q.Y end
 			end
 		end
+		-- руки: копии конечностей персонажа; рубашка (форма команды) ложится на них через Humanoid в модели
+		local arms = {}
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			local r15 = hum.RigType == Enum.HumanoidRigType.R15
+			for _, side in ipairs({"Right", "Left"}) do
+				local segs = {}
+				if r15 then
+					for _, n in ipairs(R15_ARM) do
+						local src = char:FindFirstChild(side .. n)
+						if not src then segs = nil break end
+						local c = cloneLimb(src)
+						c.Parent = vm
+						table.insert(segs, c)
+					end
+				else
+					local src = char:FindFirstChild(side .. " Arm")
+					if src then
+						local c = cloneLimb(src)
+						c.Parent = vm
+						segs = {c}
+					else
+						segs = nil
+					end
+				end
+				if segs then arms[side] = segs end
+			end
+			if next(arms) then
+				local vh = Instance.new("Humanoid")
+				vh.RigType = hum.RigType
+				vh.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+				vh.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+				vh.EvaluateStateMachine = false
+				vh.Parent = vm
+				for _, cls in ipairs({"Shirt", "BodyColors"}) do
+					local o = char:FindFirstChildOfClass(cls)
+					if o then o:Clone().Parent = vm end
+				end
+			end
+		end
+		-- где руки держат оружие (в осях рукояти): правая — точка хвата Tool.Grip, левая — цевьё на полпути к дулу
+		local grip = tool.Grip.Position
+		local fore = grip:Lerp(muzzleRel.Position, 0.5) + Vector3.new(0, -0.12, 0)
+		-- рука короче, чем расстояние от плеча до хвата от бедра, — копию увеличиваем (одинаково для обеих рук)
+		local need = 1
+		for side, segs in pairs(arms) do
+			local reach = #segs == 3 and (segs[1].Size.Y + segs[2].Size.Y) * 0.95 * 0.98 or segs[1].Size.Y
+			local hold = side == "Right" and grip or fore
+			local d = ((HIP * CFrame.new(hold)).Position - SHOULDER[side]).Magnitude
+			need = math.max(need, d / reach)
+		end
+		-- у самой камеры руки персонажа толстые и закрывают оружие — копию делаем тоньше
+		local k = math.min(need, MAX_ARM_SCALE)
+		for _, segs in pairs(arms) do
+			for i, p in ipairs(segs) do
+				local w = (#segs == 3 and i == 3) and HAND_WIDTH or ARM_WIDTH
+				p.Size = Vector3.new(p.Size.X * w, p.Size.Y * k, p.Size.Z * w)
+			end
+		end
 		vm.Parent = workspace.CurrentCamera
-		vmTool = {tool = tool, parts = parts, real = real, sight = sight or (muzzleRel.Y + 0.2), muzzleRel = muzzleRel}
+		vmTool = {tool = tool, parts = parts, real = real, sight = sight or (muzzleRel.Y + 0.2), muzzleRel = muzzleRel,
+			arms = arms, hold = {Right = grip, Left = fore}}
 		addedConn = tool.DescendantAdded:Connect(function(d)
 			if d:IsA("BasePart") then table.insert(real, d) end
 		end)
@@ -117,6 +221,32 @@ return function(ctx)
 			end
 			p.CFrame = gunCF * shift * prel
 			p.Transparency = t
+		end
+		-- руки держат копию оружия
+		local camRight = camCF.RightVector
+		for side, segs in pairs(vmTool.arms) do
+			local target = gunCF * vmTool.hold[side]
+			local s = camCF * SHOULDER[side]
+			local pole = camCF:VectorToWorldSpace(POLE[side])
+			if #segs == 3 then
+				local upper, lower, hand = segs[1], segs[2], segs[3]
+				local a, b, hl = upper.Size.Y * 0.95, lower.Size.Y * 0.95, hand.Size.Y
+				-- кисть центром на точке хвата; запястье — на полкисти ближе к плечу
+				local w = target - (target - s).Unit * (hl * 0.5)
+				-- рука короче, чем нужно до оружия — плечо подтягиваем к оружию (оно всё равно за краем экрана)
+				local reach = (a + b) * 0.98
+				if (w - s).Magnitude > reach then s = w - (w - s).Unit * reach end
+				local e = elbowPos(s, w, a, b, pole)
+				upper.CFrame = segmentCF(s, e, camRight)
+				lower.CFrame = segmentCF(e, w, camRight)
+				hand.CFrame = segmentCF(w, w + (w - e).Unit * hl, camRight)
+			else
+				local arm = segs[1]
+				local len = arm.Size.Y
+				if (target - s).Magnitude > len then s = target - (target - s).Unit * len end
+				local dir = (target - s).Unit
+				arm.CFrame = segmentCF(target - dir * len, target, camRight)
+			end
 		end
 	end)
 	player.CharacterRemoving:Connect(clear)

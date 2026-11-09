@@ -19,16 +19,45 @@ local TEXT = Color3.fromRGB(232, 238, 245)
 local MUTED = Color3.fromRGB(140, 152, 168)
 local GOLD = Color3.fromRGB(255, 205, 90)
 
+-- Два слоя: фон на весь экран (под панелью Roblox и чёлкой) и содержимое в безопасной зоне.
+-- Арт целиком (Fit) в безопасной зоне — при любом соотношении сторон логотип и края не обрезаются;
+-- поля вокруг заполняет тот же арт на весь экран (Crop), затемнённый к краям, а не чёрные полосы.
+local ART = "rbxassetid://71909187303311" -- тот же id, что Icons.KeyArt (ReplicatedStorage здесь ещё может быть не загружен)
 local gui = Instance.new("ScreenGui")
 gui.Name = "LoadingScreen"
 gui.IgnoreGuiInset = true
+gui.ScreenInsets = Enum.ScreenInsets.None
 gui.ResetOnSpawn = false
 gui.DisplayOrder = 1000
+local back = Instance.new("Frame")
+back.Size = UDim2.fromScale(1, 1)
+back.BackgroundColor3 = BG
+back.BorderSizePixel = 0
+back.Parent = gui
+local backArt = Instance.new("ImageLabel")
+backArt.Size = UDim2.fromScale(1, 1)
+backArt.BackgroundTransparency = 1
+backArt.Image = ART
+backArt.ScaleType = Enum.ScaleType.Crop
+backArt.ImageColor3 = Color3.fromRGB(90, 100, 120) -- приглушённый, чтобы основной арт выделялся
+backArt.Parent = back
+local dim = Instance.new("Frame")
+dim.Size = UDim2.fromScale(1, 1)
+dim.BackgroundColor3 = BG
+dim.BackgroundTransparency = 0.25 -- поля (сбоку на широких экранах, сверху и снизу на планшетах) — затемнённые
+dim.BorderSizePixel = 0
+dim.Parent = back
+
+local safe = Instance.new("ScreenGui")
+safe.Name = "LoadingScreenSafe"
+safe.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets -- не под кнопками Roblox и не под чёлкой
+safe.ResetOnSpawn = false
+safe.DisplayOrder = 1001
 local bg = Instance.new("Frame")
 bg.Size = UDim2.fromScale(1, 1)
-bg.BackgroundColor3 = BG
+bg.BackgroundTransparency = 1
 bg.BorderSizePixel = 0
-bg.Parent = gui
+bg.Parent = safe
 local function label(text, size, color, y, font)
 	local l = Instance.new("TextLabel")
 	l.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -42,13 +71,13 @@ local function label(text, size, color, y, font)
 	l.Parent = bg
 	return l
 end
--- арт игры на весь экран (тот же id, что Icons.KeyArt; ReplicatedStorage здесь ещё может быть не загружен),
--- снизу затемнение под полосу загрузки; надпись ARCHIPELAGO уже на самом арте
+-- арт игры целиком по центру безопасной зоны, снизу затемнение под полосу загрузки;
+-- надпись ARCHIPELAGO уже на самом арте
 local art = Instance.new("ImageLabel")
 art.Size = UDim2.fromScale(1, 1)
 art.BackgroundTransparency = 1
-art.Image = "rbxassetid://71909187303311"
-art.ScaleType = Enum.ScaleType.Crop
+art.Image = ART
+art.ScaleType = Enum.ScaleType.Fit
 art.Parent = bg
 local shade = Instance.new("Frame")
 shade.AnchorPoint = Vector2.new(0, 1)
@@ -93,6 +122,7 @@ bar.BorderSizePixel = 0
 bar.Parent = barBg
 Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
 gui.Parent = playerGui
+safe.Parent = playerGui
 ReplicatedFirst:RemoveDefaultLoadingScreen()
 
 -- полоса едет плавно к текущей цели
@@ -166,9 +196,14 @@ local rest = MIN_TIME - (os.clock() - t0)
 if rest > 0 then task.wait(rest) end
 task.wait(0.3)
 local info = TweenInfo.new(0.6)
-TweenService:Create(bg, info, {BackgroundTransparency = 1}):Play()
-for _, d in ipairs(bg:GetDescendants()) do
-	if d:IsA("TextLabel") then
+local all = {back}
+for _, root in ipairs({back, bg}) do
+	for _, d in ipairs(root:GetDescendants()) do table.insert(all, d) end
+end
+for _, d in ipairs(all) do
+	if d:IsA("UIGradient") then
+		continue
+	elseif d:IsA("TextLabel") then
 		TweenService:Create(d, info, {TextTransparency = 1}):Play()
 	elseif d:IsA("UIStroke") then
 		TweenService:Create(d, info, {Transparency = 1}):Play()
@@ -181,3 +216,4 @@ end
 task.wait(0.7)
 conn:Disconnect()
 gui:Destroy()
+safe:Destroy()
