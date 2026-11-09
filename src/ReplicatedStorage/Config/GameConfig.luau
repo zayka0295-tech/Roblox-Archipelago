@@ -81,6 +81,7 @@ Config.Carrier = {
 	Acceleration = 6,      -- разгон/торможение (студ/с²)
 	TurnRate = 7,          -- скорость поворота (°/с) на полном ходу
 	MinTurnFactor = 0.35,  -- доля поворота на малом ходу
+	Mass = 90000,          -- т (водоизмещение) для столкновений кораблей (NavalPhysics): толкает даже линкор
 	BoundsX = 4500,        -- границы плавания
 	BoundsZ = 2250,
 }
@@ -144,18 +145,21 @@ Config.Ships = {
 		Description = "Two triple-gun main battery turrets. A captain on the bridge and a gunner in each turret.",
 		MaxHealth = 4000, MaxSpeed = 30, MaxReverseSpeed = 10, Acceleration = 5, TurnRate = 9, MinTurnFactor = 0.35,
 		Length = 200, Beam = 34, Draft = 9,
+		Mass = 45000, -- т (водоизмещение): в столкновении тяжёлый толкает лёгкого (NavalPhysics)
 	},
 	Gunboat = {
 		DisplayName = "Gunboat", Price = 200, Team = false,
 		Description = "Fast single-seat gunboat. The driver aims the bow gun with the mouse.",
 		MaxHealth = 600, MaxSpeed = 55, MaxReverseSpeed = 15, Acceleration = 14, TurnRate = 45, MinTurnFactor = 0.4,
 		Length = 50, Beam = 14, Draft = 3,
+		Mass = 150,
 	},
 	Submarine = {
 		DisplayName = "Submarine", Price = 350, Team = false,
 		Description = "Ship hunter: 2 torpedoes (periscope depth only). About 90 s of air underwater.",
 		MaxHealth = 800, MaxSpeed = 26, MaxReverseSpeed = 8, Acceleration = 6, TurnRate = 18, MinTurnFactor = 0.4,
 		Length = 80, Beam = 10, Draft = 9, CanDive = true, DiveDepth = 50, DiveRate = 5, -- море до −88: на глубине лодка проходит под кораблями
+		Mass = 1800,
 		SubmergedSpeed = 16,  -- под водой медленнее
 		PeriscopeDepth = 8,   -- мельче — можно стрелять (и по лодке можно попасть)
 		Air = 90,             -- сек. под водой (глубже перископной)
@@ -472,6 +476,7 @@ Config.Logistics = {
 	CenterBonusMultiplier = 2, -- рейсы с центрального форта приносят в 2 раза больше
 	LostIslandRule = "Cancel", -- остров потерян в пути: "Cancel" — судно возвращается без выплаты; "Complete" — груз довозится
 	ShipHealth = 700,
+	ShipMass = 12000,       -- т: грузовое судно в столкновениях кораблей (у причала — неподвижно)
 	RespawnDelay = 30,      -- сек.: новое судно у острова после потопления
 	SinkReward = 60,        -- золота тому, кто потопил вражеское грузовое судно
 	-- грузовик: кран ставит на него контейнеры, выплата — только когда он доедет до ангара

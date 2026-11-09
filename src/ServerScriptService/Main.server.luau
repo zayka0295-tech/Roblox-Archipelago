@@ -56,6 +56,7 @@ local BadgesService = require(Services.BadgesService)
 local RewardsService = require(Services.RewardsService)
 local CareerService = require(Services.CareerService)
 local BazaarService = require(Services.BazaarService)
+local NavalPhysics = require(Services.NavalPhysics)
 
 -- ошибка в init одного сервиса не должна оставить сервер без остальных (и без появления игроков ниже)
 local function start(name, svc)
@@ -64,6 +65,7 @@ local function start(name, svc)
 end
 
 start("DataService", DataService)
+start("NavalPhysics", NavalPhysics) -- столкновения кораблей: до сервисов техники (группа столкновений «Vessels»)
 start("CarrierService", CarrierService)
 start("CombatService", CombatService)
 start("SpawnService", SpawnService)

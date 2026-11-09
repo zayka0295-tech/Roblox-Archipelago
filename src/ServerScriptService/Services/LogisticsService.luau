@@ -19,6 +19,7 @@ local CaptureService = require(Services.CaptureService)
 local Notifier = require(Services.Notifier)
 local TreasuryService = require(Services.TreasuryService)
 local SinkFx = require(Services.SinkFx)
+local NavalPhysics = require(Services.NavalPhysics)
 
 local LogisticsService = {}
 local L = Config.Logistics
@@ -327,6 +328,15 @@ local function spawnShip(route)
 		team = "Neutral", path = nil, pi = 1, finalYaw = nil, arrived = true, speed = 0,
 	}
 	st.ao.CFrame = CFrame.Angles(0, st.yaw, 0)
+	-- в столкновениях: в пути толкается по массе, у причала (разгрузка краном) — неподвижен.
+	-- Скорость судно каждый кадр берёт из маршрута, поэтому весь толчок уходит в снос (без setSpeed)
+	NavalPhysics.register(m, {
+		root = root, mass = L.ShipMass,
+		getYaw = function() return st.yaw end,
+		getSpeed = function() return st.speed end,
+		isFixed = function() return st.arrived or not st.path end,
+		isActive = function() return not st.dead end,
+	})
 	route.ship = st
 	route.state = "Docked"
 	route.departAt = nil
@@ -725,6 +735,7 @@ end
 local function sink(route, st, killer)
 	if st.dead then return end
 	st.dead = true
+	NavalPhysics.unregister(st.model)
 	local m = st.model
 	m:SetAttribute("IsCargo", false)
 	m:SetAttribute("State", "Sunk")
@@ -929,6 +940,8 @@ local function moveStep(st, dt)
 	local vy = math.clamp((st.y0 - pos.Y) * 3, -8, 8)
 	if st.arrived or not st.path then
 		st.speed = 0
+		local body = NavalPhysics.get(st.model)
+		if body then body.ext, body.spin = Vector3.zero, 0 end -- у причала снос не копится
 		if st.finalYaw then
 			st.yaw = lerpAngle(st.yaw, st.finalYaw, math.min(1, dt * 0.8))
 		end
@@ -957,7 +970,10 @@ local function moveStep(st, dt)
 	local speed = cruise * math.max(0.2, math.cos(math.min(math.abs(diff), math.pi / 2)))
 	if last then speed = math.min(speed, dist * 0.5 + 2) end
 	st.speed = speed
-	st.lv.VectorVelocity = fwdOf(st.yaw) * speed + Vector3.new(0, vy, 0)
+	-- снос от столкновений; дальше судно само возвращается на маршрут (курс — на следующую точку)
+	local ext, spin = NavalPhysics.drift(st.model, dt)
+	st.yaw += spin * dt
+	st.lv.VectorVelocity = fwdOf(st.yaw) * speed + ext + Vector3.new(0, vy, 0)
 	st.ao.CFrame = CFrame.Angles(0, st.yaw, 0)
 end
 

@@ -19,6 +19,7 @@ local AbandonTimer = require(Services.AbandonTimer)
 local TreasuryService = require(Services.TreasuryService)
 local Guard = require(Services.RemoteGuard)
 local AntiCheat = require(Services.AntiCheatService)
+local NavalPhysics = require(Services.NavalPhysics)
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local GameState = ReplicatedStorage:WaitForChild("GameState")
@@ -132,11 +133,9 @@ local function obstacleParams(st, submerged)
 		local f = workspace.Map:FindFirstChild(n)
 		if f then table.insert(list, f) end
 	end
+	-- другие корабли и авианосцы здесь не препятствие: их корпуса сталкиваются физически (NavalPhysics),
+	-- иначе корабль замирал бы перед катером как перед стеной. Погружённая подлодка тоже — по высоте корпусов
 	local hulls = {}
-	if carriers then table.insert(submerged and hulls or list, carriers) end
-	for other in pairs(ships) do
-		if other ~= st.model and other.Parent then table.insert(submerged and hulls or list, other) end
-	end
 	local bp = st.fBlock or RaycastParams.new()
 	bp.FilterType = Enum.RaycastFilterType.Include
 	bp.IgnoreWater = true
@@ -330,6 +329,13 @@ local function buildShip(m, kind, team, owner, donor, cf)
 	if seatAttr then st.aimTurret = m:FindFirstChild(seatAttr) end
 	ships[m] = st
 	shipsVer += 1
+	NavalPhysics.register(m, {
+		root = root, mass = cfg.Mass,
+		getYaw = function() return st.yaw end,
+		getSpeed = function() return st.speed end,
+		setSpeed = function(v) st.speed = v end,
+		isActive = function() return not st.dead end,
+	})
 	TurretService.attachShip(m)
 	setupHelm(st)
 	-- трапы: из воды на палубу (подняться может любой — в т.ч. абордаж)
@@ -556,6 +562,7 @@ end
 
 ------------------------------------------------------------------ урон и потопление
 function forget(st)
+	NavalPhysics.unregister(st.model)
 	if ships[st.model] then shipsVer += 1 end
 	ships[st.model] = nil
 	if st.cfg.Team then
@@ -621,6 +628,7 @@ end
 local function sink(st, killer)
 	if st.dead then return end
 	st.dead = true
+	NavalPhysics.unregister(st.model) -- тонущий корпус больше не толкает и не толкается
 	-- корабль игрока (личный или с игроком за штурвалом) — полная награда; иначе как за бота.
 	-- Запоминаем до того, как экипаж снимается с мест.
 	local humanShip = isPlayer(st.owner) or isPlayer(st.driver)
@@ -803,10 +811,12 @@ local function step(st, dt)
 			end
 		end
 	end
-	st.yaw = newYaw
+	-- снос и разворот от столкновений с другими кораблями (продольный толчок уже в st.speed)
+	local ext, spin = NavalPhysics.drift(st.model, dt)
+	st.yaw = newYaw + spin * dt
 	local vyMax = cfg.CanDive and cfg.DiveRate * 1.5 or 20
 	local vy = math.clamp((targetY - pos.Y) * (cfg.CanDive and 1.5 or 4), -vyMax, vyMax)
-	st.lv.VectorVelocity = vel + Vector3.new(0, vy, 0)
+	st.lv.VectorVelocity = vel + ext + Vector3.new(0, vy, 0)
 	st.ao.CFrame = CFrame.Angles(0, st.yaw, 0)
 
 	st.pub += dt

@@ -13,6 +13,7 @@ local TreasuryService = require(Services.TreasuryService)
 local SinkFx = require(Services.SinkFx)
 local Guard = require(Services.RemoteGuard)
 local AntiCheat = require(Services.AntiCheatService)
+local NavalPhysics = require(Services.NavalPhysics)
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local GameState = ReplicatedStorage:WaitForChild("GameState")
@@ -247,6 +248,12 @@ local function spawnCarrier(team)
 		pub = 0,
 	}
 	ctrl.ao.CFrame = CFrame.Angles(0, yaw, 0)
+	NavalPhysics.register(m, {
+		root = root, mass = C.Mass,
+		getYaw = function() return ctrl.yaw end,
+		getSpeed = function() return ctrl.speed end,
+		setSpeed = function(v) ctrl.speed = v end,
+	})
 	return m, points, ctrl
 end
 
@@ -319,6 +326,7 @@ function CarrierService.destroy(team, attacker)
 	local s = states[team]
 	if not s or s.state ~= "Active" then return end
 	local model, ctrl = s.model, s.ctrl
+	if model then NavalPhysics.unregister(model) end -- тонущий корпус больше не сталкивается
 	s.driver, s.driverHum = nil, nil
 	-- пока тонет — новый не купить (авианосец один на команду)
 	s.state = "Sinking"
@@ -541,12 +549,10 @@ obstacleParams.IgnoreWater = true
 -- что считается препятствием для авианосца s; ставится один раз за кадр перед вызовами countBlocked
 local function setObstacleFilter(s)
 	local list = {workspace.Terrain}
-	for _, n in ipairs({"Teams", "Neutral", "Nature", "Vessels"}) do
+	-- корабли и другой авианосец — не препятствие: корпуса сталкиваются физически (NavalPhysics)
+	for _, n in ipairs({"Teams", "Neutral", "Nature"}) do
 		local f = workspace.Map:FindFirstChild(n)
 		if f then table.insert(list, f) end
-	end
-	for _, other in pairs(states) do
-		if other ~= s and other.model then table.insert(list, other.model) end
 	end
 	obstacleParams.FilterDescendantsInstances = list
 end
@@ -648,10 +654,12 @@ local function step(s, dt)
 			end
 		end
 	end
-	c.yaw = newYaw
+	-- снос и разворот от столкновений с кораблями (продольный толчок уже в c.speed)
+	local ext, spin = NavalPhysics.drift(s.model, dt)
+	c.yaw = newYaw + spin * dt
 	local rot = CFrame.Angles(0, c.yaw, 0)
 	local vy = math.clamp((c.rootY - pos.Y) * 4, -20, 20)
-	c.lv.VectorVelocity = vel + Vector3.new(0, vy, 0)
+	c.lv.VectorVelocity = vel + ext + Vector3.new(0, vy, 0)
 	c.ao.CFrame = rot
 
 	c.pub += dt
