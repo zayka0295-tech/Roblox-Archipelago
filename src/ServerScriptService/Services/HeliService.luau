@@ -517,26 +517,7 @@ function HeliService.init()
 			end
 		end
 	end
-	-- модели грузовых вертолётов на стоянке — по одной на каждой площадке базы (PadN.PadBase): для вида, не груз и не цель
-	for _, team in ipairs(Config.TeamOrder) do
-		local base = workspace.Map.Teams:FindFirstChild(team .. "Base")
-		local helipad = base and base.Decor:FindFirstChild("Helipad")
-		for i, padModel in ipairs(helipad and basePads(helipad) or {}) do
-			local pad = padModel:FindFirstChild("PadBase")
-			if not pad then continue end
-			local m, parts = buildHeli(team)
-			m.Name = "ParkedCargoHeli" .. i
-			m.ModelStreamingMode = Enum.ModelStreamingMode.Default
-			for _, k in ipairs({"IsCargo", "Team", "CargoType", "MaxHealth", "Health"}) do m:SetAttribute(k, nil) end
-			local cf = CFrame.new(pad.Position + Vector3.new(0, pad.Size.Y / 2 + 7.25, 0)) * pad.CFrame.Rotation -- колёса на площадке
-			for _, p in ipairs(parts) do
-				local off = p.offset
-				if p.spin then off = off * CFrame.Angles(0, math.rad(p.spin.angle) * p.spin.dir, 0) * CFrame.new(p.spin.radial, 0, 0) end
-				p.part.CFrame = cf * off
-			end
-			m.Parent = padModel
-		end
-	end
+	-- площадки базы (PadN) свободны: на них садятся вертолёты игроков
 	-- урон по вертолётам — через тот же вызов, что и по грузовым судам
 	local prev = CombatService.onCargoHit
 	CombatService.onCargoHit = function(model, amount, attacker)
