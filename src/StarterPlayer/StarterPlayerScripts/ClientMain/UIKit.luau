@@ -16,7 +16,7 @@ UI.T = {
 	Panel2 = Color3.fromRGB(12, 24, 52),
 	Line = Color3.fromRGB(70, 98, 148),
 	Text = Color3.fromRGB(232, 238, 245),
-	Muted = Color3.fromRGB(140, 152, 168),
+	Muted = Color3.fromRGB(190, 212, 245),
 	Accent = Color3.fromRGB(110, 200, 255),
 	Gold = Color3.fromRGB(255, 205, 90),
 	Good = Color3.fromRGB(80, 200, 110),
@@ -483,16 +483,73 @@ local function zoom(abs, f)
 	return u and u.Scale or 1
 end
 
--- окно: рамка с заклёпками, чуть выходит наружу (не наезжает на содержимое); низкие панели — стальная плашка
+------------------------------------------------------------------ мультяшный стиль (макет Figma «B · Cartoon»)
+-- Подложка «Skin» рисуется кодом: заливка с градиентом, толстая тёмная обводка, скругление.
+-- У кнопок снизу тёмная полоса «толщины» и блик сверху. Как и картинка-скин, лежит под содержимым (ZIndex 0),
+-- а сама рамка прозрачная: чужой код, меняющий её BackgroundTransparency, меняет прозрачность подложки.
+UI.Cartoon = {
+	Outline = Color3.fromRGB(13, 27, 61),
+	PanelTop = Color3.fromRGB(44, 111, 214), PanelBottom = Color3.fromRGB(26, 74, 160),
+	RowTop = Color3.fromRGB(30, 79, 168), RowBottom = Color3.fromRGB(22, 60, 133),
+	Green = Color3.fromRGB(94, 219, 74), Red = Color3.fromRGB(255, 92, 80), Gold = Color3.fromRGB(255, 196, 40),
+	Blue = Color3.fromRGB(60, 150, 255), Gray = Color3.fromRGB(70, 78, 90),
+}
+local CT = UI.Cartoon
+local function seq(a, b) return ColorSequence.new(a, b) end
+-- полоса «толщины» внизу кнопки: верх — цвет, низ (последние 18%) — затемнён
+local DEPTH = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)), ColorSequenceKeypoint.new(0.8, Color3.fromRGB(205, 205, 205)),
+	ColorSequenceKeypoint.new(0.81, Color3.fromRGB(120, 120, 120)), ColorSequenceKeypoint.new(1, Color3.fromRGB(110, 110, 110)),
+})
+function UI.face(f, opts, keepStrokes)
+	local pad = opts.pad or 0
+	local face = UI.new("Frame", {Name = "Skin", BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
+		Position = UDim2.fromOffset(-pad, -pad), Size = UDim2.new(1, pad * 2, 1, pad * 2), ZIndex = 0}, f)
+	UI.new("UICorner", {CornerRadius = UDim.new(0, opts.radius or 12)}, face)
+	local grad = UI.new("UIGradient", {Rotation = 90, Color = opts.gradient or seq(Color3.new(1, 1, 1), Color3.new(1, 1, 1))}, face)
+	local stroke = UI.new("UIStroke", {Color = CT.Outline, Thickness = opts.stroke or 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		LineJoinMode = Enum.LineJoinMode.Round}, face)
+	if opts.gloss then
+		local g = UI.new("Frame", {Name = "Gloss", BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.72, BorderSizePixel = 0,
+			Position = UDim2.new(0, 4, 0, 3), Size = UDim2.new(1, -8, 0.32, 0)}, face)
+		UI.new("UICorner", {CornerRadius = UDim.new(0, math.max((opts.radius or 12) - 3, 2))}, g)
+	end
+	-- UIPadding рамки сжимает и подложку — растягиваем её обратно на отступы
+	local function place()
+		local p = f:FindFirstChildOfClass("UIPadding")
+		local l, t, r, b = 0, 0, 0, 0
+		if p then l, t, r, b = p.PaddingLeft.Offset, p.PaddingTop.Offset, p.PaddingRight.Offset, p.PaddingBottom.Offset end
+		face.Position = UDim2.fromOffset(-pad - l, -pad - t)
+		face.Size = UDim2.new(1, pad * 2 + l + r, 1, pad * 2 + t + b)
+	end
+	place()
+	f.ChildAdded:Connect(function(c) if c:IsA("UIPadding") then place() end end)
+	local own = false
+	local function keepClear()
+		if own or f.BackgroundTransparency == 1 then return end
+		own = true
+		face.BackgroundTransparency = f.BackgroundTransparency
+		stroke.Transparency = f.BackgroundTransparency
+		f.BackgroundTransparency = 1
+		own = false
+	end
+	f:GetPropertyChangedSignal("BackgroundTransparency"):Connect(keepClear)
+	keepClear()
+	f.BackgroundTransparency = 1
+	local function mute(c)
+		if not keepStrokes and c:IsA("UIStroke") and c.ApplyStrokeMode == Enum.ApplyStrokeMode.Border then c.Enabled = false end
+	end
+	for _, c in ipairs(f:GetChildren()) do mute(c) end
+	f.ChildAdded:Connect(mute)
+	return face, grad, stroke
+end
+
+-- окно — синяя панель с толстой обводкой; низкие панели (плашки HUD) — та же, со скруглением поменьше
 function UI.panel(parent, props)
 	local f = UI.new("Frame", {BackgroundColor3 = UI.T.Panel, BackgroundTransparency = 1, BorderSizePixel = 0}, parent)
 	for k, v in pairs(props or {}) do f[k] = v end
 	local small = f.Size.Y.Scale == 0 and f.Size.Y.Offset > 0 and f.Size.Y.Offset <= 100
-	if small then
-		UI.skin(f, SKIN.Plate, 2, function(abs) return math.min(abs.Y / SKIN.Plate.h * 0.9, 1) end)
-	else
-		UI.skin(f, SKIN.Panel, 8, function(abs, fr) return 0.3 * zoom(abs, fr) end)
-	end
+	UI.face(f, {gradient = seq(CT.PanelTop, CT.PanelBottom), radius = small and 12 or 18, stroke = small and 3 or 4, pad = small and 0 or 4})
 	return f
 end
 
@@ -542,19 +599,26 @@ function UI.button(parent, text, color, props)
 			if c:IsA("UIStroke") then c.Enabled = false end
 		end)
 	else
-		local cur = buttonSkin(b.BackgroundColor3)
-		img = UI.skin(b, cur, 0, function(abs) return abs.Y / cur.h end)
-		b:GetPropertyChangedSignal("BackgroundColor3"):Connect(function()
-			local s = buttonSkin(b.BackgroundColor3)
-			if s ~= cur then
-				cur = s
-				img.Image, img.SliceCenter = s.image, s.slice
-				img.SliceScale = b.AbsoluteSize.Y / s.h
+		-- цвет подложки — по семейству цвета кнопки (тёмные и серые = основная зелёная); наведение — светлее
+		local FAMILY = {[SKIN.Plate] = CT.Green, [SKIN.Gray] = CT.Green, [SKIN.Red] = CT.Red, [SKIN.Gold] = CT.Gold, [SKIN.Green] = CT.Green, [SKIN.Blue] = CT.Blue}
+		img = UI.face(b, {gradient = DEPTH, radius = 12, stroke = 3, gloss = true})
+		local function recolor()
+			local base = b:GetAttribute("BaseColor") or b.BackgroundColor3
+			local c = FAMILY[buttonSkin(base)] or CT.Green
+			if not b:GetAttribute("Enabled") or b.BackgroundColor3 == UI.T.Disabled then
+				c = CT.Gray
+			elseif b.BackgroundColor3 ~= base then
+				c = c:Lerp(Color3.new(1, 1, 1), 0.18)
 			end
-		end)
-		-- свой текст кнопки рисуется под детьми (то есть под картинкой) — показываем его копией поверх
-		local cap = UI.new("TextLabel", {Name = "Caption", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 2}, b)
-		UI.new("UIStroke", {Color = UI.Outline, Thickness = 1.5}, cap)
+			img.BackgroundColor3 = c
+		end
+		recolor()
+		b:GetPropertyChangedSignal("BackgroundColor3"):Connect(recolor)
+		b:GetAttributeChangedSignal("Enabled"):Connect(recolor)
+		b:GetAttributeChangedSignal("BaseColor"):Connect(recolor)
+		-- свой текст кнопки рисуется под детьми (то есть под подложкой) — показываем его копией поверх
+		local cap = UI.new("TextLabel", {Name = "Caption", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0.9, 0), ZIndex = 2}, b)
+		UI.new("UIStroke", {Color = CT.Outline, Thickness = 2}, cap)
 		local MIRROR = {"Text", "TextColor3", "TextSize", "Font", "TextScaled", "TextWrapped", "TextXAlignment", "TextYAlignment", "RichText", "TextTruncate"}
 		for _, p in ipairs(MIRROR) do
 			cap[p] = b[p]
@@ -591,7 +655,7 @@ end
 
 -- строка списка / карточка: стальная плашка вместо плоского фона. Обводки (подсветка текущей строки) остаются.
 function UI.plate(f)
-	return UI.skin(f, SKIN.Plate, 0, function(abs) return math.min(abs.Y / SKIN.Plate.h * 0.9, 0.6) end, true)
+	return (UI.face(f, {gradient = seq(CT.RowTop, CT.RowBottom), radius = 12, stroke = 2}, true))
 end
 
 -- готовую полосу прогресса (рамка bg и заливка fill с Size = доля) — в стальной жёлоб с золотой капсулой.
