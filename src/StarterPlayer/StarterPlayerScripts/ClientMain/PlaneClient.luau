@@ -123,6 +123,7 @@ return function(ctx)
 	local flying -- {model, root, ao, lv, seat, hum}
 	local throttle, speed, bank = 0, 0, 0
 	local aimYaw, aimPitch = 0, 0
+	local camDir -- сглаженное направление камеры (позиция камеры к самолёту привязана жёстко)
 	fireDrag = function(d)
 		aimYaw -= d.X * 0.006
 		aimPitch = math.clamp(aimPitch - d.Y * 0.006, -1.35, 1.35)
@@ -175,6 +176,7 @@ return function(ctx)
 		aimYaw = math.atan2(-look.X, -look.Z)
 		aimPitch = 0
 		throttle, bank = 0, 0
+		camDir = nil
 		speed = root.AssemblyLinearVelocity.Magnitude
 		hum:UnequipTools()
 		workspace.CurrentCamera.CameraType = Enum.CameraType.Scriptable
@@ -490,8 +492,14 @@ return function(ctx)
 			sightLbl.Text = (bombs > 0 and ("BOMBS %d/%d"):format(bombs, maxBombs) or "NO BOMBS — land to rearm")
 				.. (dist and (" · %d m"):format(math.floor(dist)) or " · too low") .. (touchOnly and "" or " · E — drop · Z — exit")
 		else
-			local camPos = pos - aimDir * camDist + Vector3.new(0, 12 * camDist / 34, 0)
-			cam.CFrame = cam.CFrame:Lerp(CFrame.lookAt(camPos, camPos + aimDir), math.min(1, dt * 12))
+			-- Раньше камера догоняла точку через Lerp позиции: на скорости она отставала на десятки студов, и отставание
+			-- менялось с длиной кадра — самолёт дёргался в кадре. Теперь позиция считается от самолёта в этом же кадре,
+			-- а сглаживается только направление взгляда (не зависит от FPS).
+			camDir = camDir and camDir:Lerp(aimDir, 1 - math.exp(-10 * dt)) or aimDir
+			if camDir.Magnitude < 0.01 then camDir = aimDir end
+			camDir = camDir.Unit
+			local camPos = pos - camDir * camDist + Vector3.new(0, 12 * camDist / 34, 0)
+			cam.CFrame = CFrame.lookAt(camPos, camPos + camDir)
 		end
 
 		-- метки (в бомбовом прицеле их заменяет перекрестие)
