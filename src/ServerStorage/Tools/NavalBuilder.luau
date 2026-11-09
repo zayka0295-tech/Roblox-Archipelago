@@ -63,8 +63,9 @@ function N.turret(parent, baseCF, opts)
 	local yawOff, pitchOff, c1z, pivotY
 
 	if style == "heavy" then
-		P(m, "Pedestal", Vector3.new(3, 18, 18), baseCF * CFrame.new(0, 1.5, 0) * CYL_UP, dark, Enum.Material.Metal, Enum.PartType.Cylinder)
-		P(m, "Ring", Vector3.new(0.6, 18.6, 18.6), baseCF * CFrame.new(0, 3.2, 0) * CYL_UP, body, Enum.Material.Metal, Enum.PartType.Cylinder)
+		-- барбет до самого низа башни (её «дом» начинается на высоте pivotY + yawOff = 4.5), иначе башня висит в воздухе
+		P(m, "Pedestal", Vector3.new(4.5, 18, 18), baseCF * CFrame.new(0, 2.25, 0) * CYL_UP, dark, Enum.Material.Metal, Enum.PartType.Cylinder)
+		P(m, "Ring", Vector3.new(0.8, 18.6, 18.6), baseCF * CFrame.new(0, 4.1, 0) * CYL_UP, body, Enum.Material.Metal, Enum.PartType.Cylinder)
 		pivotY, yawOff, pitchOff, c1z = 3.5, Vector3.new(0, 1, 0), Vector3.new(0, 3.2, -6), 0.5
 	else
 		P(m, "Pedestal", Vector3.new(1.6, 5, 5), baseCF * CFrame.new(0, 0.8, 0) * CYL_UP, dark, Enum.Material.Metal, Enum.PartType.Cylinder)
