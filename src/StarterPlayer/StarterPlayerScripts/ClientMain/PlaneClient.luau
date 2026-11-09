@@ -403,9 +403,12 @@ return function(ctx)
 			end
 			local flatA = Vector3.new(aimDir.X, 0, aimDir.Z)
 			if flatA.Magnitude > 0.01 then flatF = rotateToward(flatF, flatA.Unit, math.rad(45) * dt) end
-			local stance = math.rad(10) * (1 - math.clamp(math.abs(speed) / (P.TakeoffSpeed * 0.8), 0, 1))
+			-- на стоянке — на трёх колёсах (ParkPitch); высота Root следует за углом, чтобы и основные,
+			-- и хвостовое колесо касались земли
+			local k = 1 - math.clamp(math.abs(speed) / (P.TakeoffSpeed * 0.8), 0, 1)
+			local stance = math.rad(P.ParkPitch or 10) * k
 			newFwd = (flatF * math.cos(stance) + Vector3.yAxis * math.sin(stance)).Unit
-			local vy = (ground.Position.Y + gear - pos.Y) * 6
+			local vy = (ground.Position.Y + gear + ((P.ParkGear or gear) - gear) * k - pos.Y) * 6
 			vel = flatF * speed + Vector3.new(0, vy, 0) + groundVel
 		else
 			local control = math.clamp((speed - P.StallSpeed * 0.6) / (P.TakeoffSpeed - P.StallSpeed * 0.6), 0.25, 1)

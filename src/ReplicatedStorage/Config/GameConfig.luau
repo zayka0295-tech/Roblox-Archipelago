@@ -300,6 +300,10 @@ Config.Planes = {
 		MaxSpeed = 150,
 		StallSpeed = 45,         -- ниже — сваливание
 		TakeoffSpeed = 62,       -- скорость отрыва
+		-- стоянка на трёх колёсах (тейлдраггер): нос задран на ParkPitch°, низ колёс на ParkGear под Root
+		-- (из геометрии модели: основные колёса Y-5/r1,2 Z-2,6, хвостовое Y-2,8/r0,5 Z13,4); GearHeight — горизонтально
+		ParkPitch = 10.3,
+		ParkGear = 5.65,
 		Acceleration = 16,
 		GroundBrake = 25,
 		TurnRate = 120,          -- °/с (манёвренность)
@@ -327,6 +331,8 @@ Config.Planes = {
 		MaxSpeed = 115,
 		StallSpeed = 40,
 		TakeoffSpeed = 56,
+		ParkPitch = 10.3,        -- та же геометрия шасси, что у истребителя, в масштабе 1,5
+		ParkGear = 8.48,
 		Acceleration = 11,
 		GroundBrake = 20,
 		TurnRate = 60,

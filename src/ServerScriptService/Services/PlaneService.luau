@@ -194,7 +194,8 @@ local function spawnCFrame(team, where, carrier, P)
 		marker = marker or list[1]
 	end
 	if not marker then return nil end
-	local gear = ServerStorage.Vehicles[P.Model or "Fighter"]:GetAttribute("GearHeight") or 6.2
+	-- самолёт ставим на три колеса: нос задран на ParkPitch, Root на ParkGear над землёй
+	local gear = P.ParkGear or ServerStorage.Vehicles[P.Model or "Fighter"]:GetAttribute("GearHeight") or 6.2
 	local ignore = {folder(), marker}
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p.Character then table.insert(ignore, p.Character) end
@@ -208,7 +209,7 @@ local function spawnCFrame(team, where, carrier, P)
 	local y = (hit and hit.Position.Y or marker.Position.Y) + gear + 0.2
 	local look = marker.CFrame.LookVector
 	local pos = Vector3.new(marker.Position.X, y, marker.Position.Z)
-	return CFrame.lookAt(pos, pos + Vector3.new(look.X, 0, look.Z))
+	return CFrame.lookAt(pos, pos + Vector3.new(look.X, 0, look.Z)) * CFrame.Angles(math.rad(P.ParkPitch or 0), 0, 0)
 end
 
 local function runwayFree(cf, ownerActor, size)
@@ -567,9 +568,11 @@ local function botFly(st, dt)
 			local w = ground.Instance.AssemblyAngularVelocity.Y
 			if math.abs(w) > 1e-4 then flatF = CFrame.Angles(0, w * dt, 0):VectorToWorldSpace(flatF) end
 		end
-		local stance = math.rad(10) * (1 - math.clamp(speed / (P.TakeoffSpeed * 0.8), 0, 1))
+		local k = 1 - math.clamp(speed / (P.TakeoffSpeed * 0.8), 0, 1)
+		local stance = math.rad(P.ParkPitch or 10) * k
 		newFwd = (flatF * math.cos(stance) + Vector3.yAxis * math.sin(stance)).Unit
-		vel = flatF * speed + Vector3.new(0, (ground.Position.Y + gear - pos.Y) * 6, 0) + groundVel
+		local gearNow = gear + ((P.ParkGear or gear) - gear) * k -- на трёх колёсах Root ниже
+		vel = flatF * speed + Vector3.new(0, (ground.Position.Y + gearNow - pos.Y) * 6, 0) + groundVel
 	else
 		local control = math.clamp((speed - P.StallSpeed * 0.6) / (P.TakeoffSpeed - P.StallSpeed * 0.6), 0.25, 1)
 		if pos.Y > P.MaxAltitude - 60 then control = math.max(control, 0.8) end
