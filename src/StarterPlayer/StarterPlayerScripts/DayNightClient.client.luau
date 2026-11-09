@@ -27,11 +27,72 @@ local function applyLight(inst, on)
 		end
 	end
 end
+-- Фонари и прожекторы без тегов (лампочки из неона светятся и днём, часть источников света горела круглые
+-- сутки): днём гасим — неон становится матовым, свет выключается; ночью — как было.
+-- Узнаём их по имени детали (или «Part» внутри модели с таким именем). Сирена тревоги, факел вышки,
+-- подсветка статуи карьеры (её включает CareerUI по уровню) и плиты лобби — не трогаем.
+local LAMP_NAMES = {LampBulb = true, FloodLens = true, Lamp = true, EdgeLight = true, EndLight = true, ThresholdLight = true,
+	BuoyLight = true, NavLight = true, DeckEdgeLight = true, Headlight = true}
+local LAMP_PARENTS = {Searchlight1 = true, Searchlight2 = true, HangarA1 = true, HangarA2 = true, Rig_North = true, Rig_South = true,
+	Derrick = true, Helideck = true, Helipad = true, RadioMast = true}
+local SKIP = {CareerStatue = true, AirRaidSiren = true, Flare = true}
+local STATIC = {Teams = true, Neutral = true, Lobby = true, LobbyRed = true}
+local lamps = {} -- [деталь] = true
+local function isLampPart(p)
+	-- окна с тегом NightWindow переключает своя логика (applyLight) — не мешаем ей
+	if not p:IsA("BasePart") or CollectionService:HasTag(p, "NightWindow") then return false end
+	if not (LAMP_NAMES[p.Name] or (p.Name == "Part" and p.Parent and LAMP_PARENTS[p.Parent.Name])) then return false end
+	local a = p.Parent
+	while a and a ~= workspace do
+		if SKIP[a.Name] then return false end
+		a = a.Parent
+	end
+	return true
+end
+local function applyLamp(p, on)
+	if p.Material == Enum.Material.Neon or p:GetAttribute("LampColor") ~= nil then
+		if p:GetAttribute("LampColor") == nil then p:SetAttribute("LampColor", p.Color) end
+		local lit = p:GetAttribute("LampColor")
+		p.Material = on and Enum.Material.Neon or Enum.Material.SmoothPlastic
+		p.Color = on and lit or lit:Lerp(Color3.fromRGB(70, 72, 78), 0.55) -- погасшая лампа: тусклое стекло
+	end
+	for _, l in ipairs(p:GetChildren()) do
+		if l:IsA("Light") then l.Enabled = on end
+	end
+end
+local function addLamp(p)
+	if lamps[p] or not isLampPart(p) then return end
+	lamps[p] = true
+	if nightOn ~= nil then applyLamp(p, nightOn) end
+end
+local function watchStatic(f)
+	for _, d in ipairs(f:GetDescendants()) do addLamp(d) end
+	f.DescendantAdded:Connect(function(d)
+		addLamp(d)
+		-- свет пришёл стримингом позже своей детали
+		if d:IsA("Light") and d.Parent and lamps[d.Parent] and nightOn ~= nil then d.Enabled = nightOn end
+	end)
+	f.DescendantRemoving:Connect(function(d) lamps[d] = nil end)
+end
+task.spawn(function()
+	local map = workspace:WaitForChild("Map", 60)
+	if not map then return end
+	for _, f in ipairs(map:GetChildren()) do
+		if STATIC[f.Name] then watchStatic(f) end
+	end
+	map.ChildAdded:Connect(function(f)
+		if STATIC[f.Name] then watchStatic(f) end
+	end)
+end)
+
 local function setNight(on)
 	if nightOn == on then return end
 	nightOn = on
 	for _, tag in ipairs({"NightLight", "NightWindow"}) do
 		for _, inst in ipairs(CollectionService:GetTagged(tag)) do applyLight(inst, on) end
+	end
+	for p in pairs(lamps) do
+		if p.Parent then applyLamp(p, on) else lamps[p] = nil end
 	end
 end
 -- подлодка под водой огней не зажигает.
