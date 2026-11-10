@@ -1122,7 +1122,8 @@ function PlaneService.init()
 		local zone = CombatService.zoneAt(root.Position)
 		if zone == "Lobby" or zone == "Any" or zone == st.team then return end
 		-- самолёт на сервере отстаёт на пинг: запас по дальности и по углу (в вираже нос уходит вперёд)
-		if not CombatService.checkClientHit(root.Position, part, hitPos, P.GunRange + 80, root.CFrame.LookVector, 35) then return end
+		-- у вертолёта пулемёт поворотный (до 45° вниз от носа) — конус шире
+		if not CombatService.checkClientHit(root.Position, part, hitPos, P.GunRange + 80, root.CFrame.LookVector, P.Heli and 55 or 35) then return end
 		if part:IsDescendantOf(model) then return end
 		CombatService.applyHit(player, part, P.GunDamage, nil, "PlaneGun", hitPos)
 	end)
