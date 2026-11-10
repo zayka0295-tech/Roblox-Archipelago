@@ -565,6 +565,17 @@ return function(ctx)
 		local colRate = P.CollectiveRate or 0.45
 		if climb ~= 0 then
 			heliCol += climb * colRate * dt
+			if climb < 0 and hoverAssist and not parked and maxThrust > 0 and vel.Y < -8 then
+				-- помощник: снижение с Q у земли смягчается — не быстрее ~8 + высота студ/с (садиться с Q безопасно)
+				local below = workspace:Raycast(pos, Vector3.new(0, -(gear + 45), 0), groundParams)
+				if below then
+					local maxDown = 8 + math.max(0, pos.Y - gear - below.Position.Y)
+					if vel.Y < -maxDown then
+						local colNeed = M * (g + (-maxDown - vel.Y) * 1.5) / (maxThrust * math.max(up.Y, 0.35))
+						heliCol += math.clamp(colNeed - heliCol, 0, colRate * dt * 6)
+					end
+				end
+			end
 		elseif hoverAssist and not parked and maxThrust > 0 and onGround and math.abs(vel.Y) < 2 then
 			heliCol -= colRate * dt -- помощник: сел на землю — коллектив плавно вниз
 		elseif hoverAssist and not parked and maxThrust > 0 then
@@ -595,8 +606,8 @@ return function(ctx)
 		local bS = mx == 0 and brake * math.clamp(1 - math.abs(sideSpeed) / 15, 0, 1) or 0
 		force -= M * (fwd * (kF * fwdSpeed * math.abs(fwdSpeed) + bF * fwdSpeed) + right * (kS * sideSpeed * math.abs(sideSpeed) + bS * sideSpeed))
 		-- вертикальное сопротивление ∝ v²: при полном коллективе подъём упирается в Climb, падение без тяги —
-		-- в ~DescentLimit (быстрее CrashSpeed — жёсткая посадка разбивает)
-		local kV = vel.Y > 0 and g * ((P.LiftReserve or 1.9) - 1) / P.Climb ^ 2 or g / (P.DescentLimit or 70) ^ 2
+		-- в ~DescentLimit (меньше CrashSpeed — плашмя о ровную землю не разбивается)
+		local kV = vel.Y > 0 and g * ((P.LiftReserve or 1.9) - 1) / P.Climb ^ 2 or g / (P.DescentLimit or 40) ^ 2
 		force -= Vector3.new(0, M * kV * vel.Y * math.abs(vel.Y), 0)
 		-- турбулентность в грозовом облаке
 		if model:GetAttribute("InStorm") then
