@@ -394,7 +394,7 @@ Config.Planes = {
 		MaxAltitude = 700,
 		BoundsX = 4200,
 		BoundsZ = 2150,
-		CamDistance = 40, CamHeight = 14,
+		CamDistance = 42, CamHeight = 19, -- камера чуть выше: вертолёт ниже прицела
 		SpawnBox = Vector3.new(44, 16, 44),
 		CrashBox = Vector3.new(9, 6, 30),
 	},
