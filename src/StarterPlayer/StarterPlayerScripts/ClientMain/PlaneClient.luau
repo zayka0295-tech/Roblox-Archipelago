@@ -414,6 +414,8 @@ return function(ctx)
 		return math.max(iyaw, itilt), math.max(arm, 4)
 	end
 	local heliRPM = 0
+	-- видимые обороты винта каждого вертолёта (у этого клиента): после выхода пилота винт выбегает несколько секунд
+	local rotorVis = setmetatable({}, {__mode = "k"})
 	local heliCol = 0           -- коллектив, доля наибольшей тяги винта (0..1)
 	local hoverAssist = true    -- помощник зависания (R)
 	local heliCam -- сглаженная позиция камеры
@@ -464,7 +466,7 @@ return function(ctx)
 		if not flying.heliInit then
 			-- сел: на земле винт раскручивается с нуля, в воздухе (пересел в зависший) — уже на оборотах
 			flying.heliInit = true
-			heliRPM = onGround and 0 or 1
+			heliRPM = onGround and (rotorVis[model] or 0) or 1 -- сел, пока винт ещё выбегает, — раскрутка с его оборотов
 			-- на земле коллектив внизу, в воздухе (пересел в зависший) — на зависании
 			heliCol = onGround and 0 or 1 / (P.LiftReserve or 1.9)
 			heliCam = nil
@@ -933,8 +935,17 @@ return function(ctx)
 		local myHum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 		local meSeated = myHum ~= nil and myHum.SeatPart ~= nil
 		for _, plane in ipairs(f:GetChildren()) do
-			if plane:GetAttribute("EngineOn") then
-				local rpm = plane:GetAttribute("RotorRPM") or 1
+			local on = plane:GetAttribute("EngineOn")
+			local rpm = 1
+			if plane:GetAttribute("IsHeli") then
+				-- вертолёт: обороты растут вместе с раскруткой у пилота, а без пилота плавно падают (выбег RotorRunDown с)
+				local want = on and (plane:GetAttribute("RotorRPM") or 1) or 0
+				local cur = rotorVis[plane] or want
+				cur = want >= cur and want or math.max(want, cur - dt / (Config.Planes.Heli.RotorRunDown or 8))
+				rotorVis[plane] = cur
+				rpm = cur
+			end
+			if on or rpm > 0.001 then
 				for _, m in ipairs(motorsOf(plane)) do
 					local a = angle
 					if m[3] ~= "Z" then
