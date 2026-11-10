@@ -14,6 +14,9 @@ PhysicsService:CollisionGroupSetCollidable("Cargo", "Default", false)
 PhysicsService:CollisionGroupSetCollidable("Cargo", "Planes", false)
 PhysicsService:CollisionGroupSetCollidable("Cargo", "Cargo", false)
 PhysicsService:CollisionGroupSetCollidable("Cargo", "Characters", true)
+-- вертолёт игрока: твёрдый для людей (по нему можно ходить, сквозь не пройти), как самолёт — для всего остального
+pcall(function() PhysicsService:RegisterCollisionGroup("Helis") end)
+PhysicsService:CollisionGroupSetCollidable("Cargo", "Helis", false)
 
 local Services = script.Parent:WaitForChild("Services")
 -- сбор ошибок — первым, чтобы ловить и ошибки запуска остальных сервисов

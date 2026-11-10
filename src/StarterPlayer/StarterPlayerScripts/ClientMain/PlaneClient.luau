@@ -352,11 +352,12 @@ return function(ctx)
 		end
 	end
 
-	-- Вертолёт (P.Heli) — «прицел мышью»: мышь вращает камеру вокруг вертолёта (круг в центре экрана),
-	-- а вертолёт сам, с запаздыванием, разворачивается носом к прицелу и кренится в повороте.
+	-- Вертолёт (P.Heli) — «прицел мышью»: мышь вращает камеру вокруг вертолёта (круг в центре экрана — точка
+	-- прицела), а вертолёт сам, с запаздыванием, наводится носом на эту точку — и по курсу, и по тангажу — и кренится
+	-- в повороте. Пулемёт закреплён и бьёт прямо по носу (жёлтая точка); навёлся вертолёт — точка в круге.
 	-- Камера к вертолёту не привязана: догоняет его плавно, вертолёт ходит по кадру.
 	-- W — лететь туда, куда смотрит прицел (вверх/вниз тоже), S — назад/тормоз, A/D — вбок,
-	-- E/Shift — вверх, Q/Ctrl — вниз. Без ввода — висит на месте. Пулемёт бьёт в точку прицела (точка).
+	-- E/Shift — вверх, Q/Ctrl — вниз. Без ввода — висит на месте.
 	-- На телефоне: курс — пальцем, стик Roblox — движение, кнопки UP/DOWN
 	local heliVel = Vector3.zero
 	local heliYawVel = 0
@@ -415,11 +416,32 @@ return function(ctx)
 		-- стоит на земле, пока не начали взлёт (вверх или W с прицелом выше горизонта)
 		local parked = onGround and climb <= 0 and not (mz > 0 and aimDir.Y > 0.05)
 
-		-- курс: нос с запаздыванием догоняет прицел (у поворота есть разгон — вертолёт «плывёт»)
+		-- камера: смотрит строго по прицелу (мышь), позиция плавно догоняет точку за вертолётом и выше него —
+		-- вертолёт в нижней части кадра, не закрывает прицел, и не «приклеен» к экрану
+		local cam = workspace.CurrentCamera
+		local camDist = P.CamDistance or 40
+		local eye = pos + Vector3.new(0, 4, 0)
+		local wantCam = pos - aimDir * camDist + Vector3.new(0, 14, 0)
+		-- камеру не пускаем сквозь землю и стены
+		camParams.FilterDescendantsInstances = ignoreList(char)
+		local block = workspace:Raycast(eye, wantCam - eye, camParams)
+		if block then wantCam = block.Position + block.Normal * 1.5 end
+		if not heliCam or (heliCam - wantCam).Magnitude > 150 then heliCam = wantCam end
+		heliCam = heliCam:Lerp(wantCam, 1 - math.exp(-7 * dt))
+		cam.CFrame = CFrame.lookAt(heliCam, heliCam + aimDir)
+		-- точка прицела: куда смотрит центр экрана (луч камеры), иначе — далеко по прицелу
+		shotParams.FilterDescendantsInstances = ignoreList(char)
+		local aimHit = workspace:Raycast(heliCam, aimDir * 1000, shotParams)
+		local aimAt = aimHit and aimHit.Position or heliCam + aimDir * 600
+		local toAim = aimAt - pos
+		if toAim.Magnitude < 25 then toAim = aimDir * 25 end -- точка вплотную к вертолёту — по направлению прицела
+		local flatTo = Vector3.new(toAim.X, 0, toAim.Z).Magnitude
+
+		-- курс: нос с запаздыванием наводится на точку прицела (у поворота есть разгон — вертолёт «плывёт»)
 		local turnMax = math.rad(P.TurnRate)
-		local yawErr = (aimYaw - yaw + math.pi) % (2 * math.pi) - math.pi
-		local wantYawVel = parked and 0 or math.clamp(yawErr * 2.5, -turnMax, turnMax)
-		heliYawVel += (wantYawVel - heliYawVel) * math.min(1, dt * 4)
+		local yawErr = (math.atan2(-toAim.X, -toAim.Z) - yaw + math.pi) % (2 * math.pi) - math.pi
+		local wantYawVel = parked and 0 or math.clamp(yawErr * 4, -turnMax, turnMax)
+		heliYawVel += (wantYawVel - heliYawVel) * math.min(1, dt * 7)
 		yaw += heliYawVel * dt
 		local heading = CFrame.Angles(0, yaw, 0)
 		local fwd, right = heading.LookVector, heading.RightVector
@@ -456,6 +478,14 @@ return function(ctx)
 			vel = Vector3.new(0, (ground.Position.Y + gear - pos.Y) * 6, 0)
 		end
 		if pos.Y - gear < 2 then vel = Vector3.new(vel.X, math.max(vel.Y, (2 - (pos.Y - gear)) * 4), vel.Z) end -- над водой
+		-- мягкая посадка: у земли снижение само замедляется (к полозьям — не быстрее ~6 студ/с)
+		if not parked and vel.Y < 0 then
+			local below = workspace:Raycast(pos, Vector3.new(0, -(gear + 30), 0), groundParams)
+			if below then
+				local h = math.max(0, pos.Y - gear - below.Position.Y)
+				vel = Vector3.new(vel.X, math.max(vel.Y, -(6 + h * 1.2)), vel.Z)
+			end
+		end
 		local groundVel = Vector3.zero
 		if onGround and ground.Instance:IsA("BasePart") then
 			local gv = ground.Instance:GetVelocityAtPosition(ground.Position)
@@ -468,42 +498,25 @@ return function(ctx)
 		end
 		if flying.lv then flying.lv.VectorVelocity = vel + groundVel + bump end
 
-		-- наклон корпуса: на месте нос смотрит за прицелом (пулемёт), в полёте вперёд — клюёт носом;
+		-- наклон корпуса: нос с пулемётом наведён на точку прицела;
 		-- крен — в поворот и в сторону бокового движения
-		local fwdFrac = math.clamp(heliVel:Dot(fwd) / P.MaxSpeed, -1, 1)
 		local sideFrac = math.clamp(heliVel:Dot(right) / P.SideSpeed, -1, 1)
 		local wantPitch, roll = 0, 0
 		if not parked then
-			local aimP = math.clamp(aimPitch, math.rad(P.AimPitchMin), math.rad(P.AimPitchMax))
-			wantPitch = aimP * (1 - math.max(fwdFrac, 0) * 0.6) - fwdFrac * math.rad(P.MaxTilt)
+			-- нос (и пулемёт) — точно на точку прицела, в пределах AimPitchMin..Max
+			wantPitch = math.clamp(math.atan2(toAim.Y, flatTo), math.rad(P.AimPitchMin), math.rad(P.AimPitchMax))
 			roll = (heliYawVel / turnMax) * math.rad(22) - sideFrac * math.rad(P.MaxTilt) -- в поворот влево — крен влево
 		end
-		heliPitch += (wantPitch - heliPitch) * math.min(1, dt * 3)
+		heliPitch += (wantPitch - heliPitch) * math.min(1, dt * 4)
 		bank += (roll - bank) * math.min(1, dt * 3)
 		if flying.ao then flying.ao.CFrame = heading * CFrame.Angles(heliPitch, 0, 0) * CFrame.Angles(0, 0, bank) end
 
-		-- камера: смотрит строго по прицелу (мышь), позиция плавно догоняет точку за вертолётом и выше него —
-		-- вертолёт в нижней части кадра, не закрывает прицел, и не «приклеен» к экрану
-		local cam = workspace.CurrentCamera
-		local camDist = P.CamDistance or 40
-		local eye = pos + Vector3.new(0, 4, 0)
-		local wantCam = pos - aimDir * camDist + Vector3.new(0, 14, 0)
-		-- камеру не пускаем сквозь землю и стены
-		camParams.FilterDescendantsInstances = ignoreList(char)
-		local block = workspace:Raycast(eye, wantCam - eye, camParams)
-		if block then wantCam = block.Position + block.Normal * 1.5 end
-		if not heliCam or (heliCam - wantCam).Magnitude > 150 then heliCam = wantCam end
-		heliCam = heliCam:Lerp(wantCam, 1 - math.exp(-7 * dt))
-		cam.CFrame = CFrame.lookAt(heliCam, heliCam + aimDir)
-
-		-- точка прицела: куда смотрит центр экрана (луч камеры), иначе — далеко по прицелу
-		shotParams.FilterDescendantsInstances = ignoreList(char)
-		local aimHit = workspace:Raycast(heliCam, aimDir * 1000, shotParams)
-		local aimAt = aimHit and aimHit.Position or heliCam + aimDir * 600
-		-- метки: круг — прицел (центр экрана), точка — куда реально полетят пули (в конусе от носа)
+		-- пулемёт закреплён: бьёт прямо по носу, стволы сведены на дальность точки прицела.
+		-- Метки: круг — прицел (центр экрана), точка — куда полетят пули сейчас
+		local noseAt = root.Position + root.CFrame.LookVector * math.clamp(toAim.Magnitude, 60, P.GunRange)
 		local mzl = flying.muzzles[1]
 		local gunFrom = mzl and mzl.Position or pos
-		local gunAt = gunFrom + gunDir(root, gunFrom, aimAt) * math.min((aimAt - gunFrom).Magnitude, P.GunRange)
+		local gunAt = gunFrom + gunDir(root, gunFrom, noseAt) * math.min((noseAt - gunFrom).Magnitude, P.GunRange)
 		local vs = cam.ViewportSize
 		local n, nOn = cam:WorldToViewportPoint(gunAt)
 		aimMark.Visible, noseMark.Visible, bombMark.Visible = true, nOn, false
@@ -526,7 +539,7 @@ return function(ctx)
 		else
 			warn.Visible = false
 		end
-		gunStep(root, char, typing, menuOpen, aimAt)
+		gunStep(root, char, typing, menuOpen, noseAt)
 	end
 
 	RunService.RenderStepped:Connect(function(dt)

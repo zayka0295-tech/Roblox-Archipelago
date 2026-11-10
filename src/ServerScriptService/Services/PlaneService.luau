@@ -273,6 +273,48 @@ local function flownBy(player)
 	return nil
 end
 
+-- вертолёт: корпус твёрдый для людей (группа Helis), поэтому вышедшего ставим снаружи у борта (offset — в осях
+-- вертолёта); пустой вертолёт на неподвижной земле закрепляем ровно на полозьях — без пилота он не дёргается
+-- на площадке. Сел пилот — открепляем (setupSeat)
+local heliGround = RaycastParams.new()
+heliGround.FilterType = Enum.RaycastFilterType.Exclude
+heliGround.RespectCanCollide = true
+local function heliExit(st, hum, offset)
+	if not st.cfg.Heli or not hum then return end
+	local char = hum.Parent
+	-- с задержкой: сразу после выхода клиент ещё досчитывает прыжок из кресла и перезаписал бы позицию
+	task.delay(0.25, function()
+		if not char or not char.Parent or hum.Health <= 0 or hum.SeatPart or not st.root.Parent then return end
+		local hrp = char:FindFirstChild("HumanoidRootPart")
+		-- уже снаружи (успел отойти или выпрыгнул в воздухе далеко) — не трогаем
+		if not hrp or (hrp.Position - st.root.Position).Magnitude > 14 then return end
+		local player = Players:GetPlayerFromCharacter(char)
+		if player then AntiCheat.grace(player) end
+		local look = st.root.CFrame.LookVector
+		local p = (st.root.CFrame * CFrame.new(offset)).Position
+		char:PivotTo(CFrame.lookAt(p, p + Vector3.new(look.X, 0, look.Z)))
+		hrp.AssemblyLinearVelocity = Vector3.zero
+	end)
+end
+local function heliPark(st, char)
+	if not st.cfg.Heli then return end
+	task.delay(0.15, function()
+		local root = st.root
+		if st.dead or st.pilot or not root.Parent or root.Anchored then return end
+		heliGround.FilterDescendantsInstances = char and {st.model, char} or {st.model}
+		local gear = st.model:GetAttribute("GearHeight") or 6
+		local hit = workspace:Raycast(root.Position, Vector3.new(0, -(gear + 2), 0), heliGround)
+		-- палуба авианосца движется — там не закрепляем (вертолёт остался бы в воздухе за кормой)
+		if not hit or hit.Material == Enum.Material.Water or not hit.Instance.Anchored then return end
+		if root.AssemblyLinearVelocity.Magnitude > 10 then return end
+		local look = root.CFrame.LookVector
+		local pos = Vector3.new(root.Position.X, hit.Position.Y + gear, root.Position.Z)
+		root.CFrame = CFrame.lookAt(pos, pos + Vector3.new(look.X, 0, look.Z))
+		root.AssemblyLinearVelocity, root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
+		root.Anchored = true
+	end)
+end
+
 local function setupSeat(model, st)
 	st.seat:GetPropertyChangedSignal("Occupant"):Connect(function()
 		if st.dead then return end
@@ -286,7 +328,9 @@ local function setupSeat(model, st)
 				if w then w:Destroy() end
 				return
 			end
+			root.Anchored = false -- вертолёт на стоянке был закреплён (heliPark)
 			st.pilot, st.pilotHum, st.abandonT = actor, hum, nil
+			st.seatHum = hum -- кто сидит за штурвалом (pilotHum может обнулить step раньше этого события)
 			if st.prompt then st.prompt.Enabled = false end
 			root.FlightAlign.CFrame = root.CFrame.Rotation
 			root.FlightDrive.VectorVelocity = root.AssemblyLinearVelocity
@@ -295,6 +339,8 @@ local function setupSeat(model, st)
 			model:SetAttribute("EngineOn", true)
 			setOwner(root, isPlayer(actor) and actor or nil)
 		else
+			local prevHum = st.seatHum
+			st.seatHum = nil
 			st.pilot, st.pilotHum, st.firing = nil, nil, false
 			st.abandonT = os.clock()
 			if st.prompt and isPlayer(st.owner) then st.prompt.Enabled = true end
@@ -302,6 +348,9 @@ local function setupSeat(model, st)
 			root.FlightDrive.Enabled = false
 			model:SetAttribute("EngineOn", false)
 			setOwner(root, nil)
+			-- пилот сидит справа: выходит наружу у правого борта
+			heliExit(st, prevHum, Vector3.new(7, -3, -4))
+			heliPark(st, prevHum and prevHum.Parent)
 		end
 	end)
 end
@@ -336,7 +385,9 @@ local function makePlane(ownerActor, team, cf, kind)
 	model:SetAttribute("EngineOn", false)
 	model:SetAttribute("BotPilot", not isPlayer(ownerActor))
 	for _, d in ipairs(model:GetDescendants()) do
-		if d:IsA("BasePart") then d.CollisionGroup = "Planes" end
+		if d:IsA("BasePart") then d.CollisionGroup = P.Heli and "Helis" or "Planes" end -- вертолёт люди не проходят насквозь
+		-- в вертолёт садятся только кнопками (пилот / пассажир), касание кресла не сажает
+		if P.Heli and d:IsA("Seat") then d.CanTouch = false end
 	end
 	model:PivotTo(cf)
 	model.Parent = folder()
@@ -389,6 +440,7 @@ local function makePlane(ownerActor, team, cf, kind)
 		local function ally(actor)
 			return isPlayer(actor) and TeamService.getTeamName(actor) == st.team and actor:GetAttribute("State") == "Deployed"
 		end
+		local lastHum
 		pseat:GetPropertyChangedSignal("Occupant"):Connect(function()
 			if st.dead then return end
 			local hum = pseat.Occupant
@@ -396,7 +448,10 @@ local function makePlane(ownerActor, team, cf, kind)
 			if hum and not ally(Players:GetPlayerFromCharacter(hum.Parent)) then
 				local w = pseat:FindFirstChild("SeatWeld")
 				if w then w:Destroy() end
+			elseif not hum and lastHum then
+				heliExit(st, lastHum, Vector3.new(-7, -3, 3)) -- пассажир выходит в открытую дверь (левый борт)
 			end
+			lastHum = hum
 		end)
 		pp.Triggered:Connect(function(player)
 			if st.dead or not planes[model] or pseat.Occupant or not AntiCheat.atPrompt(player, pp) then return end
@@ -812,8 +867,15 @@ local function step(dt)
 			local hit = workspace:Blockcast(root.CFrame, P.CrashBox or Vector3.new(34, 3, 26), vel.Unit * (speed * dt * 3 + 8), crashParams)
 				or workspace:Raycast(root.Position, vel.Unit * (speed * dt * 3 + 10), crashParams)
 			local impact = hit and -vel.Unit:Dot(hit.Normal) or 0
-			-- лобовой удар — всегда; на большой скорости разбивает и скользящий (посадка — до ~90)
-			if hit and (impact > 0.45 or (speed > 90 and impact > 0.12)) then
+			-- лобовой удар — всегда; на большой скорости разбивает и скользящий (посадка — до ~90).
+			-- Вертолёт: о землю и пологие склоны (нормаль смотрит вверх) — только падение быстрее CrashSpeed,
+			-- по склону он скользит на полозьях; о стены, здания и обрывы — удар в поверхность быстрее CrashSpeed.
+			-- Посадка с ходу и спокойным снижением не разбивает
+			local crash = hit and (impact > 0.45 or (speed > 90 and impact > 0.12))
+			if hit and P.Heli then
+				crash = (hit.Normal.Y > 0.5 and -vel.Y or -vel:Dot(hit.Normal)) > P.CrashSpeed
+			end
+			if crash then
 				-- деталь может лежать во вложенной модели самолёта (хвостовая турель) — ищем сам самолёт
 				local other = hit.Instance:FindFirstAncestorOfClass("Model")
 				while other and not planes[other] do other = other:FindFirstAncestorOfClass("Model") end

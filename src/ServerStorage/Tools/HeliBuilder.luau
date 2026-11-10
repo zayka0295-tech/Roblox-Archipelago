@@ -93,7 +93,8 @@ function H.build()
 	deco("Windshield", Vector3.new(7.2, 0.25, 5.2), CFrame.new(0, 1.35, -7) * CFrame.Angles(-slope, 0, 0), GLASS, GLASSM, {Transparency = 0.45})
 	deco("WindshieldFrame", Vector3.new(0.35, 0.4, 5.3), CFrame.new(0, 1.4, -7) * CFrame.Angles(-slope, 0, 0), DARK)
 	for _, s in ipairs({-1, 1}) do
-		deco("SideGlass", Vector3.new(0.2, 3.2, 3.6), CFrame.new(s * 3.6, 1.0, -6.9), GLASS, GLASSM, {Transparency = 0.45})
+		-- боковое стекло кабины — клин по скосу лобового (высокий край сзади, к носу сходит на нет), не выступает
+		part("SideGlass", Vector3.new(0.2, 3.3, 4), CFrame.new(s * 3.6, 1.35, -7), GLASS, GLASSM, {Transparency = 0.45, CanCollide = false}, "WedgePart")
 		deco("CanopyPillar", Vector3.new(0.45, 0.45, 5.4), CFrame.new(s * 3.55, 1.35, -7) * CFrame.Angles(-slope, 0, 0), DARK)
 		deco("ChinWindow", Vector3.new(2.4, 0.15, 1.6), CFrame.new(s * 1.8, -2.95, -8), GLASS, GLASSM, {Transparency = 0.3})
 	end
@@ -105,13 +106,13 @@ function H.build()
 		deco("Roundel", Vector3.new(0.12, 1.9, 1.9), CFrame.new(pos + Vector3.new(s * 0.04, 0, 0)), TEAM, SMOOTH, {Shape = CYL, TeamPaint = true})
 	end
 	-- сиденья: пилот справа спереди, пассажир на скамье сзади лицом к открытой двери
-	local seat = part("PilotSeat", Vector3.new(2.4, 0.6, 2.4), CFrame.new(1.6, -2.4, -4.2), DARK, SMOOTH, {}, "Seat")
+	local seat = part("PilotSeat", Vector3.new(2.4, 0.6, 2.4), CFrame.new(1.6, -2.4, -4.2), DARK, SMOOTH, {CanTouch = false}, "Seat") -- садятся только кнопкой
 	seat:SetAttribute("PlaneSeat", true)
 	deco("SeatBack", Vector3.new(2.4, 2.6, 0.4), CFrame.new(1.6, -1.0, -2.9), DARK, SMOOTH)
 	deco("CopilotSeat", Vector3.new(2.4, 0.6, 2.4), CFrame.new(-1.6, -2.4, -4.2), DARK, SMOOTH)
 	deco("SeatBack", Vector3.new(2.4, 2.6, 0.4), CFrame.new(-1.6, -1.0, -2.9), DARK, SMOOTH)
 	deco("Stick", Vector3.new(0.25, 1.6, 0.25), CFrame.new(1.6, -1.8, -5.6), DARK)
-	local pseat = part("PassengerSeat", Vector3.new(2.4, 0.6, 2.4), CFrame.new(1.4, -2.4, 3.2) * CFrame.Angles(0, math.pi / 2, 0), DARK, SMOOTH, {}, "Seat")
+	local pseat = part("PassengerSeat", Vector3.new(2.4, 0.6, 2.4), CFrame.new(1.4, -2.4, 3.2) * CFrame.Angles(0, math.pi / 2, 0), DARK, SMOOTH, {CanTouch = false}, "Seat")
 	pseat:SetAttribute("PassengerSeat", true)
 	deco("Bench", Vector3.new(1.2, 2.8, 5.6), CFrame.new(3.0, -1.0, 3.2), BODY_D, SMOOTH)
 
