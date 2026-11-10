@@ -1,7 +1,8 @@
 -- Покупки за робуксы (Developer Products). Единственный MarketplaceService.ProcessReceipt в игре.
 -- Сервисы регистрируют выдачу: MonetizationService.register(productKey, fn(player) → true, если выдано).
 -- Каждая покупка (PurchaseId) выдаётся один раз: факт выдачи — в DataStore Purchases_v1 (в Studio — _Studio).
--- Не выдали (игрок вышел, данные не загружены) — NotProcessedYet: Roblox повторит, когда игрок вернётся.
+-- Не выдали (игрок вышел, выдача не удалась) — NotProcessedYet: Roblox повторит, когда игрок вернётся.
+-- Повтор приходит в момент входа, когда профиль ещё грузится, — поэтому загрузку ждём (PROFILE_WAIT).
 -- Product ID = 0 (ещё не создан): в Studio prompt() сразу выдаёт бесплатно (тест), в игре — «скоро».
 local Players = game:GetService("Players")
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -48,8 +49,23 @@ function MonetizationService.prompt(player, key)
 	pcall(function() MarketplaceService:PromptProductPurchase(player, id) end)
 end
 
+-- сек.: сколько ждём загрузку профиля. DataService при входе ждёт чужой замок до 60 с (LOCK_WAIT) и после
+-- этого заводит профиль в любом случае — запас покрывает и повторы запросов к DataStore
+local PROFILE_WAIT = 90
+
+-- отказ вместо ожидания отложил бы выдачу до следующего входа — а там профиль точно так же ещё не загружен
+local function waitProfile(player)
+	local deadline = os.clock() + PROFILE_WAIT
+	while not DataService.isLoaded(player) do
+		if player.Parent == nil or os.clock() >= deadline then return false end
+		task.wait(0.5)
+	end
+	return player.Parent ~= nil
+end
+
 -- проверка «уже выдано?» и выдача (вызывается под отметкой granting)
 local function grantOnce(info, player, fn)
+	if not waitProfile(player) then return Enum.ProductPurchaseDecision.NotProcessedYet end
 	if store then
 		local ok, done = pcall(function() return store:GetAsync(info.PurchaseId) end)
 		if not ok then return Enum.ProductPurchaseDecision.NotProcessedYet end
@@ -85,9 +101,8 @@ local function processReceipt(info)
 	local player = Players:GetPlayerByUserId(info.PlayerId)
 	local fn = handlers[info.ProductId]
 	if not player or not fn then return Enum.ProductPurchaseDecision.NotProcessedYet end
-	if not DataService.isLoaded(player) then return Enum.ProductPurchaseDecision.NotProcessedYet end
-	-- отметка ставится ДО GetAsync: иначе два одновременных вызова по одной покупке оба прошли бы проверку,
-	-- пока ждут ответа DataStore, и выдали бы товар дважды
+	-- отметка ставится ДО любых ожиданий (загрузка профиля, GetAsync): иначе два одновременных вызова по одной
+	-- покупке оба прошли бы проверку, пока ждут, и выдали бы товар дважды
 	granting[info.PurchaseId] = true
 	local ok, decision = pcall(grantOnce, info, player, fn)
 	granting[info.PurchaseId] = nil

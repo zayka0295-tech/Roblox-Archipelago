@@ -62,8 +62,9 @@ local BazaarService = require(Services.BazaarService)
 local NavalPhysics = require(Services.NavalPhysics)
 
 -- ошибка в init одного сервиса не должна оставить сервер без остальных (и без появления игроков ниже)
+-- xpcall + traceback: в журнале (ErrorLogService) видно не только текст ошибки, но и строку, где init упал
 local function start(name, svc)
-	local ok, err = pcall(svc.init)
+	local ok, err = xpcall(svc.init, debug.traceback)
 	if not ok then warn(("[Main] %s.init: %s"):format(name, tostring(err))) end
 end
 
