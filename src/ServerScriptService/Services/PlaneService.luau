@@ -513,7 +513,8 @@ local function makePlane(ownerActor, team, cf, kind)
 	prompt.MaxActivationDistance = 16
 	prompt.RequiresLineOfSight = false
 	prompt.Enabled = false
-	prompt.Parent = model:FindFirstChild("Fuselage") or st.root
+	-- у вертолёта — у кабины пилота (передняя стойка слева), у самолёта — на фюзеляже
+	prompt.Parent = (P.Heli and (model:FindFirstChild("PilotDoor") or model:FindFirstChild("LeftPillar"))) or model:FindFirstChild("Fuselage") or st.root
 	st.prompt = prompt
 	prompt.Triggered:Connect(function(player)
 		if st.dead or not planes[model] or not AntiCheat.atPrompt(player, prompt) then return end

@@ -490,7 +490,7 @@ return function(ctx)
 		local cam = workspace.CurrentCamera
 		local camDist = P.CamDistance or 40
 		local eye = pos + Vector3.new(0, 4, 0)
-		local wantCam = pos - aimDir * camDist + Vector3.new(0, 14, 0)
+		local wantCam = pos - aimDir * camDist + Vector3.new(0, P.CamHeight or 14, 0)
 		camParams.FilterDescendantsInstances = ignoreList(char)
 		local block = workspace:Raycast(eye, wantCam - eye, camParams)
 		if block then wantCam = block.Position + block.Normal * 1.5 end
@@ -946,8 +946,8 @@ return function(ctx)
 			end
 			-- «вернуться в самолёт» (включает сервер): не показываем, пока я сижу (например, в хвостовой турели);
 			-- встал — возвращаем, если место пилота свободно (так же решает сервер)
-			local fus = plane:FindFirstChild("Fuselage") or plane:FindFirstChild("Root")
-			local board = fus and fus:FindFirstChild("BoardPrompt")
+			-- кнопка пилота может висеть на любой детали (у вертолёта — у кабины)
+			local board = plane:FindFirstChild("BoardPrompt", true)
 			if board then
 				if meSeated then
 					if board.Enabled then
