@@ -368,9 +368,13 @@ return function(ctx)
 	--  • LiftForce (VectorForce у Root, в мировых осях): подъёмная сила несущего винта вдоль оси «вверх» корпуса
 	--    плюс сопротивление воздуха; вес даёт сама гравитация. Наклон корпуса наклоняет и тягу — горизонтальная
 	--    её часть разгоняет вертолёт, поэтому скорость набирается постепенно и сохраняется (инерция).
-	--  • FlightAlign (AlignOrientation): автомат перекоса и хвостовой винт — доворачивают корпус к нужному
-	--    наклону и курсу с конечной скоростью (Responsiveness), так ощущается масса. Отпустил — корпус плавно
-	--    возвращается в горизонт.
+	--  • FlightAlign (AlignOrientation): автомат перекоса и хвостовой винт. Их момент ограничен (MaxTorque):
+	--    вес × плечо хвостового винта × TailAuthority × обороты², а разгоняет он настоящий момент инерции модели
+	--    (считается по весомым деталям, heliInertia) — тяжёлый и длинный вертолёт поворачивает медленнее.
+	--    Отпустил — корпус возвращается в горизонт с той скоростью, какую позволяет момент.
+	--  • RotorTorque (Torque): реактивный момент несущего винта ∝ тяге — крутит корпус против винта; хвостовой
+	--    винт гасит его из того же запаса момента (на большом коллективе на повороты остаётся меньше).
+	-- Крен на скорости сам доворачивает нос (координированный разворот: скорость поворота g·tg(крен)/V).
 	-- Тяга = коллектив × наибольшая тяга винта (вес × LiftReserve × обороты²): сел — винт раскручивается за
 	-- SpoolTime сек.; E/Shift — коллектив вверх, Q/Ctrl — вниз (плавно, CollectiveRate в сек.), отпустил —
 	-- коллектив остаётся где был. R — помощник зависания (вкл. по умолчанию): пока E/Q не нажаты, сам двигает
@@ -383,8 +387,32 @@ return function(ctx)
 	-- скорости без W/S/A/D — лёгкое торможение HoverBrake для точного зависания.
 	-- Всё считается от массы сборки и гравитации — подходит для любой модели вертолёта.
 	-- На телефоне: курс — пальцем, стик Roblox — W/S/A/D, кнопки UP/DOWN — коллектив
-	local heliYawVel, heliYawT = 0, 0 -- скорость и целевой курс хвостового винта (ведёт корпус за собой)
-	local heliPitch, heliRoll = 0, 0
+	-- момент инерции сборки относительно центра масс (по весомым деталям, как считает физика Roblox) и плечо
+	-- хвостового винта (TailHub / TailRotor, иначе половина длины модели). Годится для любой модели вертолёта
+	local function heliInertia(model, root)
+		local com = root.AssemblyCenterOfMass
+		local cf = root.CFrame
+		local iyaw, itilt = 0, 0
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("BasePart") and not d.Massless and d.AssemblyRootPart == root.AssemblyRootPart then
+				local m = d:GetMass()
+				local r = cf:VectorToObjectSpace(d.Position - com)
+				local s = d.Size
+				iyaw += m * (r.X * r.X + r.Z * r.Z) + m * (s.X * s.X + s.Z * s.Z) / 12
+				itilt += m * (r.Y * r.Y + r.Z * r.Z) + m * (s.Y * s.Y + s.Z * s.Z) / 12
+			end
+		end
+		local tail = model:FindFirstChild("TailHub", true) or model:FindFirstChild("TailRotor", true)
+		local arm
+		if tail and tail:IsA("BasePart") then
+			local r = cf:VectorToObjectSpace(tail.Position - com)
+			arm = Vector3.new(r.X, 0, r.Z).Magnitude
+		else
+			local _, size = model:GetBoundingBox()
+			arm = math.max(size.X, size.Z) / 2
+		end
+		return math.max(iyaw, itilt), math.max(arm, 4)
+	end
 	local heliRPM = 0
 	local heliCol = 0           -- коллектив, доля наибольшей тяги винта (0..1)
 	local hoverAssist = true    -- помощник зависания (R)
@@ -439,12 +467,15 @@ return function(ctx)
 			heliRPM = onGround and 0 or 1
 			-- на земле коллектив внизу, в воздухе (пересел в зависший) — на зависании
 			heliCol = onGround and 0 or 1 / (P.LiftReserve or 1.9)
-			heliYawVel, heliYawT, heliCam = 0, yaw, nil
-			local px = root.CFrame:ToOrientation()
-			heliPitch, heliRoll = px, 0
+			heliCam = nil
 			flying.lift = root:FindFirstChild("LiftForce")
+			flying.rotorTorque = root:FindFirstChild("RotorTorque")
+			flying.inertia, flying.tailArm = heliInertia(model, root)
 			if flying.lv then flying.lv.Enabled = false end -- у вертолёта не задаём скорость напрямую
-			if flying.ao then flying.ao.Responsiveness = P.AttitudeResponse or 10 end
+			if flying.ao then
+				flying.ao.Responsiveness = P.AttitudeResponse or 25
+				flying.ao.MaxAngularVelocity = math.rad(P.TurnRate)
+			end
 		end
 		local lift = flying.lift
 		local aimDir = CFrame.fromOrientation(aimPitch, aimYaw, 0).LookVector
@@ -473,28 +504,46 @@ return function(ctx)
 		local toAim = aimAt - pos
 		if toAim.Magnitude < 25 then toAim = aimDir * 25 end
 
-		-- хвостовой винт: курс к точке прицела, у поворота есть разгон
+		-- координированный разворот: крен на скорости поворачивает прицел (и камеру), а за ним и нос —
+		-- скорость поворота g·tg(крен)/V, на малой скорости слабеет (вертолёт просто смещается вбок)
+		local g = workspace.Gravity
+		local hVel = Vector3.new(vel.X, 0, vel.Z)
+		local V = hVel.Magnitude
 		local turnMax = math.rad(P.TurnRate)
-		local yawErr = (math.atan2(-toAim.X, -toAim.Z) - heliYawT + math.pi) % (2 * math.pi) - math.pi
-		local wantYawVel = parked and 0 or math.clamp(yawErr * 4, -turnMax, turnMax) * heliRPM
-		heliYawVel += (wantYawVel - heliYawVel) * math.min(1, dt * 7)
-		heliYawT += heliYawVel * dt
-		-- целевой курс не убегает от корпуса дальше ~30° (упёрся во что-то — не накапливаем)
-		local lead = (heliYawT - yaw + math.pi) % (2 * math.pi) - math.pi
-		heliYawT = yaw + math.clamp(lead, -0.5, 0.5)
-		local heading = CFrame.Angles(0, heliYawT, 0)
-		local fwd, right = heading.LookVector, heading.RightVector
+		local _, _, rollNow = root.CFrame:ToOrientation()
+		if mx ~= 0 and not parked then
+			local rate = math.clamp(g * math.tan(rollNow) / math.max(V, 20), -turnMax, turnMax) * math.clamp(V / 25, 0, 1)
+			aimYaw += rate * dt
+		end
+
+		-- хвостовой винт: курс на точку прицела. Скорость поворота — не больше той, с которой корпус ещё успеет
+		-- затормозить к цели (тормозной путь ω²/2α, α = свободный момент / инерция) — без перелёта и качки;
+		-- AlignOrientation получает цель впереди носа: при Responsiveness R он крутит корпус примерно
+		-- со скоростью (R/5)·опережение рад/с (замерено), отсюда опережение = ω·5/R
+		local aimYawTo = math.atan2(-toAim.X, -toAim.Z)
+		local err = (aimYawTo - yaw + math.pi) % (2 * math.pi) - math.pi
+		local alphaFree = math.max(0.2, ((flying.tailFree or 0) / math.max(flying.inertia, 1)) * 0.8)
+		local wDes = math.sign(err) * math.min(turnMax, math.sqrt(2 * alphaFree * math.abs(err)))
+		local lead = math.clamp(wDes * 5 / (P.AttitudeResponse or 25), -math.abs(err), math.abs(err))
+		local heading = CFrame.Angles(0, parked and yaw or yaw + lead, 0)
+		local fwdFlat = Vector3.new(look.X, 0, look.Z)
+		fwdFlat = fwdFlat.Magnitude > 0.01 and fwdFlat.Unit or heading.LookVector
+		local fwd = fwdFlat
+		local right = fwd:Cross(Vector3.yAxis).Unit
 
 		-- автомат перекоса: нужный наклон корпуса. W/S — нос вниз/вверх, A/D — крен; отпустил — в горизонт.
-		-- В повороте на скорости — согласованный крен (наклоняет тягу внутрь поворота и закручивает траекторию)
+		-- В развороте мышью на скорости — согласованный крен (наклоняет тягу внутрь поворота)
 		local maxTilt = math.rad(P.MaxTilt)
-		local hVel = Vector3.new(vel.X, 0, vel.Z)
 		local fwdSpeed, sideSpeed = hVel:Dot(fwd), hVel:Dot(right)
+		local yawRate = root.AssemblyAngularVelocity.Y
 		local wantPitch, wantRoll = 0, 0
 		local limitMsg
 		if not parked then
 			wantPitch = -mz * maxTilt -- без W/S корпус возвращается в горизонт
-			wantRoll = -mx * maxTilt + math.clamp(heliYawVel / turnMax * math.clamp(fwdSpeed / P.MaxSpeed, 0, 1), -1, 1) * math.rad(20)
+			wantRoll = -mx * maxTilt
+			if mx == 0 then
+				wantRoll = math.clamp(yawRate / turnMax * math.clamp(fwdSpeed / P.MaxSpeed, 0, 1), -1, 1) * math.rad(20)
+			end
 		end
 		-- граница карты: наклон к центру
 		if math.abs(pos.X) > P.BoundsX or math.abs(pos.Z) > P.BoundsZ then
@@ -502,13 +551,15 @@ return function(ctx)
 			wantPitch, wantRoll = -toC:Dot(fwd) * maxTilt, -toC:Dot(right) * maxTilt
 			limitMsg = "Map edge — turn back"
 		end
-		heliPitch += (wantPitch - heliPitch) * math.min(1, dt * 5)
-		heliRoll += (wantRoll - heliRoll) * math.min(1, dt * 5)
-		if flying.ao then flying.ao.CFrame = heading * CFrame.Angles(heliPitch, 0, 0) * CFrame.Angles(0, 0, heliRoll) end
+		-- запас момента автомата перекоса и хвостового винта: вес × плечо × TailAuthority × обороты²
+		local M = root.AssemblyMass
+		local tailMax = M * g * flying.tailArm * (P.TailAuthority or 0.06) * heliRPM * heliRPM
+		if flying.ao then
+			flying.ao.CFrame = heading * CFrame.Angles(wantPitch, 0, 0) * CFrame.Angles(0, 0, wantRoll)
+			flying.ao.MaxTorque = math.max(tailMax, 1)
+		end
 
 		-- тяга винта = коллектив × наибольшая тяга (вес × LiftReserve × обороты²), вдоль оси «вверх» корпуса
-		local M = root.AssemblyMass
-		local g = workspace.Gravity
 		local up = root.CFrame.UpVector
 		local maxThrust = M * g * (P.LiftReserve or 1.9) * heliRPM * heliRPM
 		local colRate = P.CollectiveRate or 0.45
@@ -553,6 +604,15 @@ return function(ctx)
 			force += M * Vector3.new(math.noise(t * 2.1, 3.3) * 80, math.noise(t * 3.1, 9.9) * 120, math.noise(t * 2.4, 5.1) * 80)
 		end
 		if lift then lift.Force = force end
+		-- реактивный момент несущего винта (винт против часовой сверху — корпус по часовой): ∝ тяге,
+		-- при тяге, равной весу, — TorqueRatio от запаса момента хвостового винта
+		if flying.rotorTorque then
+			local react = (P.TorqueRatio or 0.3) * tailMax * (heliCol * maxThrust) / math.max(M * g, 1)
+			flying.rotorTorque.Torque = -up * react
+			flying.tailFree = tailMax - react -- свободный запас момента хвостового винта — на повороты
+		else
+			flying.tailFree = tailMax
+		end
 
 		-- пулемёт поворотный: бьёт в точку прицела, если она в его секторе, иначе — по краю сектора.
 		-- Метки: круг — прицел (центр экрана), точка — куда полетят пули сейчас

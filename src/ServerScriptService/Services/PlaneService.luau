@@ -131,6 +131,7 @@ local function destroyPlane(model, killer, reason)
 	root.FlightAlign.Enabled = false
 	root.FlightDrive.Enabled = false
 	if root:FindFirstChild("LiftForce") then root.LiftForce.Enabled = false end
+	if root:FindFirstChild("RotorTorque") then root.RotorTorque.Enabled = false end
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("WeldConstraint") or d:IsA("Motor6D") then
 			d:Destroy()
@@ -341,6 +342,10 @@ local function setupSeat(model, st)
 			if liftF then
 				liftF.Force = Vector3.new(0, root.AssemblyMass * workspace.Gravity * 0.9, 0)
 				liftF.Enabled = true
+				if root:FindFirstChild("RotorTorque") then
+					root.RotorTorque.Torque = Vector3.zero
+					root.RotorTorque.Enabled = true
+				end
 			else
 				root.FlightDrive.Enabled = true
 			end
@@ -355,6 +360,7 @@ local function setupSeat(model, st)
 			root.FlightAlign.Enabled = false
 			root.FlightDrive.Enabled = false
 			if root:FindFirstChild("LiftForce") then root.LiftForce.Enabled = false end
+			if root:FindFirstChild("RotorTorque") then root.RotorTorque.Enabled = false end
 			model:SetAttribute("EngineOn", false)
 			setOwner(root, nil)
 			-- пилот сидит справа: выходит наружу у правого борта
@@ -408,6 +414,16 @@ local function makePlane(ownerActor, team, cf, kind)
 		vf.Force = Vector3.zero
 		vf.Enabled = false
 		vf.Parent = model.Root
+	end
+	-- реактивный момент несущего винта (его задаёт клиент пилота, гасит хвостовой винт — FlightAlign)
+	if P.Heli and not model.Root:FindFirstChild("RotorTorque") then
+		local tq = Instance.new("Torque")
+		tq.Name = "RotorTorque"
+		tq.Attachment0 = model.Root:FindFirstChild("FlightAtt")
+		tq.RelativeTo = Enum.ActuatorRelativeTo.World
+		tq.Torque = Vector3.zero
+		tq.Enabled = false
+		tq.Parent = model.Root
 	end
 	model:PivotTo(cf)
 	model.Parent = folder()
@@ -814,6 +830,7 @@ local function step(dt)
 			st.root.FlightAlign.Enabled = false
 			st.root.FlightDrive.Enabled = false
 			if st.root:FindFirstChild("LiftForce") then st.root.LiftForce.Enabled = false end
+			if st.root:FindFirstChild("RotorTorque") then st.root.RotorTorque.Enabled = false end
 			model:SetAttribute("EngineOn", false)
 			setOwner(st.root, nil)
 			local w = st.seat:FindFirstChild("SeatWeld")

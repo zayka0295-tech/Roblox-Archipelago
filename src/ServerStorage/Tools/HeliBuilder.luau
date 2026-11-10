@@ -5,6 +5,9 @@
 -- Устройство для PlaneService/PlaneClient как у самолётов: Root (FlightAtt, FlightAlign, FlightDrive),
 -- PilotSeat (PlaneSeat), GunMuzzle, детали TeamPaint. Винты — Motor6D RotorMotor / TailRotorMotor
 -- (атрибуты BaseC0, SpinAxis, SpinRate — их крутит PlaneClient). Место пассажира — Seat PassengerSeat.
+-- Детали корпуса весомые (лёгкая плотность HULL_DENSITY): масса и момент инерции распределены по модели,
+-- как у настоящего вертолёта, — физика полёта (PlaneClient) считает инерцию по деталям. Лопасти и втулки
+-- винтов невесомые (их крутит Motor6D, на физику не влияют).
 --   require(game.ServerStorage.Tools.HeliBuilder).build()  -- заменяет старый шаблон
 local H = {}
 
@@ -22,6 +25,7 @@ local ALONG_Z = CFrame.Angles(0, math.pi / 2, 0) -- ось цилиндра (X) 
 local UP = CFrame.Angles(0, 0, math.pi / 2)      -- ось цилиндра — вверх
 
 H.GEAR = 6
+local HULL_DENSITY = PhysicalProperties.new(0.5, 0.3, 0.2, 1, 1)
 
 function H.build()
 	local m = Instance.new("Model")
@@ -36,7 +40,8 @@ function H.build()
 		p.Material = mat or METAL
 		p.TopSurface, p.BottomSurface = Enum.SurfaceType.Smooth, Enum.SurfaceType.Smooth
 		p.Anchored = false
-		p.Massless = true
+		p.Massless = false
+		p.CustomPhysicalProperties = HULL_DENSITY
 		for k, v in pairs(opts or {}) do
 			if k == "TeamPaint" or k == "NightGen" then p:SetAttribute(k, v) else p[k] = v end
 		end
@@ -60,10 +65,7 @@ function H.build()
 		return part(name, Vector3.new(dia, dia, d.Magnitude), CFrame.lookAt((a + b) / 2, b), color, METAL, {CanCollide = false})
 	end
 
-	local root = part("Root", Vector3.new(3, 3, 3), CFrame.new(), BODY, SMOOTH, {
-		Transparency = 1, CanCollide = false, Massless = false,
-		CustomPhysicalProperties = PhysicalProperties.new(12, 0.3, 0, 1, 1),
-	})
+	local root = part("Root", Vector3.new(3, 3, 3), CFrame.new(), BODY, SMOOTH, {Transparency = 1, CanCollide = false})
 	m.PrimaryPart = root
 
 	------------------------------------------------ кабина
@@ -183,7 +185,10 @@ function H.build()
 			w.Parent = p
 		end
 	end
+	hub.Massless, thub.Massless = true, true
+	for _, b in ipairs(tblades) do b.Massless = true end
 	for _, b in ipairs(blades) do
+		b.Massless = true
 		local w = Instance.new("WeldConstraint")
 		w.Part0, w.Part1 = hub, b
 		w.Parent = b
