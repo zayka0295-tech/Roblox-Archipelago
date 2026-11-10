@@ -3,15 +3,13 @@
 --    одежду, футболку-картинку и аксессуары, кроме волос и лица (лицо, цвет кожи — свои).
 --  • В форме тело классическое «кубическое» (стандартные части и пропорции): на нём шаблоны Shirt/Pants
 --    ложатся ровно. Риг остаётся R15 — анимации и позы оружия не меняются.
---  • Атрибут игрока UniformOff = true — играет в своём скине. Переключается только в лобби
---    (Remotes.Uniform, кнопка UniformUI): персонаж перезагружается и надевает нужное.
+--  • Форма обязательна: снять её нельзя (свои скины не поддерживаем — руки с оружием подогнаны под форму).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Config.GameConfig)
 
 local Services = script.Parent
 local TeamService = require(Services.TeamService)
-local Guard = require(Services.RemoteGuard)
 
 local UniformService = {}
 local GEAR = "UniformGear"
@@ -106,7 +104,7 @@ end
 local function apply(player)
 	local char = player.Character
 	local team = TeamService.getTeamName(player)
-	if not char or not team or player:GetAttribute("UniformOff") then return end
+	if not char or not team then return end
 	local hum = char:FindFirstChildOfClass("Humanoid")
 	if hum then blocky(hum) end
 	if player.Character ~= char then return end
@@ -119,17 +117,6 @@ function UniformService.init()
 	end
 	for _, p in ipairs(Players:GetPlayers()) do hook(p) end
 	Players.PlayerAdded:Connect(hook)
-
-	ReplicatedStorage.Remotes.Uniform.OnServerInvoke = function(player)
-		if not Guard.bucket(player, "Uniform", 0.5, 2) then return {ok = false, msg = "Too fast, please wait"} end
-		if player:GetAttribute("State") ~= "Lobby" then return {ok = false, msg = "You can change clothes only in the lobby"} end
-		local off = not player:GetAttribute("UniformOff")
-		player:SetAttribute("UniformOff", off or nil)
-		task.spawn(function()
-			if player.Parent then player:LoadCharacter() end -- вышел из игры — LoadCharacter бросил бы ошибку
-		end)
-		return {ok = true, msg = off and "Uniform off — your own outfit" or "Uniform on"}
-	end
 end
 
 return UniformService

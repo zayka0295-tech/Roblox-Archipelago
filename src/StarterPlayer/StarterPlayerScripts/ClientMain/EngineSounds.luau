@@ -13,8 +13,10 @@ local KIND = {
 	Cargo      = {sound = "EngineCargo", speed = 30},
 	-- грузовой самолёт десанта (workspace.CargoDrops): гул + второй слой — свист турбин
 	CargoPlane = {sound = "EngineCargoPlane", layer = "EngineCargoPlaneWhine", speed = 90},
-	-- грузовой вертолёт нефтяной платформы (Map.Helis)
-	Heli = {sound = "EngineCargoPlane", layer = "EngineCargoPlaneWhine", speed = 75},
+	-- грузовой вертолёт нефтяной платформы (Map.Helis): лопасти + свист турбин
+	Heli = {sound = "EngineHeli", layer = "EngineCargoPlaneWhine", speed = 75},
+	-- вертолёт игрока (Map.Planes, атрибут IsHeli): лопасти, пока мотор включён (EngineOn)
+	PlayerHeli = {sound = "EngineHeli", speed = 75, engine = true},
 }
 local STEP = 0.1
 
@@ -22,7 +24,7 @@ return function(ctx)
 	local tracked = {} -- [модель] = {sound, e, kind, root, last, vol, pitch}
 
 	local function kindOf(model, folderName)
-		if folderName == "Planes" then return "Plane" end
+		if folderName == "Planes" then return model:GetAttribute("IsHeli") and "PlayerHeli" or "Plane" end
 		if folderName == "Carriers" then return "Carrier" end
 		if folderName == "CargoDrops" then return "CargoPlane" end
 		if folderName == "Helis" then return "Heli" end
@@ -79,7 +81,7 @@ return function(ctx)
 			local d = pos - t.last
 			t.last = pos
 			local speed = Vector3.new(d.X, 0, d.Z).Magnitude / step
-			if t.kind.sound == "EnginePlane" then speed = d.Magnitude / step end
+			if t.kind.sound == "EnginePlane" or t.kind.engine then speed = d.Magnitude / step end
 			local e = t.e
 			-- далеко — не играем вообще (экономия)
 			if (pos - camPos).Magnitude > e.range then
@@ -89,7 +91,7 @@ return function(ctx)
 				continue
 			end
 			local on = not model:GetAttribute("Sinking") and model:GetAttribute("State") ~= "Destroyed"
-			if t.kind.sound == "EnginePlane" then on = on and model:GetAttribute("EngineOn") == true end
+			if t.kind.sound == "EnginePlane" or t.kind.engine then on = on and model:GetAttribute("EngineOn") == true end
 			local k = math.clamp(speed / t.kind.speed, 0, 1)
 			local targetVol = on and e.volume * (e.idle + (1 - e.idle) * k) or 0
 			if t.kind.sound == "EngineSubmarine" and pos.Y < -4 then targetVol *= 0.4 end -- под водой тише

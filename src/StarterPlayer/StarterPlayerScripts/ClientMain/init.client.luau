@@ -95,7 +95,7 @@ else
 	warn("[ClientMain] Remotes.Notify not found — server notifications are off")
 end
 
-for _, name in ipairs({"ErrorReporter", "SpawnFade", "ShotFx", "LeaderboardUI", "HUD", "SpawnSelectionUI", "ShopUI", "HangarUI", "BazaarUI", "ShipControlUI", "TurretUI", "PlaneClient", "SeatCamera", "IslandsUI", "TeamMarkers", "EngineSounds", "Music", "AirRaid", "BaseAnim", "CaptureFlags", "ShipSmoke", "GunClient", "GunPose", "GunViewmodel", "BaseWaypoints", "QuestUI", "DamageNumbers", "RoundUI", "CaptainUI", "GuidePath", "DailySpinUI", "RankUI", "RewardsUI", "CareerUI", "StormFx", "RankTags", "VipChat", "VehicleZoom", "ParachuteUI", "DropMapUI", "SkydivePose", "UniformUI", "JudgeUI", "SwimLimit"}) do
+for _, name in ipairs({"ErrorReporter", "SpawnFade", "ShotFx", "LeaderboardUI", "HUD", "SpawnSelectionUI", "ShopUI", "HangarUI", "BazaarUI", "ShipControlUI", "TurretUI", "PlaneClient", "SeatCamera", "IslandsUI", "TeamMarkers", "EngineSounds", "Music", "AirRaid", "BaseAnim", "CaptureFlags", "ShipSmoke", "GunClient", "GunPose", "GunViewmodel", "BaseWaypoints", "QuestUI", "DamageNumbers", "RoundUI", "CaptainUI", "GuidePath", "DailySpinUI", "RankUI", "RewardsUI", "CareerUI", "StormFx", "RankTags", "VipChat", "VehicleZoom", "ParachuteUI", "DropMapUI", "SkydivePose", "JudgeUI", "SwimLimit"}) do
 	-- ошибка в одном модуле не должна оставлять игрока без всех следующих интерфейсов:
 	-- ловим её и перебрасываем в отдельном потоке (её увидит Output и ErrorReporter)
 	local ok, res = pcall(function()

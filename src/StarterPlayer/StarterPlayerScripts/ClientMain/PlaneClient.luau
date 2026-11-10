@@ -169,10 +169,11 @@ return function(ctx)
 		table.insert(rows, {"Space", "Leave the plane"})
 		if P.Heli then
 			rows = {
-				{"Mouse", "Heading and gun aim"},
-				{"W / S", "Forward / back"},
+				{"Mouse", "Aim — the helicopter turns to it"},
+				{"W", "Fly toward the crosshair"},
+				{"S", "Back / brake"},
 				{"A / D", "Strafe left / right"},
-				{"E / Q", "Up / down"},
+				{"E / Q", "Up / down (or Shift / Ctrl)"},
 				{"Arrows", "Turn / nose up-down"},
 				{"LMB", "Machine gun"},
 				{"Space", "Leave the helicopter"},
@@ -315,8 +316,20 @@ return function(ctx)
 	groundParams.FilterType = Enum.RaycastFilterType.Exclude
 	groundParams.IgnoreWater = false
 
-	-- огонь пулемётов (самолёт и вертолёт): смена нажатия — серверу, свои пули — сразу и точно из стволов
-	local function gunStep(root, char, typing, menuOpen)
+	-- огонь пулемётов (самолёт и вертолёт): смена нажатия — серверу, свои пули — сразу и точно из стволов.
+	-- aimAt — точка прицела (вертолёт стреляет туда, куда смотрит камера, но не дальше GUN_CONE от носа:
+	-- сервер принимает попадания в конусе 35° от носа); без неё — сходимость на 300 студов перед носом
+	local GUN_CONE = math.rad(28)
+	local function gunDir(root, origin, aimAt)
+		local look = root.CFrame.LookVector
+		local want = aimAt and (aimAt - origin) or (root.Position + look * 300 - origin)
+		if want.Magnitude < 1 then return look end
+		want = want.Unit
+		local ang = math.acos(math.clamp(want:Dot(look), -1, 1))
+		if ang > GUN_CONE then want = rotateToward(look, want, GUN_CONE) end
+		return want
+	end
+	local function gunStep(root, char, typing, menuOpen, aimAt)
 		-- клик по пунктам меню Esc — не очередь из пулемётов
 		local firing = held.fire or (not touchOnly and not typing and not menuOpen and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1))
 		if firing ~= lastFiring then
@@ -329,8 +342,7 @@ return function(ctx)
 			local mz = flying.muzzles[(flying.shotN % #flying.muzzles) + 1]
 			flying.shotN += 1
 			local origin = mz.Position
-			local converge = root.Position + root.CFrame.LookVector * 300
-			local dir = (converge - origin).Unit * P.GunRange
+			local dir = gunDir(root, origin, aimAt) * P.GunRange
 			shotParams.FilterDescendantsInstances = ignoreList(char)
 			local hit = workspace:Raycast(origin, dir, shotParams)
 			local fx = ctx.screens.ShotFx
@@ -340,10 +352,18 @@ return function(ctx)
 		end
 	end
 
-	-- вертолёт (P.Heli): висит на месте без ввода. W/S — вперёд/назад, A/D — вбок, E/Q — вверх/вниз,
-	-- мышь — курс (рыскание) и прицел: нос с пулемётом наклоняется за прицелом в пределах AimPitchMin..Max.
-	-- Корпус кренится и клюёт носом от скорости. На телефоне — стик Roblox (движение) и кнопки UP/DOWN
+	-- Вертолёт (P.Heli) — «прицел мышью»: мышь вращает камеру вокруг вертолёта (круг в центре экрана),
+	-- а вертолёт сам, с запаздыванием, разворачивается носом к прицелу и кренится в повороте.
+	-- Камера к вертолёту не привязана: догоняет его плавно, вертолёт ходит по кадру.
+	-- W — лететь туда, куда смотрит прицел (вверх/вниз тоже), S — назад/тормоз, A/D — вбок,
+	-- E/Shift — вверх, Q/Ctrl — вниз. Без ввода — висит на месте. Пулемёт бьёт в точку прицела (точка).
+	-- На телефоне: курс — пальцем, стик Roblox — движение, кнопки UP/DOWN
 	local heliVel = Vector3.zero
+	local heliYawVel = 0
+	local heliPitch = 0
+	local heliCam -- сглаженная позиция камеры
+	local camParams = RaycastParams.new()
+	camParams.FilterType = Enum.RaycastFilterType.Exclude
 	local controls
 	local function moveVector()
 		if not controls then
@@ -360,8 +380,8 @@ return function(ctx)
 			if key(Enum.KeyCode.S) then mz -= 1 end
 			if key(Enum.KeyCode.D) then mx += 1 end
 			if key(Enum.KeyCode.A) then mx -= 1 end
-			if key(Enum.KeyCode.E) then climb += 1 end
-			if key(Enum.KeyCode.Q) then climb -= 1 end
+			if key(Enum.KeyCode.E) or key(Enum.KeyCode.LeftShift) then climb += 1 end
+			if key(Enum.KeyCode.Q) or key(Enum.KeyCode.LeftControl) then climb -= 1 end
 			if key(Enum.KeyCode.Left) then aimYaw += 2.0 * dt end
 			if key(Enum.KeyCode.Right) then aimYaw -= 2.0 * dt end
 			if key(Enum.KeyCode.Up) then aimPitch = math.clamp(aimPitch + 1.5 * dt, -1.35, 1.35) end
@@ -382,51 +402,60 @@ return function(ctx)
 		local ground = workspace:Raycast(pos, Vector3.new(0, -(gear + 1.5), 0), groundParams)
 		local onGround = ground ~= nil and ground.Material ~= Enum.Material.Water
 		flying.onGround = onGround
+		local look = root.CFrame.LookVector
+		local yaw = math.atan2(-look.X, -look.Z)
 		if not flying.heliInit then
 			-- сел в вертолёт: скорость — как у него сейчас (пересел в зависший в воздухе — не дёргается)
 			flying.heliInit = true
 			local v = root.AssemblyLinearVelocity
 			heliVel = Vector3.new(v.X, 0, v.Z)
+			heliYawVel, heliPitch, heliCam = 0, 0, nil
 		end
+		local aimDir = CFrame.fromOrientation(aimPitch, aimYaw, 0).LookVector
+		-- стоит на земле, пока не начали взлёт (вверх или W с прицелом выше горизонта)
+		local parked = onGround and climb <= 0 and not (mz > 0 and aimDir.Y > 0.05)
 
-		-- курс: нос догоняет прицел
-		local look = root.CFrame.LookVector
-		local yaw = math.atan2(-look.X, -look.Z)
-		if onGround and climb <= 0 then
-			-- на земле не крутимся: стоим, пока не начали взлёт
-		else
-			local d = (aimYaw - yaw + math.pi) % (2 * math.pi) - math.pi
-			yaw += math.clamp(d, -math.rad(P.TurnRate) * dt, math.rad(P.TurnRate) * dt)
-		end
+		-- курс: нос с запаздыванием догоняет прицел (у поворота есть разгон — вертолёт «плывёт»)
+		local turnMax = math.rad(P.TurnRate)
+		local yawErr = (aimYaw - yaw + math.pi) % (2 * math.pi) - math.pi
+		local wantYawVel = parked and 0 or math.clamp(yawErr * 2.5, -turnMax, turnMax)
+		heliYawVel += (wantYawVel - heliYawVel) * math.min(1, dt * 4)
+		yaw += heliYawVel * dt
 		local heading = CFrame.Angles(0, yaw, 0)
 		local fwd, right = heading.LookVector, heading.RightVector
 
-		-- горизонтальная скорость
-		local want = Vector3.zero
+		-- скорость: W — по прицелу (и по высоте), S — назад, A/D — вбок, E/Q — вверх/вниз
 		local limitMsg
-		if not (onGround and climb <= 0) then
-			want = fwd * mz * (mz > 0 and P.MaxSpeed or P.SideSpeed) + right * mx * P.SideSpeed
+		local want = Vector3.zero
+		if not parked then
+			local flatAim = Vector3.new(aimDir.X, 0, aimDir.Z)
+			flatAim = flatAim.Magnitude > 0.01 and flatAim.Unit or fwd
+			if mz > 0 then
+				want = flatAim * P.MaxSpeed * mz + Vector3.new(0, math.clamp(aimDir.Y * P.MaxSpeed, -P.Climb * 1.5, P.Climb * 1.5) * mz, 0)
+			elseif mz < 0 then
+				want = fwd * P.SideSpeed * mz
+			end
+			want += right * mx * P.SideSpeed + Vector3.new(0, climb * P.Climb, 0)
 		end
 		if math.abs(pos.X) > P.BoundsX or math.abs(pos.Z) > P.BoundsZ then
 			want = Vector3.new(-pos.X, 0, -pos.Z).Unit * P.SideSpeed
 			limitMsg = "Map edge — turn back"
 		end
-		local dv = want - heliVel
-		local maxDv = P.Acceleration * dt * (want.Magnitude < heliVel.Magnitude and 1.4 or 1)
-		if dv.Magnitude > maxDv then dv = dv.Unit * maxDv end
-		heliVel += dv
-		if onGround and climb <= 0 then heliVel = Vector3.zero end
-
-		-- вертикаль: без ввода — держит высоту; над водой ниже 2 студов не опускается
-		local vy = climb * P.Climb
-		if onGround and climb <= 0 then
-			vy = (ground.Position.Y + gear - pos.Y) * 6
-		end
-		if pos.Y > P.MaxAltitude then
-			vy = math.min(vy, 0)
+		if pos.Y > P.MaxAltitude and want.Y > 0 then
+			want = Vector3.new(want.X, 0, want.Z)
 			limitMsg = "Altitude ceiling"
 		end
-		if pos.Y - gear < 2 then vy = math.max(vy, (2 - (pos.Y - gear)) * 4) end
+		local cur = heliVel
+		local dv = want - cur
+		local maxDv = P.Acceleration * dt * (want.Magnitude < cur.Magnitude and 1.3 or 1)
+		if dv.Magnitude > maxDv then dv = dv.Unit * maxDv end
+		heliVel = cur + dv
+		local vel = heliVel
+		if parked then
+			heliVel = Vector3.zero
+			vel = Vector3.new(0, (ground.Position.Y + gear - pos.Y) * 6, 0)
+		end
+		if pos.Y - gear < 2 then vel = Vector3.new(vel.X, math.max(vel.Y, (2 - (pos.Y - gear)) * 4), vel.Z) end -- над водой
 		local groundVel = Vector3.zero
 		if onGround and ground.Instance:IsA("BasePart") then
 			local gv = ground.Instance:GetVelocityAtPosition(ground.Position)
@@ -437,35 +466,48 @@ return function(ctx)
 		if flying.model:GetAttribute("InStorm") then
 			bump = Vector3.new(math.noise(os.clock() * 2.1, 3.3) * 20, math.noise(os.clock() * 3.1, 9.9) * 25, math.noise(os.clock() * 2.4, 5.1) * 20)
 		end
-		if flying.lv then flying.lv.VectorVelocity = heliVel + Vector3.new(0, vy, 0) + groundVel + bump end
+		if flying.lv then flying.lv.VectorVelocity = vel + groundVel + bump end
 
-		-- наклон корпуса: нос за прицелом, клюёт от скорости вперёд, крен от бокового движения
-		local fwdFrac = heliVel:Dot(fwd) / P.MaxSpeed
-		local sideFrac = heliVel:Dot(right) / P.SideSpeed
-		local pitch, roll = 0, 0
-		if not onGround then
-			pitch = math.clamp(aimPitch, math.rad(P.AimPitchMin), math.rad(P.AimPitchMax)) - fwdFrac * math.rad(P.MaxTilt) * 0.5
-			roll = -sideFrac * math.rad(P.MaxTilt)
+		-- наклон корпуса: на месте нос смотрит за прицелом (пулемёт), в полёте вперёд — клюёт носом;
+		-- крен — в поворот и в сторону бокового движения
+		local fwdFrac = math.clamp(heliVel:Dot(fwd) / P.MaxSpeed, -1, 1)
+		local sideFrac = math.clamp(heliVel:Dot(right) / P.SideSpeed, -1, 1)
+		local wantPitch, roll = 0, 0
+		if not parked then
+			local aimP = math.clamp(aimPitch, math.rad(P.AimPitchMin), math.rad(P.AimPitchMax))
+			wantPitch = aimP * (1 - math.max(fwdFrac, 0) * 0.6) - fwdFrac * math.rad(P.MaxTilt)
+			roll = (heliYawVel / turnMax) * math.rad(22) - sideFrac * math.rad(P.MaxTilt) -- в поворот влево — крен влево
 		end
-		bank += (roll - bank) * math.min(1, dt * 4)
-		if flying.ao then flying.ao.CFrame = heading * CFrame.Angles(pitch, 0, 0) * CFrame.Angles(0, 0, bank) end
+		heliPitch += (wantPitch - heliPitch) * math.min(1, dt * 3)
+		bank += (roll - bank) * math.min(1, dt * 3)
+		if flying.ao then flying.ao.CFrame = heading * CFrame.Angles(heliPitch, 0, 0) * CFrame.Angles(0, 0, bank) end
 
-		-- камера за вертолётом, смотрит по прицелу (позиция привязана жёстко, сглажено только направление)
+		-- камера: смотрит строго по прицелу (мышь), позиция плавно догоняет точку за вертолётом и выше него —
+		-- вертолёт в нижней части кадра, не закрывает прицел, и не «приклеен» к экрану
 		local cam = workspace.CurrentCamera
-		local aimDir = CFrame.fromOrientation(aimPitch, aimYaw, 0).LookVector
-		camDir = camDir and camDir:Lerp(aimDir, 1 - math.exp(-10 * dt)) or aimDir
-		if camDir.Magnitude < 0.01 then camDir = aimDir end
-		camDir = camDir.Unit
 		local camDist = P.CamDistance or 40
-		-- камера заметно выше, чем у самолёта: высокий вертолёт (винт на мачте) уходит в низ кадра и не закрывает прицел
-		local camPos = pos - camDir * camDist + Vector3.new(0, 16, 0)
-		cam.CFrame = CFrame.lookAt(camPos, camPos + camDir)
+		local eye = pos + Vector3.new(0, 4, 0)
+		local wantCam = pos - aimDir * camDist + Vector3.new(0, 14, 0)
+		-- камеру не пускаем сквозь землю и стены
+		camParams.FilterDescendantsInstances = ignoreList(char)
+		local block = workspace:Raycast(eye, wantCam - eye, camParams)
+		if block then wantCam = block.Position + block.Normal * 1.5 end
+		if not heliCam or (heliCam - wantCam).Magnitude > 150 then heliCam = wantCam end
+		heliCam = heliCam:Lerp(wantCam, 1 - math.exp(-7 * dt))
+		cam.CFrame = CFrame.lookAt(heliCam, heliCam + aimDir)
 
-		-- метки: круг — прицел, точка — куда смотрит пулемёт (сходимость на 300 студов, как у сервера)
-		local a, aOn = cam:WorldToViewportPoint(pos + aimDir * 300)
-		local n, nOn = cam:WorldToViewportPoint(pos + root.CFrame.LookVector * 300)
-		aimMark.Visible, noseMark.Visible, bombMark.Visible = aOn, nOn, false
-		aimMark.Position = UDim2.fromOffset(a.X, a.Y)
+		-- точка прицела: куда смотрит центр экрана (луч камеры), иначе — далеко по прицелу
+		shotParams.FilterDescendantsInstances = ignoreList(char)
+		local aimHit = workspace:Raycast(heliCam, aimDir * 1000, shotParams)
+		local aimAt = aimHit and aimHit.Position or heliCam + aimDir * 600
+		-- метки: круг — прицел (центр экрана), точка — куда реально полетят пули (в конусе от носа)
+		local mzl = flying.muzzles[1]
+		local gunFrom = mzl and mzl.Position or pos
+		local gunAt = gunFrom + gunDir(root, gunFrom, aimAt) * math.min((aimAt - gunFrom).Magnitude, P.GunRange)
+		local vs = cam.ViewportSize
+		local n, nOn = cam:WorldToViewportPoint(gunAt)
+		aimMark.Visible, noseMark.Visible, bombMark.Visible = true, nOn, false
+		aimMark.Position = UDim2.fromOffset(vs.X / 2, vs.Y / 2)
 		noseMark.Position = UDim2.fromOffset(n.X, n.Y)
 
 		-- приборы
@@ -479,12 +521,12 @@ return function(ctx)
 		statusLbl.Text = hp > 0.25 and ("Hull %d%%"):format(math.floor(hp * 100 + 0.5)) or ('<font color="#eb554b">Hull %d%%</font>'):format(math.floor(hp * 100 + 0.5))
 		if limitMsg then
 			warn.Text, warn.TextColor3, warn.Visible = limitMsg, T.Gold, true
-		elseif onGround and alt < 1 then
+		elseif parked and alt < 1 then
 			warn.Text, warn.TextColor3, warn.Visible = touchOnly and "Hold UP to take off" or "Hold E to take off", T.Gold, true
 		else
 			warn.Visible = false
 		end
-		gunStep(root, char, typing, menuOpen)
+		gunStep(root, char, typing, menuOpen, aimAt)
 	end
 
 	RunService.RenderStepped:Connect(function(dt)

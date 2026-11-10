@@ -529,7 +529,7 @@ function PlaneService.requestSpawn(player, team, where, carrier, kind)
 	AntiCheat.grace(player)
 	char:PivotTo(st.seat.CFrame + Vector3.new(0, 3, 0))
 	st.seat:Sit(hum)
-	Notifier.send(player, P.Heli and (P.DisplayName .. " ready · E / Q — up / down, WASD — move, mouse — heading, LMB — fire")
+	Notifier.send(player, P.Heli and (P.DisplayName .. " ready · mouse — aim, W — fly to the crosshair, E / Q — up / down, LMB — fire")
 		or (P.DisplayName .. " ready · W — throttle, mouse — heading, LMB — fire, E — drop bomb"), "success")
 	return true
 end

@@ -63,6 +63,9 @@ local CATALOG = {
 		 group = "Engines", volume = 0.7, pitch = {0.75, 0.85}, idle = 0.6, near = 120, range = 1300},
 	EngineCargoPlaneWhine = {id = 9112839511, -- Oil Refinery Ambience 2: свист турбин (ProSoundEffects)
 		 group = "Engines", volume = 0.22, pitch = {1.05, 1.2}, idle = 0.6, near = 80, range = 900},
+	-- лопасти вертолёта (вертолёт игрока и грузовые вертолёты платформ): хлопки винта слышны и на месте
+	EngineHeli = {id = 18630771616, -- Helicopter Bell UH-1H "Huey" rotor sound, looped
+		 group = "Engines", volume = 0.6, pitch = {0.95, 1.1}, idle = 0.8, near = 40, range = 700},
 	-- воздушная тревога на базах (см. AirRaid)
 	AirRaidSiren = {id = 9113073742, -- Air Raid Siren Old Fashioned 1 (ProSoundEffects)
 		group = "Ambient", volume = 1, near = 150, range = 2600},
