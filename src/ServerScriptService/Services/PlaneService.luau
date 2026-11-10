@@ -177,7 +177,8 @@ local function heliPadSpot(team, P)
 	local gear = ServerStorage.Vehicles[P.Model]:GetAttribute("GearHeight") or 6
 	local pads = {}
 	for _, m in ipairs(helipad:GetChildren()) do
-		local disk = m.Name:match("^Pad%d") and (m:FindFirstChild("HeliPad") or m:FindFirstChild("PadBase"))
+		-- площадки с атрибутом Display — витрина с декоративным вертолётом (HeliService), на них не ставим
+		local disk = m.Name:match("^Pad%d") and not m:GetAttribute("Display") and (m:FindFirstChild("HeliPad") or m:FindFirstChild("PadBase"))
 		if disk then table.insert(pads, {m, disk}) end
 	end
 	table.sort(pads, function(a, b) return a[1].Name < b[1].Name end)
@@ -339,7 +340,12 @@ local function setupSeat(model, st)
 			root.FlightAlign.Enabled = true
 			-- вертолёт летит на физике (подъёмная сила LiftForce считает клиент пилота), самолёт — по скорости
 			local liftF = root:FindFirstChild("LiftForce")
-			if liftF then
+			-- вертолёт бота: клиента нет, ведёт сервер по скорости (botFlyHeli), как самолёт
+			if liftF and not isPlayer(actor) then
+				liftF.Enabled = false
+				if root:FindFirstChild("RotorTorque") then root.RotorTorque.Enabled = false end
+				root.FlightDrive.Enabled = true
+			elseif liftF then
 				liftF.Force = Vector3.new(0, root.AssemblyMass * workspace.Gravity * 0.9, 0)
 				liftF.Enabled = true
 				if root:FindFirstChild("RotorTorque") then
@@ -641,14 +647,19 @@ function PlaneService.teamCount(team, exceptOwner, kind)
 	return n
 end
 
-function PlaneService.spawnForBot(bot, team, where, carrier)
+-- kind — "Fighter" (по умолчанию) или "Heli": вертолёт бота встаёт на свободную площадку базы
+function PlaneService.spawnForBot(bot, team, where, carrier, kind)
+	kind = kind or "Fighter"
+	local P = Config.Planes[kind]
 	local hum = bot:FindFirstChildOfClass("Humanoid")
 	if not hum or hum.Health <= 0 then return false end
-	if PlaneService.teamCount(team, bot) >= (Config.Limits and Config.Limits.PlanesPerTeam or 99) then return false end
-	local cf = spawnCFrame(team, where, carrier, Config.Planes.Fighter)
-	if not cf or not runwayFree(cf, bot, Config.Planes.Fighter.SpawnBox) then return false end
-	local model, st = makePlane(bot, team, cf, "Fighter")
-	st.ai = {throttle = 1, aim = cf.LookVector, firing = false}
+	local L = Config.Limits or {}
+	if PlaneService.teamCount(team, bot) >= (L.PlanesPerTeam or 99) then return false end
+	if P.Heli and L.HelisPerTeam and PlaneService.teamCount(team, bot, kind) >= L.HelisPerTeam then return false end
+	local cf = spawnCFrame(team, where, carrier, P)
+	if not cf or not runwayFree(cf, bot, P.SpawnBox) then return false end
+	local model, st = makePlane(bot, team, cf, kind)
+	st.ai = {throttle = 1, aim = cf.LookVector, firing = false, move = Vector3.zero}
 	bot:PivotTo(st.seat.CFrame + Vector3.new(0, 3, 0))
 	st.seat:Sit(hum)
 	return true
@@ -777,6 +788,67 @@ local function botFly(st, dt)
 	st.onGround = onGround
 end
 
+-- вертолёт бота: ai.move — желаемая скорость (мировая), ai.aim — куда смотреть носом (пулемёт курсовой).
+-- Скорость меняется плавно (разгон ограничен), нос поворачивается не быстрее TurnRate, корпус наклоняется
+-- по разгону — со стороны похоже на настоящий вертолёт. Возле земли не проваливается и садится мягко
+local HELI_ACCEL = 22 -- студ/с²
+local function botFlyHeli(st, dt)
+	local P = st.cfg
+	local ai = st.ai or {}
+	local root, model = st.root, st.model
+	local cf = root.CFrame
+	local pos = root.Position
+	local gear = model:GetAttribute("GearHeight") or 6
+	local params = botParams
+	local pc = charOf(st.pilot)
+	params.FilterDescendantsInstances = pc and {model, pc} or {model}
+	local ground = workspace:Raycast(pos, Vector3.new(0, -(gear + 3), 0), params)
+
+	-- скорость: к желаемой с ограниченным разгоном, в пределах лётных возможностей
+	local want = typeof(ai.move) == "Vector3" and ai.move or Vector3.zero
+	local flatW = Vector3.new(want.X, 0, want.Z)
+	if flatW.Magnitude > P.MaxSpeed then flatW = flatW.Unit * P.MaxSpeed end
+	want = Vector3.new(flatW.X, math.clamp(want.Y, -20, P.Climb), flatW.Z)
+	local vel = st.botVel or Vector3.zero
+	local dv = want - vel
+	local maxDv = HELI_ACCEL * dt
+	if dv.Magnitude > maxDv then dv = dv.Unit * maxDv end
+	vel += dv
+	if pos.Y > P.MaxAltitude - 20 and vel.Y > 0 then vel = Vector3.new(vel.X, 0, vel.Z) end
+	-- у земли: не уходим ниже полозьев, садимся не быстрее 8 студ/с
+	if ground then
+		local floorY = ground.Position.Y + gear
+		if vel.Y < 0 then vel = Vector3.new(vel.X, math.max(vel.Y, -8, (floorY - pos.Y) * 6), vel.Z) end
+	end
+	st.botVel = vel
+	st.speed = vel.Magnitude
+
+	-- курс: нос к цели по горизонтали не быстрее TurnRate; тангаж — к цели (пулемёт), но не круче −35°…+15°
+	local aim = (typeof(ai.aim) == "Vector3" and ai.aim.Magnitude > 0.01) and ai.aim.Unit or cf.LookVector
+	local fwd = cf.LookVector
+	local flatF = Vector3.new(fwd.X, 0, fwd.Z)
+	flatF = flatF.Magnitude > 0.01 and flatF.Unit or -Vector3.zAxis
+	local flatA = Vector3.new(aim.X, 0, aim.Z)
+	flatA = flatA.Magnitude > 0.01 and flatA.Unit or flatF
+	local heading = rotateToward(flatF, flatA, math.rad(P.TurnRate) * dt)
+	local aimPitch = math.clamp(math.asin(math.clamp(aim.Y, -1, 1)), math.rad(-35), math.rad(15))
+	-- наклон по разгону: вперёд — нос вниз, вбок — крен (до MaxTilt)
+	local right = heading:Cross(Vector3.yAxis).Unit
+	local acc = dv / math.max(dt, 1e-3)
+	local tilt = math.rad(P.MaxTilt)
+	local fwdSpeed = vel:Dot(heading)
+	local pitchFromMove = -math.clamp(fwdSpeed / P.MaxSpeed * 0.6 + acc:Dot(heading) / HELI_ACCEL * 0.4, -1, 1) * tilt
+	local roll = math.clamp(vel:Dot(right) / P.SideSpeed * 0.6 + acc:Dot(right) / HELI_ACCEL * 0.4, -1, 1) * tilt
+	if ground and vel.Magnitude < 6 then pitchFromMove, roll, aimPitch = 0, 0, 0 end -- на площадке стоит ровно
+	local pitch = math.abs(aimPitch) > 0.05 and aimPitch or pitchFromMove
+	st.bank += math.clamp(roll - st.bank, -math.rad(P.RollRate) * dt, math.rad(P.RollRate) * dt)
+	local look = CFrame.lookAt(Vector3.zero, heading) * CFrame.Angles(pitch, 0, 0) * CFrame.Angles(0, 0, -st.bank)
+	root.FlightAlign.CFrame = look
+	root.FlightDrive.VectorVelocity = vel
+	st.firing = ai.firing == true
+	st.onGround = ground ~= nil
+end
+
 ------------------------------------------------------------------ стрельба
 local fireParams = RaycastParams.new() -- общий: выстрел ~10 раз/с на самолёт
 fireParams.CollisionGroup = "Weapons" -- оружие видит и грузовые суда
@@ -860,7 +932,7 @@ local function step(dt)
 		end
 
 		if st.isBot and st.pilot then
-			botFly(st, dt)
+			if P.Heli then botFlyHeli(st, dt) else botFly(st, dt) end
 		end
 
 		local root = st.root

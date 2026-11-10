@@ -420,7 +420,7 @@ Config.Bombs = {
 Config.Bots = {
 	Enabled = true,
 	StudioOnly = false,    -- true — боты только в Studio
-	PerTeam = 16,          -- ботов + игроков в команде (игроков больше — ботов нет)
+	PerTeam = 32,          -- ботов + игроков в команде (игроков больше — ботов нет); сервер на 64
 	Health = 100,
 	WalkSpeed = 14,
 	Damage = 8,
@@ -433,8 +433,12 @@ Config.Bots = {
 	RespawnTime = 6,
 	ArenaRadius = 200,     -- центральный остров
 	-- роли в каждой команде (остальные — пехота на центральном острове)
-	-- боты летают только на истребителях, ходят только на катерах и сидят в зенитках своей базы (BotService пропускает любые другие роли)
-	Roles = {BaseGunners = 2, Pilots = 7, Gunboats = 7},
+	-- боты летают на истребителях и вертолётах, ходят на катерах и сидят в зенитках своей базы (BotService пропускает любые другие роли)
+	Roles = {BaseGunners = 4, Pilots = 10, HeliPilots = 4, Gunboats = 14},
+	HeliCruise = 70,       -- вертолёт бота: высота над землёй в пути
+	HeliAttackAlt = 45,    -- над целью при атаке
+	HeliStandoff = 260,    -- держится на таком расстоянии от цели и стреляет
+	HeliRange = 2200,      -- ищет цели (пехота, корабли, вертолёты) в этом радиусе
 	BuyBattleship = false, -- бот-командир спускает на воду линкор, если его нет
 	BuyCarrier = false,    -- бот-командир покупает авианосец, если его нет
 	CarrierBuyDelay = 15,  -- сек. после старта
@@ -564,10 +568,10 @@ Config.SubWeapons = {
 
 -- Лимиты техники (защита от спама; боты их тоже соблюдают)
 Config.Limits = {
-	PlanesPerTeam = 12,          -- у каждого игрока при этом не больше 1 своего самолёта
-	BombersPerTeam = 3,          -- из них бомбардировщиков
-	HelisPerTeam = 4,            -- из них вертолётов
-	GunboatsPerTeam = 8,
+	PlanesPerTeam = 20,          -- у каждого игрока при этом не больше 1 своего самолёта
+	BombersPerTeam = 4,          -- из них бомбардировщиков
+	HelisPerTeam = 6,            -- из них вертолётов
+	GunboatsPerTeam = 16,
 	SubmarinesPerTeam = 6,
 	PersonalShipsPerPlayer = 2,  -- катера + подлодки одного игрока одновременно
 }

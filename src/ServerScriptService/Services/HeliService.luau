@@ -501,7 +501,81 @@ function HeliService.resetAll()
 	end
 end
 
+-- задние площадки базы — витрина: на одной стоит боевой вертолёт (копия модели игрока), на другой грузовой.
+-- Площадка помечается атрибутом Display — PlaneService не ставит на неё вертолёты игроков.
+local DISPLAY_PADS = {Pad4 = "Combat", Pad2 = "Cargo"}
+
+local function padTopOf(m)
+	local disk = m:FindFirstChild("HeliPad") or m:FindFirstChild("PadBase")
+	if not disk then return nil end
+	local top = disk.Position.Y + (disk.Name == "HeliPad" and disk.Size.X or disk.Size.Y) / 2
+	return Vector3.new(disk.Position.X, top, disk.Position.Z)
+end
+
+-- неподвижная копия: всё закреплено, без кресел, приводов и атрибутов (не цель, не самолёт, не груз)
+local function freeze(m)
+	for k in pairs(m:GetAttributes()) do m:SetAttribute(k, nil) end
+	for _, d in ipairs(m:GetDescendants()) do
+		if d:IsA("Seat") or d:IsA("VehicleSeat") or d:IsA("Constraint") or d:IsA("ProximityPrompt")
+			or d:IsA("Script") or d:IsA("LocalScript") or d:IsA("Sound") then
+			d:Destroy()
+		end
+	end
+	for _, d in ipairs(m:GetDescendants()) do
+		if d:IsA("BasePart") then
+			d.Anchored = true
+			d.CanTouch = false
+			for k in pairs(d:GetAttributes()) do if k ~= "TeamPaint" then d:SetAttribute(k, nil) end end
+		end
+	end
+end
+
+local function placeDisplays()
+	for _, team in ipairs(Config.TeamOrder) do
+		local base = workspace.Map.Teams:FindFirstChild(team .. "Base")
+		local helipad = base and base.Decor:FindFirstChild("Helipad")
+		for padName, kind in pairs(DISPLAY_PADS) do
+			local pad = helipad and helipad:FindFirstChild(padName)
+			local top = pad and padTopOf(pad)
+			if top then
+				pad:SetAttribute("Display", kind)
+				local m
+				if kind == "Cargo" then
+					local parts
+					m, parts = buildHeli(team)
+					local root = CFrame.lookAt(top + Vector3.new(0, 7.2, 0), Vector3.new(0, top.Y + 7.2, 0)) -- низ колёс на площадке
+					for _, p in ipairs(parts) do
+						local off = p.offset
+						if p.spin then
+							off = off * CFrame.Angles(0, math.rad(p.spin.angle) * p.spin.dir, 0) * CFrame.new(p.spin.radial, 0, 0)
+						end
+						p.part.CFrame = root * off
+					end
+				else
+					local template = ServerStorage.Vehicles:FindFirstChild(Config.Planes.Heli and Config.Planes.Heli.Model or "Helicopter")
+					if template then
+						m = template:Clone()
+						local tcol = Config.Teams[team].Color
+						for _, d in ipairs(m:GetDescendants()) do
+							if d:IsA("BasePart") and d:GetAttribute("TeamPaint") then d.Color = tcol end
+						end
+						local gear = template:GetAttribute("GearHeight") or 6
+						local pos = top + Vector3.new(0, gear, 0) -- полозья ровно на площадке
+						m:PivotTo(CFrame.lookAt(pos, Vector3.new(0, pos.Y, 0)))
+					end
+				end
+				if m then
+					freeze(m)
+					m.Name = "Display" .. kind .. "Heli"
+					m.Parent = pad
+				end
+			end
+		end
+	end
+end
+
 function HeliService.init()
+	placeDisplays()
 	folder = Instance.new("Folder")
 	folder.Name = "Helis"
 	folder.Parent = workspace.Map

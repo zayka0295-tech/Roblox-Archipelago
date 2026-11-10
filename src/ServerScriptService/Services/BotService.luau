@@ -34,8 +34,8 @@ local ANIM = {
 	sit = "rbxassetid://2506281703",
 }
 local SHIP_ROLE = {bsCaptain = "Battleship", gbCaptain = "Gunboat", subCaptain = "Submarine"}
--- ботам разрешены только истребитель (spawnForBot), катер и зенитки своей базы; авианосец, линкор, подлодка и их турели — только игрокам
-local ALLOWED_ROLE = {pilot = true, gbCaptain = true, baseGunner = true}
+-- ботам разрешены только истребитель и вертолёт (spawnForBot), катер и зенитки своей базы; авианосец, линкор, подлодка и их турели — только игрокам
+local ALLOWED_ROLE = {pilot = true, heliPilot = true, gbCaptain = true, baseGunner = true}
 
 local terrainParams = RaycastParams.new()
 terrainParams.FilterType = Enum.RaycastFilterType.Include
@@ -165,7 +165,7 @@ local function collectEnemies()
 	end
 	for model, pst in pairs(PlaneService.getAll()) do
 		if model.Parent and pst.team and list[pst.team] then
-			table.insert(list[pst.team], {pos = pst.root.Position, kind = "plane", vel = pst.root.AssemblyLinearVelocity})
+			table.insert(list[pst.team], {pos = pst.root.Position, kind = "plane", vel = pst.root.AssemblyLinearVelocity, heli = pst.cfg and pst.cfg.Heli})
 		end
 	end
 	for _, team in ipairs(Config.TeamOrder) do
@@ -692,6 +692,108 @@ local function thinkPilot(st, enemies, now)
 	PlaneService.setBotInput(st.model, input)
 end
 
+------------------------------------------------------------------ пилот вертолёта
+-- взлетает с площадки вертикально, летит на высоте HeliCruise к цели (пехота, корабли, вражеские вертолёты),
+-- на расстоянии HeliStandoff зависает над целью на HeliAttackAlt, кружит и стреляет носовым пулемётом.
+-- Целей нет — патрулирует над островами. Перед препятствием по курсу набирает высоту
+local HP = Config.Planes.Heli
+local obstacleParams = RaycastParams.new()
+obstacleParams.FilterType = Enum.RaycastFilterType.Include
+obstacleParams.IgnoreWater = true
+
+local function thinkHeli(st, enemies, now)
+	local model, pst = PlaneService.planeOf(st.model)
+	if not model or not pst or not pst.root.Parent then return end
+	local root = pst.root
+	local pos = root.Position
+	local fwd = root.CFrame.LookVector
+	if now - planeRayT > 5 then
+		planeRayT = now
+		local list = {workspace.Terrain}
+		for _, n in ipairs({"Teams", "Neutral", "Nature", "Carriers"}) do
+			local f = workspace.Map:FindFirstChild(n)
+			if f then table.insert(list, f) end
+		end
+		planeRayParams.FilterDescendantsInstances = list
+	end
+	local g = workspace:Raycast(pos, Vector3.new(0, -800, 0), planeRayParams)
+	local groundY = g and g.Position.Y or 0
+	local agl = pos.Y - groundY
+
+	-- цель: вражеский вертолёт рядом — первым делом, иначе ближайшие пехота или корабль
+	local range = B.HeliRange or 2200
+	local target = nil
+	for _, e in ipairs(enemies) do
+		if e.kind == "plane" and e.heli and (e.pos - pos).Magnitude < 700 then
+			if not target or (e.pos - pos).Magnitude < (target.pos - pos).Magnitude then target = e end
+		end
+	end
+	if not target then
+		local inf, di = nearest(enemies, pos, "inf", range)
+		local ship, ds = nearest(enemies, pos, "ship", range)
+		target = (inf and (not ship or di < ds)) and inf or ship
+	end
+
+	local move, aim, firing = Vector3.zero, nil, false
+	local cruise = B.HeliCruise or 70
+	local targetY = groundY + cruise
+	if target then
+		local tp = target.pos
+		local to = tp - pos
+		local flatTo = Vector3.new(to.X, 0, to.Z)
+		local d = flatTo.Magnitude
+		local dirTo = d > 1 and flatTo.Unit or Vector3.new(fwd.X, 0, fwd.Z).Unit
+		local standoff = B.HeliStandoff or 260
+		st.circle = st.circle or (rng:NextNumber() < 0.5 and -1 or 1)
+		if d > standoff + 80 then
+			move = dirTo * math.min(HP.MaxSpeed, (d - standoff) * 0.5 + 10)
+		elseif d < standoff - 90 then
+			move = -dirTo * 20 + dirTo:Cross(Vector3.yAxis) * st.circle * 10
+		else
+			move = dirTo:Cross(Vector3.yAxis) * st.circle * 16 -- облёт по кругу, чтобы не висеть мишенью
+		end
+		if target.heli then
+			-- по вертолёту — на его высоте (иначе оба лезут выше друг друга до потолка)
+			targetY = math.clamp(tp.Y, groundY + 30, groundY + 150)
+		elseif d < standoff + 300 then
+			targetY = math.max(tp.Y + (B.HeliAttackAlt or 45), groundY + 30)
+		end
+		local lead = target.vel and target.vel * (to.Magnitude / 900) or Vector3.zero
+		local aimDir = (tp + lead - pos)
+		aim = aimDir.Unit
+		firing = aimDir.Magnitude < 750 and fwd:Dot(aim) > math.cos(math.rad(5)) and agl > 12
+	else
+		-- патруль: облёт центра карты по своей орбите
+		local ang = now * 0.05 + st.slot.index * 1.3
+		local wp = Vector3.new(math.cos(ang) * 700, 0, math.sin(ang) * 450)
+		local flatTo = Vector3.new(wp.X - pos.X, 0, wp.Z - pos.Z)
+		move = flatTo.Magnitude > 1 and flatTo.Unit * math.min(HP.MaxSpeed * 0.8, flatTo.Magnitude) or Vector3.zero
+	end
+	-- у края карты — назад к центру
+	if math.abs(pos.X) > HP.BoundsX - 250 or math.abs(pos.Z) > HP.BoundsZ - 150 then
+		move = Vector3.new(-pos.X, 0, -pos.Z).Unit * HP.MaxSpeed * 0.7
+	end
+	-- взлёт: сначала вверх, потом вперёд
+	if agl < 25 then move *= math.clamp(agl / 25, 0, 1) end
+	-- препятствие по курсу (склон, здание, мачта): тормозим и набираем высоту
+	local flatMove = Vector3.new(move.X, 0, move.Z)
+	if flatMove.Magnitude > 5 then
+		obstacleParams.FilterDescendantsInstances = planeRayParams.FilterDescendantsInstances
+		local look = flatMove.Unit * math.max(60, flatMove.Magnitude * 2)
+		local hit = workspace:Raycast(pos, look, obstacleParams)
+			or workspace:Raycast(pos - Vector3.new(0, 7, 0), look, obstacleParams)
+		if hit then
+			targetY = math.max(targetY, pos.Y + 40)
+			move = move * 0.25
+		end
+	end
+	local vy = math.clamp((targetY - pos.Y) * 0.6, -15, HP.Climb)
+	if agl < 20 and vy < 4 and agl > 2 then vy = math.max(vy, 4) end
+	move = Vector3.new(move.X, vy, move.Z)
+	aim = aim or (flatMove.Magnitude > 5 and flatMove.Unit or Vector3.new(fwd.X, 0, fwd.Z))
+	PlaneService.setBotInput(st.model, {move = move, aim = aim, firing = firing})
+end
+
 ------------------------------------------------------------------ слоты и появление
 local function seatFree(seat)
 	return seat and seat.Parent and seat.Occupant == nil
@@ -754,7 +856,7 @@ end
 
 local function canSpawn(slot)
 	if slot.role == "infantry" then return true end
-	if slot.role == "pilot" then return true end
+	if slot.role == "pilot" or slot.role == "heliPilot" then return true end
 	if slot.role == "gbCaptain" or slot.role == "subCaptain" then return true end
 	if slot.role ~= "captain" and slot.role ~= "bsCaptain" then refreshTurret(slot) end
 	return seatFree(slotSeat(slot))
@@ -804,14 +906,19 @@ local function spawnSlot(slot)
 		ff.Parent = bot
 		Debris:AddItem(ff, 3)
 		setupAnims(st, false)
-	elseif slot.role == "pilot" then
+	elseif slot.role == "pilot" or slot.role == "heliPilot" then
 		local base = workspace.Map.Teams:FindFirstChild(slot.team .. "Base")
 		local marker = base and base.Zones:FindFirstChild("PlaneSpawn")
 		bot:PivotTo(CFrame.new((marker and marker.Position or Vector3.zero) + Vector3.new(0, 30, 0)))
 		bot.Parent = folder
-		local info = CarrierService.getInfo(slot.team)
-		local fromCarrier = info and info.state == "Active" and info.model and math.abs(info.model:GetAttribute("Speed") or 0) < 2 and rng:NextNumber() < 0.5
-		local ok = PlaneService.spawnForBot(bot, slot.team, fromCarrier and "Carrier" or "Base", fromCarrier and info.model or nil)
+		local ok
+		if slot.role == "heliPilot" then
+			ok = PlaneService.spawnForBot(bot, slot.team, "Base", nil, "Heli")
+		else
+			local info = CarrierService.getInfo(slot.team)
+			local fromCarrier = info and info.state == "Active" and info.model and math.abs(info.model:GetAttribute("Speed") or 0) < 2 and rng:NextNumber() < 0.5
+			ok = PlaneService.spawnForBot(bot, slot.team, fromCarrier and "Carrier" or "Base", fromCarrier and info.model or nil)
+		end
 		if not ok then
 			bot:Destroy()
 			slot.state = nil
@@ -889,6 +996,7 @@ local function buildSlots()
 		for i = 1, (R.CarrierGunners or 0) do add("carrierGunner", i) end
 		for i = 1, (R.BaseGunners or 0) do add("baseGunner", i) end
 		for i = 1, (R.Pilots or 0) do add("pilot", i) end
+		for i = 1, (R.HeliPilots or 0) do add("heliPilot", i) end
 		for i = 1, (R.BattleshipCaptain or 0) do add("bsCaptain", i) end
 		for i = 1, (R.BattleshipGunners or 0) do add("bsGunner", i) end
 		for i = 1, (R.Gunboats or 0) do add("gbCaptain", i) end
@@ -1070,7 +1178,7 @@ function BotService.init()
 			local st = slot.state
 			if st and st.hum and st.hum.Health > 0 and now >= st.nextThink and st.model.Parent then
 				local role = slot.role
-				st.nextThink = now + (role == "pilot" and 0.12 or 0.25)
+				st.nextThink = now + ((role == "pilot" or role == "heliPilot") and 0.12 or 0.25)
 				local foes = enemies[other(slot.team)]
 				local ok, err = pcall(function()
 					if role == "infantry" then
@@ -1083,6 +1191,8 @@ function BotService.init()
 						thinkCaptain(st, now)
 					elseif role == "pilot" then
 						thinkPilot(st, foes, now)
+					elseif role == "heliPilot" then
+						thinkHeli(st, foes, now)
 					end
 				end)
 				if not ok then warn("[BotService] " .. role .. ": " .. tostring(err)) end
