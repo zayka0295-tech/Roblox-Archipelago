@@ -170,10 +170,9 @@ return function(ctx)
 		if P.Heli then
 			rows = {
 				{"Mouse", "Aim — the helicopter turns to it"},
-				{"W", "Fly toward the crosshair"},
-				{"S", "Back / brake"},
-				{"A / D", "Strafe left / right"},
-				{"E / Q", "Up / down (or Shift / Ctrl)"},
+				{"W / S", "Tilt nose down / up (speed up / brake)"},
+				{"A / D", "Bank left / right"},
+				{"E / Q", "Collective up / down (or Shift / Ctrl)"},
 				{"Arrows", "Turn / nose up-down"},
 				{"LMB", "Machine gun"},
 				{"Space", "Leave the helicopter"},
@@ -352,16 +351,23 @@ return function(ctx)
 		end
 	end
 
-	-- Вертолёт (P.Heli) — «прицел мышью»: мышь вращает камеру вокруг вертолёта (круг в центре экрана — точка
-	-- прицела), а вертолёт сам, с запаздыванием, наводится носом на эту точку — и по курсу, и по тангажу — и кренится
-	-- в повороте. Пулемёт закреплён и бьёт прямо по носу (жёлтая точка); навёлся вертолёт — точка в круге.
-	-- Камера к вертолёту не привязана: догоняет его плавно, вертолёт ходит по кадру.
-	-- W — лететь туда, куда смотрит прицел (вверх/вниз тоже), S — назад/тормоз, A/D — вбок,
-	-- E/Shift — вверх, Q/Ctrl — вниз. Без ввода — висит на месте.
-	-- На телефоне: курс — пальцем, стик Roblox — движение, кнопки UP/DOWN
-	local heliVel = Vector3.zero
-	local heliYawVel = 0
-	local heliPitch = 0
+	-- Вертолёт (P.Heli) — физика полёта. Сил две, обе — через физику Roblox, без телепорта:
+	--  • LiftForce (VectorForce у Root, в мировых осях): подъёмная сила несущего винта вдоль оси «вверх» корпуса
+	--    плюс сопротивление воздуха; вес даёт сама гравитация. Наклон корпуса наклоняет и тягу — горизонтальная
+	--    её часть разгоняет вертолёт, поэтому скорость набирается постепенно и сохраняется (инерция).
+	--  • FlightAlign (AlignOrientation): автомат перекоса и хвостовой винт — доворачивают корпус к нужному
+	--    наклону и курсу с конечной скоростью (Responsiveness), так ощущается масса. Отпустил — корпус плавно
+	--    возвращается в горизонт.
+	-- Подъёмная сила ∝ (обороты винта)² × коллектив: сел — винт раскручивается за SpoolTime сек.;
+	-- E/Shift — коллектив вверх, Q/Ctrl — вниз, без них коллектив сам держит высоту (зависание).
+	-- W/S — наклон носа вперёд/назад (разгон / торможение), A/D — крен влево/вправо (смещение и поворот
+	-- траектории). Мышь — прицел: хвостовой винт разворачивает нос к точке прицела, без W/S нос наводится на неё
+	-- и по высоте (пулемёт закреплён и бьёт прямо по носу), а «стабилизатор» не даёт этому наклону сносить
+	-- вертолёт. Всё считается от массы сборки и гравитации — подходит для любой модели вертолёта.
+	-- На телефоне: курс — пальцем, стик Roblox — W/S/A/D, кнопки UP/DOWN — коллектив
+	local heliYawVel, heliYawT = 0, 0 -- скорость и целевой курс хвостового винта (ведёт корпус за собой)
+	local heliPitch, heliRoll = 0, 0
+	local heliRPM = 0
 	local heliCam -- сглаженная позиция камеры
 	local camParams = RaycastParams.new()
 	camParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -397,8 +403,10 @@ return function(ctx)
 		if held.down then climb -= 1 end
 		mx, mz, climb = math.clamp(mx, -1, 1), math.clamp(mz, -1, 1), math.clamp(climb, -1, 1)
 
+		local model = flying.model
 		local pos = root.Position
-		local gear = flying.model:GetAttribute("GearHeight") or 6
+		local vel = root.AssemblyLinearVelocity
+		local gear = model:GetAttribute("GearHeight") or 6
 		groundParams.FilterDescendantsInstances = ignoreList(char)
 		local ground = workspace:Raycast(pos, Vector3.new(0, -(gear + 1.5), 0), groundParams)
 		local onGround = ground ~= nil and ground.Material ~= Enum.Material.Water
@@ -406,23 +414,30 @@ return function(ctx)
 		local look = root.CFrame.LookVector
 		local yaw = math.atan2(-look.X, -look.Z)
 		if not flying.heliInit then
-			-- сел в вертолёт: скорость — как у него сейчас (пересел в зависший в воздухе — не дёргается)
+			-- сел: на земле винт раскручивается с нуля, в воздухе (пересел в зависший) — уже на оборотах
 			flying.heliInit = true
-			local v = root.AssemblyLinearVelocity
-			heliVel = Vector3.new(v.X, 0, v.Z)
-			heliYawVel, heliPitch, heliCam = 0, 0, nil
+			heliRPM = onGround and 0 or 1
+			heliYawVel, heliYawT, heliCam = 0, yaw, nil
+			local px = root.CFrame:ToOrientation()
+			heliPitch, heliRoll = px, 0
+			flying.lift = root:FindFirstChild("LiftForce")
+			if flying.lv then flying.lv.Enabled = false end -- у вертолёта не задаём скорость напрямую
+			if flying.ao then flying.ao.Responsiveness = P.AttitudeResponse or 10 end
 		end
+		local lift = flying.lift
 		local aimDir = CFrame.fromOrientation(aimPitch, aimYaw, 0).LookVector
-		-- стоит на земле, пока не начали взлёт (вверх или W с прицелом выше горизонта)
-		local parked = onGround and climb <= 0 and not (mz > 0 and aimDir.Y > 0.05)
+		-- стоит на земле, пока не начали взлёт
+		local parked = onGround and climb <= 0 and vel.Magnitude < 8
 
-		-- камера: смотрит строго по прицелу (мышь), позиция плавно догоняет точку за вертолётом и выше него —
-		-- вертолёт в нижней части кадра, не закрывает прицел, и не «приклеен» к экрану
+		-- обороты несущего винта (раскрутка ~SpoolTime сек.); винт и хвостовой винт крутятся с ними (PlaneClient ниже)
+		heliRPM = math.min(1, heliRPM + dt / (P.SpoolTime or 3))
+		model:SetAttribute("RotorRPM", heliRPM)
+
+		-- камера: смотрит строго по прицелу (мышь), позиция плавно догоняет точку за вертолётом и выше него
 		local cam = workspace.CurrentCamera
 		local camDist = P.CamDistance or 40
 		local eye = pos + Vector3.new(0, 4, 0)
 		local wantCam = pos - aimDir * camDist + Vector3.new(0, 14, 0)
-		-- камеру не пускаем сквозь землю и стены
 		camParams.FilterDescendantsInstances = ignoreList(char)
 		local block = workspace:Raycast(eye, wantCam - eye, camParams)
 		if block then wantCam = block.Position + block.Normal * 1.5 end
@@ -434,82 +449,87 @@ return function(ctx)
 		local aimHit = workspace:Raycast(heliCam, aimDir * 1000, shotParams)
 		local aimAt = aimHit and aimHit.Position or heliCam + aimDir * 600
 		local toAim = aimAt - pos
-		if toAim.Magnitude < 25 then toAim = aimDir * 25 end -- точка вплотную к вертолёту — по направлению прицела
+		if toAim.Magnitude < 25 then toAim = aimDir * 25 end
 		local flatTo = Vector3.new(toAim.X, 0, toAim.Z).Magnitude
 
-		-- курс: нос с запаздыванием наводится на точку прицела (у поворота есть разгон — вертолёт «плывёт»)
+		-- хвостовой винт: курс к точке прицела, у поворота есть разгон
 		local turnMax = math.rad(P.TurnRate)
-		local yawErr = (math.atan2(-toAim.X, -toAim.Z) - yaw + math.pi) % (2 * math.pi) - math.pi
-		local wantYawVel = parked and 0 or math.clamp(yawErr * 4, -turnMax, turnMax)
+		local yawErr = (math.atan2(-toAim.X, -toAim.Z) - heliYawT + math.pi) % (2 * math.pi) - math.pi
+		local wantYawVel = parked and 0 or math.clamp(yawErr * 4, -turnMax, turnMax) * heliRPM
 		heliYawVel += (wantYawVel - heliYawVel) * math.min(1, dt * 7)
-		yaw += heliYawVel * dt
-		local heading = CFrame.Angles(0, yaw, 0)
+		heliYawT += heliYawVel * dt
+		-- целевой курс не убегает от корпуса дальше ~30° (упёрся во что-то — не накапливаем)
+		local lead = (heliYawT - yaw + math.pi) % (2 * math.pi) - math.pi
+		heliYawT = yaw + math.clamp(lead, -0.5, 0.5)
+		local heading = CFrame.Angles(0, heliYawT, 0)
 		local fwd, right = heading.LookVector, heading.RightVector
 
-		-- скорость: W — по прицелу (и по высоте), S — назад, A/D — вбок, E/Q — вверх/вниз
+		-- автомат перекоса: нужный наклон корпуса. W/S — нос вниз/вверх, A/D — крен; без W/S нос — на прицел.
+		-- В повороте на скорости — согласованный крен
+		local maxTilt = math.rad(P.MaxTilt)
+		local hVel = Vector3.new(vel.X, 0, vel.Z)
+		local fwdSpeed, sideSpeed = hVel:Dot(fwd), hVel:Dot(right)
+		local wantPitch, wantRoll = 0, 0
 		local limitMsg
-		local want = Vector3.zero
 		if not parked then
-			local flatAim = Vector3.new(aimDir.X, 0, aimDir.Z)
-			flatAim = flatAim.Magnitude > 0.01 and flatAim.Unit or fwd
-			if mz > 0 then
-				want = flatAim * P.MaxSpeed * mz + Vector3.new(0, math.clamp(aimDir.Y * P.MaxSpeed, -P.Climb * 1.5, P.Climb * 1.5) * mz, 0)
-			elseif mz < 0 then
-				want = fwd * P.SideSpeed * mz
+			if mz ~= 0 then
+				wantPitch = -mz * maxTilt
+			else
+				wantPitch = math.clamp(math.atan2(toAim.Y, flatTo), math.rad(P.AimPitchMin), math.rad(P.AimPitchMax))
 			end
-			want += right * mx * P.SideSpeed + Vector3.new(0, climb * P.Climb, 0)
+			wantRoll = -mx * maxTilt + math.clamp(heliYawVel / turnMax * math.clamp(fwdSpeed / P.MaxSpeed, 0, 1), -1, 1) * math.rad(20)
 		end
+		-- граница карты: наклон к центру
 		if math.abs(pos.X) > P.BoundsX or math.abs(pos.Z) > P.BoundsZ then
-			want = Vector3.new(-pos.X, 0, -pos.Z).Unit * P.SideSpeed
+			local toC = Vector3.new(-pos.X, 0, -pos.Z).Unit
+			wantPitch, wantRoll = -toC:Dot(fwd) * maxTilt, -toC:Dot(right) * maxTilt
+			mz, mx = 1, 1 -- стабилизатор не гасит этот наклон
 			limitMsg = "Map edge — turn back"
 		end
-		if pos.Y > P.MaxAltitude and want.Y > 0 then
-			want = Vector3.new(want.X, 0, want.Z)
+		heliPitch += (wantPitch - heliPitch) * math.min(1, dt * 5)
+		heliRoll += (wantRoll - heliRoll) * math.min(1, dt * 5)
+		if flying.ao then flying.ao.CFrame = heading * CFrame.Angles(heliPitch, 0, 0) * CFrame.Angles(0, 0, heliRoll) end
+
+		-- подъёмная сила: коллектив держит заданную вертикальную скорость (без E/Q — 0, зависание)
+		local M = root.AssemblyMass
+		local g = workspace.Gravity
+		local wantVy = climb * P.Climb
+		if pos.Y > P.MaxAltitude and wantVy > 0 then
+			wantVy = 0
 			limitMsg = "Altitude ceiling"
 		end
-		local cur = heliVel
-		local dv = want - cur
-		local maxDv = P.Acceleration * dt * (want.Magnitude < cur.Magnitude and 1.3 or 1)
-		if dv.Magnitude > maxDv then dv = dv.Unit * maxDv end
-		heliVel = cur + dv
-		local vel = heliVel
-		if parked then
-			heliVel = Vector3.zero
-			vel = Vector3.new(0, (ground.Position.Y + gear - pos.Y) * 6, 0)
-		end
-		if pos.Y - gear < 2 then vel = Vector3.new(vel.X, math.max(vel.Y, (2 - (pos.Y - gear)) * 4), vel.Z) end -- над водой
-		-- мягкая посадка: у земли снижение само замедляется (к полозьям — не быстрее ~6 студ/с)
-		if not parked and vel.Y < 0 then
+		-- мягкая посадка: у земли снижение само замедляется
+		if wantVy < 0 then
 			local below = workspace:Raycast(pos, Vector3.new(0, -(gear + 30), 0), groundParams)
-			if below then
-				local h = math.max(0, pos.Y - gear - below.Position.Y)
-				vel = Vector3.new(vel.X, math.max(vel.Y, -(6 + h * 1.2)), vel.Z)
-			end
+			if below then wantVy = math.max(wantVy, -(5 + math.max(0, pos.Y - gear - below.Position.Y) * 1.2)) end
 		end
-		local groundVel = Vector3.zero
-		if onGround and ground.Instance:IsA("BasePart") then
-			local gv = ground.Instance:GetVelocityAtPosition(ground.Position)
-			groundVel = Vector3.new(gv.X, 0, gv.Z) -- палуба авианосца
-		end
+		if pos.Y - gear < 2 then wantVy = math.max(wantVy, 6) end -- над самой водой — вверх
+		local up = root.CFrame.UpVector
+		local needVert = M * (g + (wantVy - vel.Y) * 3) -- вертикальная часть тяги
+		local thrust = needVert / math.max(up.Y, 0.35)
+		local maxThrust = M * g * (P.LiftReserve or 1.9) * heliRPM * heliRPM
+		thrust = math.clamp(thrust, 0, maxThrust)
+		if parked then thrust = math.min(thrust, M * g * 0.9 * heliRPM * heliRPM) end -- стоит на полозьях
+		local force = up * thrust
+		-- стабилизатор: наклон носа на прицел (без W/S) и крен поворота (без A/D) не сносят вертолёт
+		local hThrust = Vector3.new(force.X, 0, force.Z)
+		if mz == 0 then force -= fwd * hThrust:Dot(fwd) end
+		if mx == 0 then force -= right * hThrust:Dot(right) end
+		-- сопротивление воздуха по осям вертолёта: даёт предельную скорость MaxSpeed (вперёд при полном
+		-- наклоне) и SideSpeed (вбок / назад); без W/S/A/D — ещё и торможение к зависанию (инерция остаётся)
+		local tanT = math.tan(maxTilt)
+		local cF = g * tanT / (fwdSpeed >= 0 and P.MaxSpeed or P.SideSpeed)
+		local cS = g * tanT / P.SideSpeed
+		local brake = P.HoverBrake or 0.8
+		if mz == 0 then cF += brake end
+		if mx == 0 then cS += brake end
+		force -= M * (fwd * fwdSpeed * cF + right * sideSpeed * cS)
 		-- турбулентность в грозовом облаке
-		local bump = Vector3.zero
-		if flying.model:GetAttribute("InStorm") then
-			bump = Vector3.new(math.noise(os.clock() * 2.1, 3.3) * 20, math.noise(os.clock() * 3.1, 9.9) * 25, math.noise(os.clock() * 2.4, 5.1) * 20)
+		if model:GetAttribute("InStorm") then
+			local t = os.clock()
+			force += M * Vector3.new(math.noise(t * 2.1, 3.3) * 80, math.noise(t * 3.1, 9.9) * 120, math.noise(t * 2.4, 5.1) * 80)
 		end
-		if flying.lv then flying.lv.VectorVelocity = vel + groundVel + bump end
-
-		-- наклон корпуса: нос с пулемётом наведён на точку прицела;
-		-- крен — в поворот и в сторону бокового движения
-		local sideFrac = math.clamp(heliVel:Dot(right) / P.SideSpeed, -1, 1)
-		local wantPitch, roll = 0, 0
-		if not parked then
-			-- нос (и пулемёт) — точно на точку прицела, в пределах AimPitchMin..Max
-			wantPitch = math.clamp(math.atan2(toAim.Y, flatTo), math.rad(P.AimPitchMin), math.rad(P.AimPitchMax))
-			roll = (heliYawVel / turnMax) * math.rad(22) - sideFrac * math.rad(P.MaxTilt) -- в поворот влево — крен влево
-		end
-		heliPitch += (wantPitch - heliPitch) * math.min(1, dt * 4)
-		bank += (roll - bank) * math.min(1, dt * 3)
-		if flying.ao then flying.ao.CFrame = heading * CFrame.Angles(heliPitch, 0, 0) * CFrame.Angles(0, 0, bank) end
+		if lift then lift.Force = force end
 
 		-- пулемёт закреплён: бьёт прямо по носу, стволы сведены на дальность точки прицела.
 		-- Метки: круг — прицел (центр экрана), точка — куда полетят пули сейчас
@@ -523,18 +543,20 @@ return function(ctx)
 		aimMark.Position = UDim2.fromOffset(vs.X / 2, vs.Y / 2)
 		noseMark.Position = UDim2.fromOffset(n.X, n.Y)
 
-		-- приборы
-		speed = heliVel.Magnitude
+		-- приборы: скорость, высота; полоса — обороты винта, пока раскручивается, потом скорость
+		speed = hVel.Magnitude
 		local alt = ground and (pos.Y - gear - ground.Position.Y) or (pos.Y - gear)
-		flightLbl.Text = ("%d km/h · %d m"):format(math.floor(speed * 4), math.max(0, math.floor(pos.Y)))
-		thrBar.Size = UDim2.fromScale(math.clamp(speed / P.MaxSpeed, 0, 1), 1)
-		local hp = (flying.model:GetAttribute("Health") or 0) / (flying.model:GetAttribute("MaxHealth") or 1)
+		flightLbl.Text = ("%d km/h · %d m"):format(math.floor(vel.Magnitude * 4), math.max(0, math.floor(pos.Y)))
+		thrBar.Size = UDim2.fromScale(heliRPM < 1 and heliRPM or math.clamp(speed / P.MaxSpeed, 0, 1), 1)
+		local hp = (model:GetAttribute("Health") or 0) / (model:GetAttribute("MaxHealth") or 1)
 		hpBar.Size = UDim2.fromScale(math.clamp(hp, 0, 1), 1)
 		hpBar.BackgroundColor3 = hp > 0.5 and T.Good or (hp > 0.25 and T.Gold or T.Bad)
 		statusLbl.Text = hp > 0.25 and ("Hull %d%%"):format(math.floor(hp * 100 + 0.5)) or ('<font color="#eb554b">Hull %d%%</font>'):format(math.floor(hp * 100 + 0.5))
 		if limitMsg then
 			warn.Text, warn.TextColor3, warn.Visible = limitMsg, T.Gold, true
-		elseif parked and alt < 1 then
+		elseif heliRPM < 1 and onGround then
+			warn.Text, warn.TextColor3, warn.Visible = ("Rotor spinning up · %d%%"):format(math.floor(heliRPM * 100)), T.Gold, true
+		elseif onGround and alt < 1 and climb <= 0 then
 			warn.Text, warn.TextColor3, warn.Visible = touchOnly and "Hold UP to take off" or "Hold E to take off", T.Gold, true
 		else
 			warn.Visible = false
@@ -818,8 +840,14 @@ return function(ctx)
 		local meSeated = myHum ~= nil and myHum.SeatPart ~= nil
 		for _, plane in ipairs(f:GetChildren()) do
 			if plane:GetAttribute("EngineOn") then
+				local rpm = plane:GetAttribute("RotorRPM") or 1
 				for _, m in ipairs(motorsOf(plane)) do
-					local a = m[4] == 1 and angle or (os.clock() * 40 * m[4]) % (math.pi * 2) -- без скачка при обороте angle
+					local a = angle
+					if m[3] ~= "Z" then
+						-- винты вертолёта: свой угол, скорость — по оборотам (раскрутка у пилота)
+						m[5] = ((m[5] or 0) + dt * 40 * m[4] * rpm) % (math.pi * 2)
+						a = m[5]
+					end
 					m[1].C0 = m[2] * (m[3] == "Y" and CFrame.Angles(0, a, 0) or m[3] == "X" and CFrame.Angles(a, 0, 0) or CFrame.Angles(0, 0, a))
 				end
 			end

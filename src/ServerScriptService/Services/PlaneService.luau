@@ -130,6 +130,7 @@ local function destroyPlane(model, killer, reason)
 	setOwner(root, nil)
 	root.FlightAlign.Enabled = false
 	root.FlightDrive.Enabled = false
+	if root:FindFirstChild("LiftForce") then root.LiftForce.Enabled = false end
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("WeldConstraint") or d:IsA("Motor6D") then
 			d:Destroy()
@@ -335,7 +336,14 @@ local function setupSeat(model, st)
 			root.FlightAlign.CFrame = root.CFrame.Rotation
 			root.FlightDrive.VectorVelocity = root.AssemblyLinearVelocity
 			root.FlightAlign.Enabled = true
-			root.FlightDrive.Enabled = true
+			-- вертолёт летит на физике (подъёмная сила LiftForce считает клиент пилота), самолёт — по скорости
+			local liftF = root:FindFirstChild("LiftForce")
+			if liftF then
+				liftF.Force = Vector3.new(0, root.AssemblyMass * workspace.Gravity * 0.9, 0)
+				liftF.Enabled = true
+			else
+				root.FlightDrive.Enabled = true
+			end
 			model:SetAttribute("EngineOn", true)
 			setOwner(root, isPlayer(actor) and actor or nil)
 		else
@@ -346,6 +354,7 @@ local function setupSeat(model, st)
 			if st.prompt and isPlayer(st.owner) then st.prompt.Enabled = true end
 			root.FlightAlign.Enabled = false
 			root.FlightDrive.Enabled = false
+			if root:FindFirstChild("LiftForce") then root.LiftForce.Enabled = false end
 			model:SetAttribute("EngineOn", false)
 			setOwner(root, nil)
 			-- пилот сидит справа: выходит наружу у правого борта
@@ -388,6 +397,17 @@ local function makePlane(ownerActor, team, cf, kind)
 		if d:IsA("BasePart") then d.CollisionGroup = P.Heli and "Helis" or "Planes" end -- вертолёт люди не проходят насквозь
 		-- в вертолёт садятся только кнопками (пилот / пассажир), касание кресла не сажает
 		if P.Heli and d:IsA("Seat") then d.CanTouch = false end
+	end
+	-- вертолёт (любая модель): подъёмная сила — VectorForce в мировых осях у центра масс, её задаёт клиент пилота
+	if P.Heli and not model.Root:FindFirstChild("LiftForce") then
+		local vf = Instance.new("VectorForce")
+		vf.Name = "LiftForce"
+		vf.Attachment0 = model.Root:FindFirstChild("FlightAtt")
+		vf.RelativeTo = Enum.ActuatorRelativeTo.World
+		vf.ApplyAtCenterOfMass = true
+		vf.Force = Vector3.zero
+		vf.Enabled = false
+		vf.Parent = model.Root
 	end
 	model:PivotTo(cf)
 	model.Parent = folder()
@@ -793,6 +813,7 @@ local function step(dt)
 			st.abandonT = st.abandonT or now
 			st.root.FlightAlign.Enabled = false
 			st.root.FlightDrive.Enabled = false
+			if st.root:FindFirstChild("LiftForce") then st.root.LiftForce.Enabled = false end
 			model:SetAttribute("EngineOn", false)
 			setOwner(st.root, nil)
 			local w = st.seat:FindFirstChild("SeatWeld")
