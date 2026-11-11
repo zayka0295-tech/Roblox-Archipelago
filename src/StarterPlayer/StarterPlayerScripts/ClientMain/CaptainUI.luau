@@ -152,7 +152,10 @@ return function(ctx)
 		for _, c in ipairs(captains) do
 			local waiting = finaleAt and os.clock() - finaleAt < 20
 			if not c.fading and not waiting then setHidden(c, s >= 3, false) end
-			c.mark.Text = (s == 0 or ready) and "!" or "…"
+			-- «!» — только когда Капитану есть что сказать; пока задание выполняется, значка нет
+			-- («…» ночью выглядел как три непонятные жёлтые точки)
+			c.mark.Text = "!"
+			c.mark.Visible = s == 0 or ready
 			local base = c.model.Parent and c.model.Parent.Parent
 			local wantWave = deployed and s < 3 and (s == 0 or ready) and team ~= nil and base ~= nil and base.Name == team .. "Base"
 				and not (hrp and c.root and (hrp.Position - c.root.Position).Magnitude < WAVE_NEAR)

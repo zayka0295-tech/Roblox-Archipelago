@@ -1079,6 +1079,8 @@ local function applyQuota(now)
 end
 
 ------------------------------------------------------------------ главный цикл
+local HELI_GAP = B and B.HeliSpawnGap or 4 -- сек. между вылетами вертолётчиков одной команды
+local heliSpawnAt = {} -- [team] = os.clock() последнего вылета
 local function manage(now)
 	applyQuota(now)
 	-- бот-командир спускает авианосец и линкор бесплатно (казну не тратит) — только в команде
@@ -1130,9 +1132,14 @@ local function manage(now)
 			end
 		elseif not slot.spawning and now >= slot.respawnAt then
 			local personal = slot.role == "gbCaptain" or slot.role == "subCaptain"
+			local heliWait = slot.role == "heliPilot" and (heliSpawnAt[slot.team] or 0) + HELI_GAP - now
 			if personal and harborBusy(slot.team, now) then
 				slot.respawnAt = now + 4
+			elseif heliWait and heliWait > 0 then
+				-- вертолётчики команды вылетают по одному, а не толпой к площадкам
+				slot.respawnAt = now + heliWait
 			elseif canSpawn(slot) then
+				if slot.role == "heliPilot" then heliSpawnAt[slot.team] = now end
 				slot.waitSince = nil
 				task.spawn(spawnSlot, slot)
 			elseif CREW_ROLE[slot.role] then

@@ -431,6 +431,9 @@ local function makePlane(ownerActor, team, cf, kind)
 		tq.Enabled = false
 		tq.Parent = model.Root
 	end
+	-- всегда у клиента целиком, как корабли и боты (они Persistent): иначе на телефоне с малым радиусом
+	-- стриминга бот-пилот уже виден, а его вертолёт ещё нет — бот «висит в воздухе» над площадкой
+	model.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
 	model:PivotTo(cf)
 	model.Parent = folder()
 

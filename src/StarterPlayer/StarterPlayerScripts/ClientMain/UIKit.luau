@@ -176,6 +176,7 @@ end
 local TOUCH_ICON = {
 	FIRE = "Fire", R = "Reload", AIM = "Aim", ["GAS\n+"] = "Up", ["GAS\n−"] = "Down", BOMB = "Bomb", SIGHT = "Sight",
 	TORPEDO = "Torpedo", ["▼\nDIVE"] = "Dive", ["▲\nUP"] = "Surface", ZOOM = "Zoom",
+	EXIT = "Exit", BOOM = "Detonate",
 }
 -- круглая кнопка в месте slot (см. SLOTS); видна только когда её покажут
 function UI.roundButton(parent, slot, text, color)
@@ -246,6 +247,36 @@ function UI.roundIcon(b, key)
 		state()
 	end
 	img.Image = UI.Icons.Touch[key] or ""
+end
+
+-- кнопка прыжка Roblox (TouchGui) — в том же стиле, что наши: своя картинка целиком вместо спрайта Roblox.
+-- Roblox при нажатии двигает ImageRectOffset по своему листу, поэтому картинку и область держим сами
+if UI.touchOnly then
+	task.spawn(function()
+		local hooked = setmetatable({}, {__mode = "k"})
+		while true do
+			local tg = playerGui:FindFirstChild("TouchGui")
+			local frame = tg and tg:FindFirstChild("TouchControlFrame")
+			local jb = frame and frame:FindFirstChild("JumpButton")
+			if jb and jb:IsA("ImageButton") and not hooked[jb] then
+				hooked[jb] = true
+				local icon = UI.Icons.Touch.Jump
+				local function apply()
+					if jb.Image ~= icon then jb.Image = icon end
+					if jb.ImageRectSize ~= Vector2.zero then jb.ImageRectSize = Vector2.zero end
+					if jb.ImageRectOffset ~= Vector2.zero then jb.ImageRectOffset = Vector2.zero end
+				end
+				apply()
+				for _, p in ipairs({"Image", "ImageRectSize", "ImageRectOffset"}) do
+					jb:GetPropertyChangedSignal(p):Connect(apply)
+				end
+				-- отклик на нажатие — лёгкое затемнение (спрайт «нажато» от Roblox больше не виден)
+				jb.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.Touch then jb.ImageColor3 = Color3.fromRGB(190, 190, 190) end end)
+				jb.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.Touch then jb.ImageColor3 = Color3.new(1, 1, 1) end end)
+			end
+			task.wait(1)
+		end
+	end)
 end
 
 -- поворот камеры пальцем, зажавшим кнопку (FIRE турели и т.п.): сдвиги копятся и применяются
@@ -484,6 +515,31 @@ function UI.hugEdge(frame, side)
 	table.insert(hugged, h)
 	applyHug(h)
 	return h
+end
+
+-- Правая колонка (колесо, звание, награды) на телефоне: пока игрок сидит в технике, экран скрыт —
+-- там кнопки прицела и зума второго ряда, а в бою награды всё равно не нужны. Встал — колонка вернулась
+local seatedHidden = {}
+do
+	local was = nil
+	task.spawn(function()
+		while true do
+			task.wait(0.25)
+			local char = Players.LocalPlayer.Character
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			local hide = UI.touchOnly and hum ~= nil and hum.SeatPart ~= nil
+			if hide ~= was then
+				was = hide
+				for i = #seatedHidden, 1, -1 do
+					local g = seatedHidden[i]
+					if g.Parent then g.Enabled = not hide else table.remove(seatedHidden, i) end
+				end
+			end
+		end
+	end)
+end
+function UI.hideWhenSeated(gui)
+	table.insert(seatedHidden, gui)
 end
 
 ------------------------------------------------------------------ скины (картинки из assets/ui)

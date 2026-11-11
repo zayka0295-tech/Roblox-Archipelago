@@ -12,6 +12,8 @@ local TARGETS = {
 	{key = "Shipyard", title = "SHIPYARD", offset = 8, part = {"Shipyard", "ShipTerminal"}, color = Color3.fromRGB(90, 200, 255)},
 	{key = "AirTerminal", title = "AIR TERMINAL", offset = 6, part = {"Decor", "AirTerminal"}, color = Color3.fromRGB(255, 205, 60)},
 }
+-- надписи на базе одного размера (подстраиваются под высоту экрана): терминалы и метки выше
+local SIZED = {{"Shipyard", "ShipTerminal"}, {"Decor", "AirTerminal"}, {"Decor", "HeliTerminal"}}
 
 return function(ctx)
 	local player = ctx.player
@@ -74,13 +76,20 @@ return function(ctx)
 		local size = labelSize()
 		for _, team in ipairs({"Blue", "Red"}) do
 			local b = teamsFolder:FindFirstChild(team .. "Base")
-			for _, t in ipairs(TARGETS) do
-				local f = b and b:FindFirstChild(t.part[1])
-				local p = f and f:FindFirstChild(t.part[2])
+			for _, path in ipairs(SIZED) do
+				local f = b and b:FindFirstChild(path[1])
+				local p = f and f:FindFirstChild(path[2])
 				local g = p and p:FindFirstChildOfClass("BillboardGui")
 				if g and g.Size ~= size then g.Size = size end
 			end
 		end
+		-- аэродром центрального острова — та же надпись AIR TERMINAL
+		local ctr = teamsFolder.Parent:FindFirstChild("Neutral")
+		ctr = ctr and ctr:FindFirstChild("Outpost_Center")
+		local strip = ctr and ctr:FindFirstChild("Airstrip")
+		local at = strip and strip:FindFirstChild("AirTerminal")
+		local ag = at and at:FindFirstChildOfClass("BillboardGui")
+		if ag and ag.Size ~= size then ag.Size = size end
 		for _, m in pairs(marks) do
 			if m.bb.Size ~= size then m.bb.Size = size end
 		end

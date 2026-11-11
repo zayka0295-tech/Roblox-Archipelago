@@ -32,6 +32,7 @@ return function(ctx)
 	local frame = UI.new("Frame", {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 12), Size = UDim2.fromOffset(250, 92), BackgroundTransparency = 1}, hudGui)
 	UI.scale(frame)
 	UI.hugEdge(frame, "right")
+	UI.hideWhenSeated(hudGui)
 	-- на телефоне — вплотную под рулеткой (её позиция в DailySpinUI)
 	local btnX, btnY = -6, 122
 	if UI.touchOnly then btnX, btnY = -16, 96 end

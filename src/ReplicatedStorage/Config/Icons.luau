@@ -44,20 +44,25 @@ local Icons = {
 	Reload = "rbxassetid://90587021698909",
 }
 
--- сенсорные кнопки на телефоне (assets/icons/touch): круг целиком, вместе с фоном
+-- сенсорные кнопки на телефоне (assets/icons/touch): круг целиком, вместе с фоном.
+-- Единый набор в стиле окон: тёмно-синий металл, золотой обод с заклёпками (сгенерирован в Figma)
 Icons.Touch = {
-	Fire = "rbxassetid://108880000622404",
-	Aim = "rbxassetid://73628601041918",
-	Reload = "rbxassetid://70562987340197",
-	Up = "rbxassetid://124690198858597",
-	Down = "rbxassetid://114246921321998",
-	Bomb = "rbxassetid://95694184496906",
-	Sight = "rbxassetid://118531165966459",
-	Torpedo = "rbxassetid://120975444380768",
-	Dive = "rbxassetid://103016451303335",
-	Surface = "rbxassetid://90631147629485",
-	Zoom = "rbxassetid://73169588669336",
-	Charge = "rbxassetid://136544473564832",
+	Fire = "rbxassetid://85953090223842",
+	Aim = "rbxassetid://73743382787359",
+	Reload = "rbxassetid://73691701484688",
+	Up = "rbxassetid://116476532374061",
+	Down = "rbxassetid://113066379891890",
+	Bomb = "rbxassetid://82139482067221",
+	Sight = "rbxassetid://134082796986236",
+	Torpedo = "rbxassetid://100537539859780",
+	Dive = "rbxassetid://103986906054001",
+	Surface = "rbxassetid://79418972664793",
+	Zoom = "rbxassetid://126692396466883",
+	Charge = "rbxassetid://131962199951024",
+	Exit = "rbxassetid://124176463205331",      -- выход из вертолёта
+	Detonate = "rbxassetid://131734890734142",  -- подрыв C4
+	Jump = "rbxassetid://92577796767477",       -- прыжок / вверх
+	Parachute = "rbxassetid://123276915814027", -- парашют
 }
 
 -- эмблемы команд (ключи Config.Teams)
