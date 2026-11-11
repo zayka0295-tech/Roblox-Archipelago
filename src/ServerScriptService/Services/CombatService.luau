@@ -30,10 +30,13 @@ function CombatService.nameOf(x)
 	return "?"
 end
 
--- команда безопасной зоны в точке ("Lobby", "Blue", "Red", "Any") или nil
+-- команда безопасной зоны в точке ("Lobby", "Blue", "Red", "Any") или nil.
+-- Зоны баз (Team = команда) действуют, только если включён Config.Spawn.BaseSafeZone: сейчас на базе
+-- защищает не зона, а щит после появления (SpawnService)
 function CombatService.zoneAt(pos)
 	for _, z in ipairs(CollectionService:GetTagged(Config.Spawn.SafeZoneTag)) do
-		if z:IsA("BasePart") and z:IsDescendantOf(workspace) then
+		if z:IsA("BasePart") and z:IsDescendantOf(workspace)
+			and (Config.Spawn.BaseSafeZone or not Config.Teams[z:GetAttribute("Team") or ""]) then
 			local lp = z.CFrame:PointToObjectSpace(pos)
 			local h = z.Size / 2
 			if math.abs(lp.X) <= h.X and math.abs(lp.Y) <= h.Y and math.abs(lp.Z) <= h.Z then

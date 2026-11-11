@@ -45,6 +45,7 @@ return function(ctx)
 	local hudGui = UI.screen("DailySpinButton", 6)
 	local frame = UI.new("Frame", {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 12), Size = UDim2.fromOffset(250, 92), BackgroundTransparency = 1}, hudGui)
 	UI.scale(frame)
+	UI.hugEdge(frame, "right")
 
 	-- на телефоне кнопка ближе к правому краю и к панели островов (так же сдвинута кнопка ранга в RankUI)
 	local SPIN_ON, SPIN_OFF = Color3.fromRGB(255, 160, 40), Color3.fromRGB(80, 92, 112)

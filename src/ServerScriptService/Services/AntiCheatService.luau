@@ -25,6 +25,8 @@ local FLOOR_DECAY = 0.6    -- скорость опоры «затухает» �
 local SEAT_GRACE = 5       -- сек. после выхода из кресла (прыжок из летящего самолёта)
 local SPAWN_GRACE = 5      -- сек. после появления персонажа
 local RISE_EXTRA = 4       -- студов сверх высоты прыжка над последней опорой
+local RISE_CONFIRM = 0.4   -- сек.: «взлёт» выше этого засчитываем, только если через столько персонаж всё ещё там…
+local RISE_DROP = 4        -- …то есть не опустился хотя бы на столько (прыжок за это время падает на 15+ студов)
 local HOVER_TIME = 1.5     -- сек. без опоры...
 local HOVER_DROP = 2       -- ...и не снизился хотя бы на столько — висит в воздухе
 local NOCLIP_STEP = 0.1    -- сек. между проверками пути сквозь стены
@@ -194,7 +196,7 @@ local function checkAir(player, s, now, char, hum, hrp)
 		else
 			s.groundPart, s.groundOff = nil, nil
 		end
-		s.airT = nil
+		s.airT, s.riseT = nil, nil
 		-- долго выше прыжка над опорой (завис низко над землёй)
 		if y - stand > jh + 1.5 then
 			s.highT = s.highT or now
@@ -215,8 +217,20 @@ local function checkAir(player, s, now, char, hum, hrp)
 	end
 	if not s.airT then s.airT, s.airY = now, y end
 	if y - s.groundY > jh + RISE_EXTRA then
-		pull(player, s, char, hrp, groundCF(s), ("flew %.0f studs above ground"):format(y - s.groundY))
-		return true
+		-- Опора запоминается раз в CHECK: запрыгнул на ящик и сразу прыгнул с него — ящик в замер не попал,
+		-- и высота считается от земли под ним («взлетел» выше прыжка). Поэтому сразу не возвращаем, а смотрим
+		-- следующий замер: честный прыжок к нему уже падает, а полёт остаётся на высоте
+		if not s.riseT or now - s.riseT > 1.2 then -- старая отметка (замеры прерывались: кресло, перенос) — заново
+			s.riseT, s.riseY = now, y
+		elseif now - s.riseT >= RISE_CONFIRM then
+			if y > s.riseY - RISE_DROP then
+				pull(player, s, char, hrp, groundCF(s), ("flew %.0f studs above ground"):format(y - s.groundY))
+				return true
+			end
+			s.riseT, s.riseY = now, y -- падает; отсчёт заново — снова начнёт набирать, поймаем
+		end
+	else
+		s.riseT = nil
 	end
 	if now - s.airT > HOVER_TIME and y > s.airY - HOVER_DROP then
 		pull(player, s, char, hrp, groundCF(s), ("hovering %.1f s"):format(now - s.airT))

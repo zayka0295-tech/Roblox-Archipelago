@@ -25,6 +25,7 @@ local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local GameState = ReplicatedStorage:WaitForChild("GameState")
 
 local ShipService = {}
+local MAX_SHIP_DV = 70 -- студ/с²: предел изменения скорости корабля за кадр (без рывков)
 local capFail -- объявлена ниже (лимиты техники), используется при покупке
 local crewed, selfDestruct -- пустая техника (см. ShipService.remove)
 local forget -- объявлена ниже (урон и потопление), нужна при сбое постройки
@@ -816,7 +817,16 @@ local function step(st, dt)
 	st.yaw = newYaw + spin * dt
 	local vyMax = cfg.CanDive and cfg.DiveRate * 1.5 or 20
 	local vy = math.clamp((targetY - pos.Y) * (cfg.CanDive and 1.5 or 4), -vyMax, vyMax)
-	st.lv.VectorVelocity = vel + ext + Vector3.new(0, vy, 0)
+	-- Итоговую горизонтальную скорость меняем не резче MAX_SHIP_DV студ/с²: мель (st.speed = 0) и удары корпусов
+	-- (NavalPhysics) раньше меняли её за один кадр — корабль дёргался (21 → 0 → 22). Тормозной путь с полного хода
+	-- (катер 55: ~22 студа) меньше дальности проверки впереди (speed × 0,6 ≈ 33), так что на мель не наезжает.
+	local want = vel + ext
+	local out = st.outVel or want
+	local dv = want - out
+	local maxDv = MAX_SHIP_DV * dt
+	if dv.Magnitude > maxDv then out += dv.Unit * maxDv else out = want end
+	st.outVel = out
+	st.lv.VectorVelocity = out + Vector3.new(0, vy, 0)
 	st.ao.CFrame = CFrame.Angles(0, st.yaw, 0)
 
 	st.pub += dt

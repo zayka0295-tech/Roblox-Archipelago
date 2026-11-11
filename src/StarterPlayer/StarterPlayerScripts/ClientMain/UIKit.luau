@@ -137,13 +137,20 @@ local SLOTS = {
 	gunFire = {132, 1, 84},
 	gunReload = {180, 1, 60, 9},
 	gunAim = {78, 1, 60, 3},
+	gunAlt = {104, 2, 56}, -- подрыв C4 (BOOM) во втором ряду
 	zoom = {80, 1, 46}, -- маленькая «приблизить» над прыжком (турели, катер)
 	zoomHigh = {85, 2, 46}, -- то же во втором ряду: в самолёте и на подлодке место a2 занято (GAS+ / UP)
+	jump = {0, 0, 0}, -- на месте самой кнопки прыжка Roblox (когда она скрыта: вертолёт на телефоне)
 }
 local rounds = {}
 local function place(b)
 	local def = SLOTS[b:GetAttribute("Slot")]
 	local j, s = stdGeometry()
+	if def[2] == 0 then
+		b.Size = UDim2.fromOffset(s, s)
+		b.Position = UDim2.new(1, j.X, 1, j.Y)
+		return
+	end
 	local k = math.min(s / 70, 1.4)
 	local d = def[3] * k
 	local r = s / 2 + 14 * k + d / 2 + (def[4] or 0) * k
@@ -158,6 +165,12 @@ local function replaceAll()
 	end
 end
 replaceRounds = replaceAll
+-- переставить кнопку в другое место (одна и та же кнопка у самолёта и вертолёта стоит по-разному)
+function UI.setSlot(b, slot)
+	if b:GetAttribute("Slot") == slot then return end
+	b:SetAttribute("Slot", slot)
+	place(b)
+end
 
 -- картинки кнопок по подписи (Icons.Touch); другую — UI.roundIcon(b, key)
 local TOUCH_ICON = {
@@ -427,6 +440,50 @@ function UI.screen(name, order)
 		Name = name, ResetOnSpawn = false, IgnoreGuiInset = true,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = order or 0,
 	}, playerGui)
+end
+
+------------------------------------------------------------------ боковые панели у края экрана
+-- Экраны UI.screen стоят в безопасной зоне устройства: на телефоне с вырезом камеры это поля слева и справа,
+-- и боковые панели висят далеко от края. UI.hugEdge(frame, "left" | "right") сдвигает панель наружу на долю
+-- EDGE_RECLAIM этого поля (остаток — запас под сам вырез: 1 — вплотную к краю, 0 — как раньше).
+-- На ПК полей нет — ничего не меняется.
+local EDGE_RECLAIM = 0.7
+local hugged = {} -- {frame, side, base}
+local insetL, insetR = 0, 0
+local function applyHug(h)
+	local shift = h.side == "left" and -insetL or insetR
+	h.frame.Position = h.base + UDim2.fromOffset(math.floor(shift * EDGE_RECLAIM + 0.5), 0)
+end
+do
+	-- поля меряем двумя рамками во весь экран: одна в экране без полей, другая — в таком же, как UI.screen
+	local function probe(name, insets)
+		local g = UI.new("ScreenGui", {Name = name, ResetOnSpawn = false, IgnoreGuiInset = true, ScreenInsets = insets}, playerGui)
+		return UI.new("Frame", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1}, g)
+	end
+	local full = probe("EdgeProbeFull", Enum.ScreenInsets.None)
+	local safe = probe("EdgeProbeSafe", Enum.ScreenInsets.DeviceSafeInsets)
+	local function measure()
+		local l = math.max(0, safe.AbsolutePosition.X - full.AbsolutePosition.X)
+		local r = math.max(0, (full.AbsolutePosition.X + full.AbsoluteSize.X) - (safe.AbsolutePosition.X + safe.AbsoluteSize.X))
+		if l == insetL and r == insetR then return end
+		insetL, insetR = l, r
+		for i = #hugged, 1, -1 do
+			if hugged[i].frame.Parent then applyHug(hugged[i]) else table.remove(hugged, i) end
+		end
+	end
+	for _, f in ipairs({full, safe}) do
+		f:GetPropertyChangedSignal("AbsoluteSize"):Connect(measure)
+		f:GetPropertyChangedSignal("AbsolutePosition"):Connect(measure)
+	end
+	task.defer(measure)
+end
+function UI.hugEdge(frame, side)
+	local g = frame:FindFirstAncestorOfClass("ScreenGui")
+	if g then g.ClipToDeviceSafeArea = false end
+	local h = {frame = frame, side = side, base = frame.Position}
+	table.insert(hugged, h)
+	applyHug(h)
+	return h
 end
 
 ------------------------------------------------------------------ скины (картинки из assets/ui)

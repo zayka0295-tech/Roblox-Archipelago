@@ -29,6 +29,7 @@ return function(ctx)
 		f.Size = UDim2.fromOffset(76, 44)
 		f.BackgroundTransparency = 1
 		f.Visible = false
+		if UI.touchOnly then Instance.new("UIScale", f).Scale = 0.75 end -- на телефоне метки техники мельче
 		local icon = Instance.new("TextLabel")
 		icon.Name = "Icon"
 		icon.Size = UDim2.new(1, 0, 0, 26)

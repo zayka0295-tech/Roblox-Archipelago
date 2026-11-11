@@ -165,6 +165,10 @@ local function applyDevGold(data)
 	if devGold > 0 and game:GetService("RunService"):IsStudio() then
 		data.Gold = math.max(data.Gold, devGold)
 	end
+	local devDiamonds = Config.Dev and Config.Dev.StudioDiamonds or 0
+	if devDiamonds > 0 and game:GetService("RunService"):IsStudio() then
+		data.Diamonds = math.max(data.Diamonds, devDiamonds)
+	end
 end
 
 -- профиль ещё нужен этой сессии? (игрок на сервере, профиль тот же, не закрывается)

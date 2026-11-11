@@ -19,16 +19,28 @@ local TEXT = Color3.fromRGB(232, 238, 245)
 local MUTED = Color3.fromRGB(140, 152, 168)
 local GOLD = Color3.fromRGB(255, 205, 90)
 
--- Два слоя: фон на весь экран (под панелью Roblox и чёлкой) и содержимое в безопасной зоне.
--- Арт целиком (Fit) в безопасной зоне — при любом соотношении сторон логотип и края не обрезаются;
--- поля вокруг заполняет тот же арт на весь экран (Crop), затемнённый к краям, а не чёрные полосы.
+-- Два слоя: арт на весь экран (под панелью Roblox и чёлкой) и подписи с полосой в безопасной зоне.
+-- Арт заполняет экран целиком (без полей): на широком экране (телефон) лишнее по высоте срезается в основном
+-- снизу — логотип наверху остаётся; на узком (планшет) — поровну с боков. Только на вертикальном экране арт
+-- вписывается целиком, а поля заполняет он же, затемнённый.
 local ART = "rbxassetid://71909187303311" -- тот же id, что Icons.KeyArt (ReplicatedStorage здесь ещё может быть не загружен)
+-- Roblox ужимает любую картинку до 1024 пикселей по большей стороне — арт 1672×941 одним файлом на большом
+-- экране мылится. Поэтому он загружен четырьмя плитками 2×2 и собирается обратно в полном разрешении.
+-- У каждой плитки запас 4 пикселя от соседей (ox/oy — где в файле начинается её часть): без запаса на стыке видна линия.
+local ART_W, ART_H = 1672, 941
+local TILES = {
+	{id = 101258587333500, x = 0, y = 0, w = 836, h = 470, ox = 0, oy = 0},
+	{id = 85022625253475, x = 836, y = 0, w = 836, h = 470, ox = 4, oy = 0},
+	{id = 133069170251856, x = 0, y = 470, w = 836, h = 471, ox = 0, oy = 4},
+	{id = 85315244586944, x = 836, y = 470, w = 836, h = 471, ox = 4, oy = 4},
+}
 local gui = Instance.new("ScreenGui")
 gui.Name = "LoadingScreen"
 gui.IgnoreGuiInset = true
 gui.ScreenInsets = Enum.ScreenInsets.None
 gui.ResetOnSpawn = false
 gui.DisplayOrder = 1000
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 local back = Instance.new("Frame")
 back.Size = UDim2.fromScale(1, 1)
 back.BackgroundColor3 = BG
@@ -44,9 +56,62 @@ backArt.Parent = back
 local dim = Instance.new("Frame")
 dim.Size = UDim2.fromScale(1, 1)
 dim.BackgroundColor3 = BG
-dim.BackgroundTransparency = 0.25 -- поля (сбоку на широких экранах, сверху и снизу на планшетах) — затемнённые
+dim.BackgroundTransparency = 0.25 -- виден, пока плитки не скачаны, и на полях вертикального экрана
 dim.BorderSizePixel = 0
 dim.Parent = back
+-- арт в полном разрешении: рамка с пропорциями арта, плитки в ней — в долях
+local artBox = Instance.new("Frame")
+artBox.BackgroundTransparency = 1
+artBox.BorderSizePixel = 0
+artBox.ZIndex = 2
+artBox.Parent = back
+-- под плитками — тот же арт одним файлом (низкое разрешение): он лёгкий и появляется первым,
+-- плитки проявляются поверх по мере загрузки
+local artLow = Instance.new("ImageLabel")
+artLow.Size = UDim2.fromScale(1, 1)
+artLow.BackgroundTransparency = 1
+artLow.BorderSizePixel = 0
+artLow.Image = ART
+artLow.Parent = artBox
+local tiles = {}
+for _, t in ipairs(TILES) do
+	local img = Instance.new("ImageLabel")
+	img.BackgroundTransparency = 1
+	img.BorderSizePixel = 0
+	img.Image = "rbxassetid://" .. t.id
+	img.ImageRectOffset = Vector2.new(t.ox, t.oy)
+	img.ImageRectSize = Vector2.new(t.w, t.h)
+	img.Position = UDim2.fromScale(t.x / ART_W, t.y / ART_H)
+	img.Size = UDim2.new(t.w / ART_W, 1, t.h / ART_H, 1) -- +1 пиксель внахлёст: при дробном масштабе между плитками нет щели
+	img.ZIndex = 2
+	img.Parent = artBox
+	table.insert(tiles, img)
+end
+local function layoutArt()
+	local v = gui.AbsoluteSize
+	if v.X < 1 or v.Y < 1 then return end
+	local cover = v.X / v.Y >= 1.2
+	local k = cover and math.max(v.X / ART_W, v.Y / ART_H) or math.min(v.X / ART_W, v.Y / ART_H)
+	local w, h = math.ceil(ART_W * k), math.ceil(ART_H * k)
+	-- лишнее по высоте: десятая часть сверху, остальное снизу (там волны и ящики, а наверху логотип)
+	local y = h > v.Y and -(h - v.Y) * 0.03 or (v.Y - h) / 2
+	artBox.Size = UDim2.fromOffset(w, h)
+	artBox.Position = UDim2.fromOffset(math.floor((v.X - w) / 2), math.floor(y))
+end
+gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutArt)
+-- затемнение снизу под полосу загрузки — на всю ширину экрана
+local shade = Instance.new("Frame")
+shade.AnchorPoint = Vector2.new(0, 1)
+shade.Position = UDim2.fromScale(0, 1)
+shade.Size = UDim2.fromScale(1, 0.3)
+shade.BackgroundColor3 = BG
+shade.BorderSizePixel = 0
+shade.ZIndex = 3
+shade.Parent = back
+local grad = Instance.new("UIGradient")
+grad.Rotation = -90
+grad.Transparency = NumberSequence.new(0.1, 1)
+grad.Parent = shade
 
 local safe = Instance.new("ScreenGui")
 safe.Name = "LoadingScreenSafe"
@@ -71,32 +136,23 @@ local function label(text, size, color, y, font)
 	l.Parent = bg
 	return l
 end
--- арт игры целиком по центру безопасной зоны, снизу затемнение под полосу загрузки;
--- надпись ARCHIPELAGO уже на самом арте
-local art = Instance.new("ImageLabel")
-art.Size = UDim2.fromScale(1, 1)
-art.BackgroundTransparency = 1
-art.Image = ART
-art.ScaleType = Enum.ScaleType.Fit
-art.Parent = bg
-local shade = Instance.new("Frame")
-shade.AnchorPoint = Vector2.new(0, 1)
-shade.Position = UDim2.fromScale(0, 1)
-shade.Size = UDim2.fromScale(1, 0.3)
-shade.BackgroundColor3 = BG
-shade.BorderSizePixel = 0
-shade.Parent = bg
-local grad = Instance.new("UIGradient")
-grad.Rotation = -90
-grad.Transparency = NumberSequence.new(0.1, 1)
-grad.Parent = shade
--- надпись, пока арт не скачан
+-- надпись, пока арт не скачан (на самом арте ARCHIPELAGO уже есть)
 local titles = {label("ARCHIPELAGO", 46, TEXT, -40), label("WAR & TRADE", 18, GOLD, 0)}
 local function artShown()
-	for _, l in ipairs(titles) do l.Visible = not art.IsLoaded end
+	local loaded = artLow.IsLoaded
+	if not loaded then
+		loaded = true
+		for _, img in ipairs(tiles) do
+			if not img.IsLoaded then loaded = false break end
+		end
+	end
+	for _, l in ipairs(titles) do l.Visible = not loaded end
 end
 artShown() -- сигнал IsLoaded приходит не всегда — ещё и каждый кадр ниже
-task.spawn(function() pcall(ContentProvider.PreloadAsync, ContentProvider, {art}) end)
+task.spawn(function()
+	pcall(ContentProvider.PreloadAsync, ContentProvider, {artLow})
+	pcall(ContentProvider.PreloadAsync, ContentProvider, tiles)
+end)
 local status = label("Loading…", 16, TEXT, 0, Enum.Font.GothamBold)
 status.AnchorPoint = Vector2.new(0.5, 1)
 status.Position = UDim2.new(0.5, 0, 1, -54)
@@ -123,6 +179,7 @@ bar.Parent = barBg
 Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
 gui.Parent = playerGui
 safe.Parent = playerGui
+layoutArt()
 ReplicatedFirst:RemoveDefaultLoadingScreen()
 
 -- полоса едет плавно к текущей цели

@@ -11,6 +11,7 @@ return function(ctx)
 		Size = UDim2.fromOffset(290, 92),
 	})
 	UI.scale(panel)
+	UI.hugEdge(panel, "right")
 	UI.padding(panel, 10)
 	UI.label(panel, "ISLANDS", {Size = UDim2.new(1, 0, 0, 18), TextSize = 14, TextColor3 = T.Muted})
 	local score = UI.label(panel, "", {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0.6, 0, 0, 18), TextSize = 15, TextXAlignment = Enum.TextXAlignment.Right, RichText = true})

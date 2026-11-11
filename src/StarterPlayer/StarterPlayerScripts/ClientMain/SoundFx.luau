@@ -73,6 +73,9 @@ local CATALOG = {
 	-- ручное оружие (см. GunClient): тот же выстрел винтовки, у АК ниже и гуще, у M4 звонче
 	AK47      = {id = 9118173739, group = "Weapons", volume = 0.6, pitch = {0.8, 0.88}, near = 15, range = 400, region = {0, 0.6}, gap = 0.05},
 	M4A1      = {id = 9118173739, group = "Weapons", volume = 0.5, pitch = {1.02, 1.1}, near = 15, range = 380, region = {0, 0.5}, gap = 0.04},
+	MP5       = {id = 9118173739, group = "Weapons", volume = 0.45, pitch = {1.22, 1.3}, near = 12, range = 320, region = {0, 0.4}, gap = 0.035},
+	Shotgun   = {id = 9118173739, group = "Weapons", volume = 0.8, pitch = {0.52, 0.58}, near = 18, range = 450, region = {0, 0.9}, gap = 0.1},
+	Sniper    = {id = 9118173739, group = "Weapons", volume = 0.9, pitch = {0.62, 0.68}, near = 20, range = 700, region = {0, 0.9}, gap = 0.1},
 	RPGLaunch = {uri = "rbxasset://sounds/Rocket shot.wav", -- встроенный звук Roblox
 		group = "Weapons", volume = 1, pitch = {0.85, 0.95}, near = 25, range = 700, len = 2},
 	Reload    = {id = 9116357621, -- Machine Gun Bolt 4 (ProSoundEffects)

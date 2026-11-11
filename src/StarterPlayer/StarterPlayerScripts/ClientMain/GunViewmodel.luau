@@ -166,8 +166,13 @@ return function(ctx)
 				p.Size = Vector3.new(p.Size.X * w, p.Size.Y * k, p.Size.Z * w)
 			end
 		end
+		-- точка прицеливания из модели (Handle.AimPoint — центр коллиматора / прицельной планки): по ней оружие встаёт в
+		-- перекрестье. Без неё — самая высокая точка передней половины (мушка открытого прицела)
+		local aimPoint = handle:FindFirstChild("AimPoint")
+		local sightX = 0
+		if aimPoint and aimPoint:IsA("Attachment") then sight, sightX = aimPoint.Position.Y, aimPoint.Position.X end
 		vm.Parent = workspace.CurrentCamera
-		vmTool = {tool = tool, parts = parts, real = real, sight = sight or (muzzleRel.Y + 0.2), muzzleRel = muzzleRel,
+		vmTool = {tool = tool, parts = parts, real = real, sight = sight or (muzzleRel.Y + 0.2), sightX = sightX, muzzleRel = muzzleRel,
 			arms = arms, hold = {Right = grip, Left = fore}}
 		addedConn = tool.DescendantAdded:Connect(function(d)
 			if d:IsA("BasePart") then table.insert(real, d) end
@@ -196,7 +201,7 @@ return function(ctx)
 		bob = moving and (bob + dt * 9) or bob * (1 - math.min(1, dt * 6))
 		local sway = moving and (1 - aim * 0.8) or 0
 		-- рукоять: от бедра справа или по центру под прицелом; толчок отдачи назад и вверх
-		local aimCF = CFrame.new(0, -vmTool.sight, AIM_Z)
+		local aimCF = CFrame.new(-(vmTool.sightX or 0), -vmTool.sight, AIM_Z)
 		local base = HIP:Lerp(aimCF, aim)
 		local off = CFrame.new(math.sin(bob) * 0.04 * sway, math.abs(math.cos(bob)) * 0.05 * sway, kick * 0.18) * CFrame.Angles(math.rad(kick * 2.5), 0, 0)
 		-- перезарядка: оружие наклоняется и опускается
@@ -205,6 +210,7 @@ return function(ctx)
 		local rel = CFrame.new(-0.15 * rs, -0.35 * rs, 0.15 * rs) * CFrame.Angles(math.rad(14) * rs, 0, math.rad(32) * rs)
 		local gunCF = camCF * base * off * rel
 		gunState.vmMuzzleCF = gunCF * vmTool.muzzleRel -- вспышка и трассер выстрела от первого лица — отсюда
+		if gunState.scoped then gunCF += Vector3.new(0, -500, 0) end -- в оптике оружие и руки не видны: уводим их из кадра
 		local m = r and magOut(r) or 0
 		for _, e in ipairs(vmTool.parts) do
 			local p, prel, src = e[1], e[2], e[3]

@@ -46,6 +46,12 @@ function BazaarService.init()
 		local ok, why = DataService.buyItem(player, it.Bit, it.Price)
 		if not ok then return {ok = false, msg = WHY[why] or "Purchase failed"} end
 		task.spawn(DataService.save, player) -- покупка за диаманты — сразу в сохранение, как и награды
+		-- оружие — сразу в руки, если игрок в бою (дальше — при каждом появлении, SpawnService)
+		local char = player.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if it.Gun and player:GetAttribute("State") == "Deployed" and hum and hum.Health > 0 then
+			require(Services.GunService).give(player, it.Gun)
+		end
 		return {ok = true, msg = ("%s bought! It's yours forever"):format(it.Name)}
 	end
 	-- E у прилавка на каждой базе

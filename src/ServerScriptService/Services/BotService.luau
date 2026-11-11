@@ -660,10 +660,12 @@ local function thinkPilot(st, enemies, now)
 		local d = rel.Magnitude
 		local myVel = root.AssemblyLinearVelocity
 		local closing = -(target.vel - myVel):Dot(rel.Unit)
-		if d < 170 and closing > 60 and not (st.breakUntil and now < st.breakUntil) then
+		if d < 260 and closing > 40 and not (st.breakUntil and now < st.breakUntil) then
 			st.breakUntil = now + 1.8
-			local side = flat:Cross(Vector3.yAxis).Unit * (rng:NextNumber() < 0.5 and -1 or 1)
-			st.breakDir = (flat * 0.4 + side + Vector3.new(0, 0.45, 0)).Unit
+			-- оба уходят вправо от себя (в лобовой это в разные стороны), синие ещё и вверх, красные вниз:
+			-- со случайной стороной пары самолётов то и дело отворачивали навстречу друг другу и сталкивались
+			local side = flat:Cross(Vector3.yAxis).Unit
+			st.breakDir = (flat * 0.4 + side + Vector3.new(0, st.team == "Blue" and 0.5 or -0.3, 0)).Unit
 		end
 	end
 	if st.breakUntil and now < st.breakUntil and st.breakDir then
@@ -779,9 +781,10 @@ local function thinkHeli(st, enemies, now)
 	local flatMove = Vector3.new(move.X, 0, move.Z)
 	if flatMove.Magnitude > 5 then
 		obstacleParams.FilterDescendantsInstances = planeRayParams.FilterDescendantsInstances
-		local look = flatMove.Unit * math.max(60, flatMove.Magnitude * 2)
-		local hit = workspace:Raycast(pos, look, obstacleParams)
-			or workspace:Raycast(pos - Vector3.new(0, 7, 0), look, obstacleParams)
+		local look = flatMove.Unit * math.max(80, flatMove.Magnitude * 2.5)
+		-- коробка в габарит вертолёта с винтом, а не луч: тонкие мачты и растяжки портового крана луч
+		-- не замечал, и вертолёты разбивались о кран у своей базы через 20 с после взлёта
+		local hit = workspace:Blockcast(CFrame.lookAt(pos, pos + flatMove.Unit), Vector3.new(28, 12, 4), look, obstacleParams)
 		if hit then
 			targetY = math.max(targetY, pos.Y + 40)
 			move = move * 0.25
@@ -965,6 +968,7 @@ local function spawnSlot(slot)
 	bySlotBot[bot] = slot
 	CombatService.trackBot(bot)
 	st.spawnedAt = os.clock()
+	local inVehicle = slot.role ~= "infantry"
 	hum.Died:Connect(function()
 		local ship = slot.ship
 		if ship and (slot.role == "gbCaptain" or slot.role == "subCaptain") then
@@ -977,7 +981,9 @@ local function spawnSlot(slot)
 		slot.respawnAt = os.clock() + B.RespawnTime
 		slot.role = slot.baseRole
 		slot.waitSince = nil
-		Debris:AddItem(bot, 3)
+		-- экипаж техники гибнет вместе с ней: тело не лежит потом на площадке с полоской здоровья
+		if inVehicle then hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None end
+		Debris:AddItem(bot, inVehicle and 0.3 or 3)
 	end)
 end
 
@@ -1099,9 +1105,9 @@ local function manage(now)
 		elseif st then
 			-- бот, который должен сидеть, но не сидит (корабль утонул, самолёт пропал) — пересоздать
 			local hum = st.hum
-			if slot.role ~= "infantry" and hum and hum.Health > 0 and not hum.SeatPart and now - (st.spawnedAt or now) > 4 then
+			if slot.role ~= "infantry" and hum and hum.Health > 0 and not hum.SeatPart and now - (st.spawnedAt or now) > 2 then
 				st.unseatedT = st.unseatedT or now
-				if now - st.unseatedT > 5 then hum.Health = 0 end
+				if now - st.unseatedT > 1.5 then hum.Health = 0 end
 			elseif st then
 				st.unseatedT = nil
 			end

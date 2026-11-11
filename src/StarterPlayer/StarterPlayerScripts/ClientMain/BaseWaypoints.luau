@@ -84,6 +84,28 @@ return function(ctx)
 		for _, m in pairs(marks) do
 			if m.bb.Size ~= size then m.bb.Size = size end
 		end
+		-- Вывески баз (ALPHA BASE) и значки островов видны сквозь всё и на телефоне закрывали пол-экрана.
+		-- Размер: по высоте экрана (на телефоне ещё меньше) и по расстоянию — вдали мелкие, вблизи вырастают
+		local cam = workspace.CurrentCamera
+		local eye = cam.CFrame.Position
+		local k = math.clamp(cam.ViewportSize.Y / 800, 0.55, 1) * (ctx.UI.touchOnly and 0.7 or 1)
+		local function fit(g, w, h, pos, nearD, farD, farK)
+			local f = k * (1 - (1 - farK) * math.clamp(((pos - eye).Magnitude - nearD) / (farD - nearD), 0, 1))
+			local s = UDim2.fromOffset(math.floor(w * f / 2 + 0.5) * 2, math.floor(h * f / 2 + 0.5) * 2)
+			if g.Size ~= s then g.Size = s end
+		end
+		for _, team in ipairs({"Blue", "Red"}) do
+			local b = teamsFolder:FindFirstChild(team .. "Base")
+			local sign = b and b:FindFirstChild("Decor") and b.Decor:FindFirstChild("BaseSign")
+			local g = sign and sign:FindFirstChildOfClass("BillboardGui")
+			if g then fit(g, 320, 56, sign.Position, 250, 1400, 0.45) end
+		end
+		local neutral = teamsFolder.Parent:FindFirstChild("Neutral")
+		for _, o in ipairs(neutral and neutral:GetChildren() or {}) do
+			local a = o:FindFirstChild("Capture") and o.Capture:FindFirstChild("LabelAnchor")
+			local g = a and a:FindFirstChild("IslandBadge")
+			if g then fit(g, 48, 56, a.Position, 500, 3000, 0.6) end
+		end
 		local team = ctx.team()
 		local char = player.Character
 		local hrp = char and char:FindFirstChild("HumanoidRootPart")

@@ -185,7 +185,10 @@ local function onCharacter(player, char)
 	end
 
 	if kind ~= "Lobby" then
+		-- щит после появления: виден всем, урон не проходит (CombatService и Humanoid:TakeDamage его учитывают)
 		local ff = Instance.new("ForceField")
+		ff.Name = "SpawnShield"
+		ff.Visible = true
 		ff.Parent = char
 		Debris:AddItem(ff, Config.Spawn.ProtectionSeconds)
 		-- стартовое оружие команды (синие — M4A1, красные — AK-47); require здесь, чтобы не зависеть от порядка загрузки
@@ -193,6 +196,10 @@ local function onCharacter(player, char)
 		local ok, err = pcall(function()
 			local GunService = require(Services.GunService)
 			GunService.give(player, Config.TeamGun[TeamService.getTeamName(player) or ""] or "Rifle")
+			-- купленное на военном базаре оружие — каждую жизнь
+			for _, it in ipairs(Config.Bazaar.Items) do
+				if it.Gun and DataService.hasItem(player, it.Bit) then GunService.give(player, it.Gun) end
+			end
 		end)
 		if not ok then warn("[SpawnService] give gun: " .. tostring(err)) end
 	end

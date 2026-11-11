@@ -14,6 +14,7 @@ local ProjectileService = require(Services.ProjectileService)
 local DataService = require(Services.DataService)
 local TeamService = require(Services.TeamService)
 local Notifier = require(Services.Notifier)
+local Homing = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Homing"))
 
 local GunService = {}
 local lastShot = {}
@@ -66,6 +67,167 @@ local function hasGun(player, key)
 	return false
 end
 
+------------------------------------------------------------------ C4
+-- Заряд бросают (по дуге, сервер считает полёт) — прилипает к тому, во что попал: к движущейся детали сваркой
+-- (едет с кораблём), к неподвижной — закреплён; в воде тонет. Одновременно (в полёте и прилипших) не больше
+-- MaxActive; подрыв всех — Remotes.GunAlt (F / BOOM). Погиб — заряды обезврежены (пропадают).
+local charges = {} -- [игрок] = {char, list}
+local chargeParams = RaycastParams.new()
+chargeParams.FilterType = Enum.RaycastFilterType.Exclude
+chargeParams.CollisionGroup = "Weapons"
+
+local function clearCharges(player)
+	local c = charges[player]
+	charges[player] = nil
+	if player.Parent then player:SetAttribute("C4Placed", 0) end
+	for _, p in ipairs(c and c.list or {}) do
+		if p.Parent then p:Destroy() end
+	end
+end
+
+local THROW_SPEED, THROW_UP, THROW_G = 75, 16, 110 -- бросок: ~45 студов по ровному
+local thrown = {} -- заряды в полёте: {p, pos, vel, player, c, char, t}
+
+local function newCharge(cf)
+	local p = Instance.new("Part")
+	p.Name = "C4Charge"
+	p.Size = Vector3.new(1.1, 0.42, 0.75)
+	p.Color = Color3.fromRGB(204, 180, 124)
+	p.Material = Enum.Material.SmoothPlastic
+	p.Anchored = true
+	p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow, p.Massless = false, false, false, false, true
+	p.CFrame = cf
+	local led = Instance.new("Part")
+	led.Name = "Led"
+	led.Shape = Enum.PartType.Ball
+	led.Size = Vector3.new(0.2, 0.2, 0.2)
+	led.Material = Enum.Material.Neon
+	led.Color = Color3.fromRGB(255, 40, 40)
+	led.CanCollide, led.CanQuery, led.CanTouch, led.CastShadow, led.Massless = false, false, false, false, true
+	led.CFrame = cf * CFrame.new(0.3, 0.25, 0)
+	led.Parent = p
+	local lw = Instance.new("WeldConstraint")
+	lw.Part0, lw.Part1 = p, led
+	lw.Parent = led
+	local light = Instance.new("PointLight")
+	light.Color, light.Range, light.Brightness = Color3.fromRGB(255, 40, 40), 5, 1
+	light.Parent = led
+	p.Parent = workspace:FindFirstChild("Effects") or workspace
+	return p
+end
+
+-- заряд долетел: прилипает к поверхности res
+local function stick(e, res)
+	local n = res.Normal
+	local right = n:Cross(math.abs(n.Y) < 0.95 and Vector3.yAxis or Vector3.xAxis).Unit
+	local p = e.p
+	p.CFrame = CFrame.fromMatrix(res.Position + n * 0.22, right, n)
+	local target = res.Instance
+	if target:IsA("BasePart") and not target.Anchored then
+		p.Anchored = false
+		local w = Instance.new("WeldConstraint")
+		w.Part0, w.Part1 = target, p
+		w.Parent = p
+	end
+	table.insert(e.c.list, p)
+	e.player:SetAttribute("C4Placed", #e.c.list)
+end
+
+local function throwCharge(player, char, head, aim, gun, tool)
+	local c = charges[player]
+	if c and c.char ~= char then
+		clearCharges(player)
+		c = nil
+	end
+	if c and #c.list + c.flying >= (gun.MaxActive or 3) then
+		Notifier.send(player, ("%d charges out — press F (BOOM) to detonate"):format(#c.list + c.flying), "error")
+		return false
+	end
+	if not c then
+		c = {char = char, list = {}, flying = 0}
+		charges[player] = c
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			hum.Died:Once(function()
+				if charges[player] == c then clearCharges(player) end
+			end)
+		end
+	end
+	local dir = aim.Unit
+	local start = head.Position + dir * 1.5
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	local inherit = hrp and hrp.AssemblyLinearVelocity * 0.5 or Vector3.zero
+	c.flying += 1
+	table.insert(thrown, {p = newCharge(CFrame.lookAt(start, start + dir)), pos = start, vel = dir * THROW_SPEED + Vector3.new(0, THROW_UP, 0) + inherit,
+		player = player, c = c, char = char, t = 0})
+	return true
+end
+
+game:GetService("RunService").Heartbeat:Connect(function(dt)
+	local fx = workspace:FindFirstChild("Effects")
+	for i = #thrown, 1, -1 do
+		local e = thrown[i]
+		e.t += dt
+		local nv = e.vel + Vector3.new(0, -THROW_G * dt, 0)
+		local np = e.pos + (e.vel + nv) * 0.5 * dt
+		local done, keep = false, false
+		if charges[e.player] ~= e.c or not e.p.Parent then
+			done = true -- взорвали / погиб, пока летел
+		else
+			chargeParams.FilterDescendantsInstances = fx and {e.char, fx} or {e.char}
+			local res = workspace:Raycast(e.pos, np - e.pos, chargeParams)
+			local kind = res and CombatService.resolveHit(res.Instance)
+			if res and kind ~= "player" and kind ~= "bot" then
+				stick(e, res)
+				done, keep = true, true
+			elseif np.Y < -2 or e.t > 5 then
+				done = true -- утонул / улетел
+			else
+				e.pos, e.vel = np, nv
+				e.p.CFrame = CFrame.lookAt(np, np + nv) * CFrame.Angles(e.t * 9, 0, 0)
+			end
+		end
+		if done then
+			table.remove(thrown, i)
+			if e.c then e.c.flying = math.max(0, e.c.flying - 1) end
+			if not keep and e.p.Parent then e.p:Destroy() end
+		end
+	end
+end)
+
+-- захват цели управляемой ракетой: клиент сообщает, на ком начал захват (или nil — цель потеряна)
+local locks = {} -- [игрок] = {model, t}
+local function onLock(player, model)
+	if model == nil then
+		locks[player] = nil
+	elseif typeof(model) == "Instance" and model:IsA("Model") then
+		local cur = locks[player]
+		if not cur or cur.model ~= model then locks[player] = {model = model, t = os.clock()} end
+	end
+end
+
+local lastAlt = {}
+local function detonate(player)
+	local t = os.clock()
+	if lastAlt[player] and t - lastAlt[player] < 0.5 then return end
+	lastAlt[player] = t
+	local c = charges[player]
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not c or #c.list == 0 or c.char ~= char or not hum or hum.Health <= 0 then return end
+	charges[player] = nil
+	local gun = Config.Guns.C4
+	player:SetAttribute("C4Placed", 0)
+	for i, p in ipairs(c.list) do
+		task.delay((i - 1) * 0.12, function()
+			if not p.Parent then return end
+			local pos = p.Position
+			p:Destroy()
+			ProjectileService.blast(pos, player, {Damage = gun.Damage, SplashRadius = gun.SplashRadius, Class = gun.Class})
+		end)
+	end
+end
+
 -- hitPart — деталь, в которую попал клиент (по тому, что видит игрок); сервер проверяет её (checkClientHit),
 -- а если не прошла или нет — считает попадание своим лучом
 local function onFire(player, target, hitPart)
@@ -110,13 +272,42 @@ local function onFire(player, target, hitPart)
 	if aim.Magnitude < (gun.Rocket and 1 or 0.5) then return end
 	local hrp = char:FindFirstChild("HumanoidRootPart")
 	if hrp and not facing(hrp, aim) then return end
+	-- управляемая ракета: цель — та, на которой клиент начал захват (Remotes.GunLock), если с начала захвата прошло
+	-- LockTime и она всё ещё в конусе прицела (с запасом на пинг); иначе без наведения
+	local lockModel, lockPart
+	if gun.Homing then
+		local rec = locks[player]
+		if rec and os.clock() - rec.t >= (gun.LockTime or 0) - 0.35 then
+			lockPart = Homing.check(rec.model, gun.Homing, from, aim.Unit, TeamService.getTeamName(player), gun.LockRange, (gun.LockCone or 12) + 6)
+			lockModel = lockPart and rec.model or nil
+		end
+		if gun.RequireLock and not lockModel then
+			if not safeWarned[player] or t - safeWarned[player] > 2 then
+				safeWarned[player] = t
+				Notifier.send(player, "No target locked — keep an enemy aircraft in the sight", "error")
+			end
+			return
+		end
+	end
+	if gun.Charge then
+		if not throwCharge(player, char, head, aim, gun, tool) then return end
+		lastShot[player] = t
+		tool:SetAttribute("Ammo", ammo - 1)
+		if ammo - 1 <= 0 then task.delay(0.4, function() if tool.Parent then tool:Destroy() end end) end
+		return
+	end
 	lastShot[player] = t
 	tool:SetAttribute("Ammo", ammo - 1)
 
 	if gun.Rocket then
 		local d = aim
 		local W = {Damage = gun.Damage, SplashRadius = gun.SplashRadius, Gravity = gun.Gravity, Class = gun.Class}
-		ProjectileService.launch(from, d.Unit * gun.ShellSpeed, player, W, {char})
+		if gun.Homing then
+			W.Speed, W.TurnRate, W.Life, W.Proximity = gun.Speed, gun.TurnRate, gun.Life, gun.Proximity
+			ProjectileService.launchMissile(from, d.Unit, player, W, {char}, lockModel, lockPart, gun.Homing)
+		else
+			ProjectileService.launch(from, d.Unit * gun.ShellSpeed, player, W, {char})
+		end
 		-- граната улетела — труба пустая до перезарядки
 		local wh = tool:FindFirstChild("Warhead")
 		if wh then wh.Transparency = 1 end
@@ -128,6 +319,27 @@ local function onFire(player, target, hitPart)
 	end
 
 	local origin = from
+	if gun.Pellets then
+		-- Дробь: клиент присылает, во что попала каждая дробина ({деталь, точка, …}). Каждую проверяем отдельно:
+		-- дальность, сектор от линии прицела (разлёт с запасом), голова — только если точка у головы, не сквозь стены
+		local hits = typeof(hitPart) == "table" and hitPart or {}
+		local cone = math.cos(math.rad(gun.Hip * 2 + 4))
+		local facingOk = not hrp or facing(hrp, aim, CLIENT_HIT_YAW)
+		local marked = false
+		for i = 1, math.min(#hits, gun.Pellets * 2), 2 do
+			local part, pos = hits[i], hits[i + 1]
+			if facingOk and typeof(part) == "Instance" and part:IsA("BasePart") and not part:IsDescendantOf(char)
+				and typeof(pos) == "Vector3" and (pos - origin).Magnitude > 0.5 and aim.Unit:Dot((pos - origin).Unit) >= cone
+				and (part.Name ~= "Head" or (pos - part.Position).Magnitude <= 2 + part.AssemblyLinearVelocity.Magnitude * 0.3)
+				and CombatService.checkClientHit(origin, part, pos, gun.Range + 20) then
+				local kind, applied = CombatService.applyHit(player, part, gun.Damage, nil, gun.Class, pos)
+				if (kind == "player" or kind == "bot") and applied then marked = true end
+			end
+		end
+		CombatService.tracer(muzzle and muzzle.Position or origin, origin + aim.Unit * math.min(aim.Magnitude, gun.Range), player.UserId, gun.Sound)
+		if marked then HitMarker:FireClient(player, false) end
+		return
+	end
 	-- попадание глазами игрока: цель на сервере уже сдвинулась на пинг, серверный луч бы промахнулся
 	if typeof(hitPart) == "Instance" and hitPart:IsA("BasePart") and not hitPart:IsDescendantOf(char)
 		and (not hrp or facing(hrp, aim, CLIENT_HIT_YAW))
@@ -247,9 +459,23 @@ function GunService.init()
 	Remotes:WaitForChild("Fire").OnServerEvent:Connect(onFire)
 	Remotes:WaitForChild("GunReload").OnServerEvent:Connect(onReload)
 	Remotes:WaitForChild("GunAim").OnServerEvent:Connect(onAim)
+	local alt = Remotes:FindFirstChild("GunAlt")
+	if not alt then
+		alt = Instance.new("RemoteEvent")
+		alt.Name = "GunAlt"
+		alt.Parent = Remotes
+	end
+	alt.OnServerEvent:Connect(detonate) -- подрыв C4
+	local lockRemote = Remotes:FindFirstChild("GunLock")
+	if not lockRemote then
+		lockRemote = Instance.new("RemoteEvent")
+		lockRemote.Name = "GunLock"
+		lockRemote.Parent = Remotes
+	end
+	lockRemote.OnServerEvent:Connect(onLock)
 	for _, p in ipairs(CollectionService:GetTagged("WeaponRack")) do setupRack(p) end
 	CollectionService:GetInstanceAddedSignal("WeaponRack"):Connect(setupRack)
-	Players.PlayerRemoving:Connect(function(p) lastShot[p] = nil lastAim[p] = nil safeWarned[p] = nil end)
+	Players.PlayerRemoving:Connect(function(p) lastShot[p] = nil lastAim[p] = nil safeWarned[p] = nil lastAlt[p] = nil locks[p] = nil clearCharges(p) end)
 end
 
 return GunService

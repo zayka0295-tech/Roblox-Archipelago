@@ -70,7 +70,8 @@ return function(ctx)
 		table.insert(touchBtns, b)
 		return b
 	end
-	local bombBtn, sightBtn, upBtn, downBtn
+	local bombBtn, sightBtn, upBtn, downBtn, exitBtn
+	local leaveHeli -- задаётся ниже (нужен текущий вертолёт)
 	local dropBomb -- задаётся ниже (нужен текущий самолёт)
 	local toggleSight -- тоже
 	if touchOnly then
@@ -84,9 +85,13 @@ return function(ctx)
 		-- бомбовый прицел — рядом с BOMB
 		sightBtn = UI.roundButton(gui, "b2", "SIGHT", Color3.fromRGB(60, 70, 90))
 		sightBtn.Activated:Connect(function() if toggleSight then toggleSight() end end)
+		-- вертолёт: кнопка прыжка Roblox скрыта (случайное касание в воздухе — и пилот за бортом), выход — своей кнопкой
+		exitBtn = UI.roundButton(gui, "b1", "EXIT", Color3.fromRGB(150, 60, 50))
+		exitBtn.Activated:Connect(function() if leaveHeli then leaveHeli() end end)
 	end
 	local function showTouch(on)
 		for _, b in ipairs(touchBtns) do b.Visible = on end
+		if exitBtn then exitBtn.Visible = on and P.Heli == true end
 		if bombBtn then bombBtn.Visible = on and (P.Bombs or 0) > 0 end
 		if sightBtn then sightBtn.Visible = on and (P.Bombs or 0) > 0 end
 	end
@@ -130,6 +135,32 @@ return function(ctx)
 		aimPitch = math.clamp(aimPitch - d.Y * 0.006, -1.35, 1.35)
 	end
 	local lastFiring = false
+	-- Телефон, вертолёт. Стандартная кнопка прыжка стоит между UP и DOWN, а прыжок — это выход из кресла:
+	-- задел её в воздухе — выпал. Поэтому на время полёта прыжок персонажа обнуляется (кнопка Roblox при этом
+	-- прячется сама), на её место встаёт DOWN, а выход — кнопка EXIT в стороне. Меняется только у этого клиента.
+	local heliStick -- стик вертолёта на телефоне (UI.joystick)
+	local jumpSaved
+	local heliHintShown = false
+	local function hideJump(hum, on)
+		if on then
+			if not jumpSaved and hum then
+				jumpSaved = {hum = hum, power = hum.JumpPower, height = hum.JumpHeight}
+				hum.JumpPower, hum.JumpHeight = 0, 0
+			end
+		elseif jumpSaved then
+			local s = jumpSaved
+			jumpSaved = nil
+			if s.hum.Parent then s.hum.JumpPower, s.hum.JumpHeight = s.power, s.height end
+		end
+	end
+	leaveHeli = function()
+		if not flying then return end
+		local hum = flying.hum
+		hideJump(hum, false)
+		-- hum.Jump = true тут не годится: модуль управления Roblox каждый кадр сбрасывает его обратно
+		hum.Sit = false
+		hum:ChangeState(Enum.HumanoidStateType.Jumping)
+	end
 
 	local function planeSeat()
 		local char = player.Character
@@ -180,6 +211,16 @@ return function(ctx)
 			}
 		end
 		if upBtn then upBtn.Text = P.Heli and "UP" or "GAS\n+" end
+		if downBtn then UI.setSlot(downBtn, P.Heli and "jump" or "a1") end
+		if touchOnly and P.Heli then
+			hideJump(hum, true)
+			heliStick = heliStick or UI.joystick()
+			heliStick.request("heli", true)
+			if not heliHintShown then
+				heliHintShown = true
+				UI.toast("Stick: fly forward, back and sideways · drag the screen: turn and aim · UP / DOWN: altitude · let go to hover", "info")
+			end
+		end
 		if downBtn then downBtn.Text = P.Heli and "DOWN" or "GAS\n−" end
 		UI.controls("plane", rows)
 		flying = {model = model, root = root, ao = root:FindFirstChild("FlightAlign"), lv = root:FindFirstChild("FlightDrive"), seat = seat, hum = hum, muzzles = {}, shotN = 0, lastShot = 0,
@@ -228,6 +269,8 @@ return function(ctx)
 
 	local function stop()
 		setSight(false)
+		hideJump(nil, false)
+		if heliStick then heliStick.request("heli", false) end
 		for _, p in ipairs(flying and flying.faded or {}) do
 			if p.Parent then p.LocalTransparencyModifier = 0 end
 		end
@@ -444,10 +487,10 @@ return function(ctx)
 			if key(Enum.KeyCode.Up) then aimPitch = math.clamp(aimPitch + 1.5 * dt, -1.35, 1.35) end
 			if key(Enum.KeyCode.Down) then aimPitch = math.clamp(aimPitch - 1.5 * dt, -1.35, 1.35) end
 		end
-		if touchOnly then
-			local mv = moveVector()
-			mx += mv.X
-			mz -= mv.Z
+		if touchOnly and heliStick then
+			local sv = heliStick.vector() -- x — вправо, y — вперёд
+			mx += sv.X
+			mz += sv.Y
 		end
 		if held.up then climb += 1 end
 		if held.down then climb -= 1 end
@@ -513,7 +556,10 @@ return function(ctx)
 		local V = hVel.Magnitude
 		local turnMax = math.rad(P.TurnRate)
 		local _, _, rollNow = root.CFrame:ToOrientation()
-		if mx ~= 0 and not parked then
+	-- телефон — упрощённое управление одним стиком: вперёд / назад — наклон, влево / вправо — поворот курса
+		-- (и прицела), стик отпущен — вертолёт сам гасит скорость и висит. Палец по экрану только доводит прицел
+		local assist = touchOnly
+		if not assist and mx ~= 0 and not parked then
 			local rate = math.clamp(g * math.tan(rollNow) / math.max(V, 20), -turnMax, turnMax) * math.clamp(V / 25, 0, 1)
 			aimYaw += rate * dt
 		end
@@ -546,6 +592,12 @@ return function(ctx)
 			if mx == 0 then
 				wantRoll = math.clamp(yawRate / turnMax * math.clamp(fwdSpeed / P.MaxSpeed, 0, 1), -1, 1) * math.rad(20)
 			end
+		end
+		if assist and not parked then
+			-- поворот стиком: крен в поворот только на ходу (на месте вертолёт просто разворачивается)
+			-- ось стика отпущена — наклон против движения по ней: скорость гасится сама
+			if mz == 0 and math.abs(fwdSpeed) > 1.5 then wantPitch = math.clamp(fwdSpeed / 35, -1, 1) * maxTilt * 0.8 end
+			if mx == 0 and math.abs(sideSpeed) > 1.5 then wantRoll = math.clamp(sideSpeed / 35, -1, 1) * maxTilt * 0.8 end
 		end
 		-- граница карты: наклон к центру
 		if math.abs(pos.X) > P.BoundsX or math.abs(pos.Z) > P.BoundsZ then

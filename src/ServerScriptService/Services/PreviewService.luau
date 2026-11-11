@@ -268,6 +268,19 @@ function PreviewService.init()
 	buildBase().Parent = folder
 	buildCentral().Parent = folder
 	buildParachute().Parent = folder
+	-- оружие военного базара (Config.Bazaar.Items с Gun): копия инструмента из ServerStorage.Weapons моделью
+	local weapons = ServerStorage:FindFirstChild("Weapons")
+	for _, it in ipairs(Config.Bazaar.Items) do
+		local tool = it.Gun and it.Preview and weapons and weapons:FindFirstChild(it.Gun)
+		if tool then
+			local m = Instance.new("Model")
+			m.Name = it.Preview
+			for _, d in ipairs(strip(tool, it.Preview):GetChildren()) do
+				if not (d:IsA("BasePart") and d.Transparency >= 1) then d.Parent = m end
+			end
+			m.Parent = folder
+		end
+	end
 	folder.Parent = ReplicatedStorage
 end
 

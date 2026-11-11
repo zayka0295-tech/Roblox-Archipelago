@@ -60,9 +60,10 @@ Config.Balance = {
 }
 
 Config.Spawn = {
-	ProtectionSeconds = 8,   -- ForceField после появления
+	ProtectionSeconds = 10,  -- видимый щит (ForceField) после появления и возрождения: урон не проходит
 	RespawnTime = 5,
 	SafeZoneTag = "SafeZone",
+	BaseSafeZone = false,    -- безопасная зона на самих базах (Zones.SafeZone с Team = команда): выключена, вместо неё щит выше
 	WalkSpeed = 32,          -- скорость ходьбы игрока (стандарт Roblox — 16)
 	SwimSpeed = 12,          -- скорость в воде (SwimLimit на клиенте): плыть медленнее, чем бежать
 	SwimJumpCooldown = 1.5,  -- прыжок из воды — не чаще раза в N сек. (иначе «прыгают» по морю быстрее, чем бегают)
@@ -102,6 +103,10 @@ Config.Combat = {
 		Torpedo  = {Infantry = 0,   Plane = 0,   Light = 1,    Heavy = 1.72, Carrier = 2},
 		RPG      = {Infantry = 1,   Plane = 0.8, Light = 1,    Heavy = 0.5,  Carrier = 0.2},
 		Bomb     = {Infantry = 1,   Plane = 0.3, Light = 1,    Heavy = 1,    Carrier = 0.8},
+		-- оружие военного базара: Javelin — по кораблям, Игла — по самолётам, C4 — по всему, к чему прилепишь
+		AT       = {Infantry = 0.4, Plane = 0.3, Light = 1,    Heavy = 1.2,  Carrier = 0.9},
+		Manpads  = {Infantry = 0.2, Plane = 1,   Light = 0.15, Heavy = 0.05, Carrier = 0.03},
+		C4       = {Infantry = 1,   Plane = 1,   Light = 1.2,  Heavy = 1,    Carrier = 0.8},
 	},
 }
 
@@ -245,6 +250,13 @@ Config.Bazaar = {
 	Items = {
 		{Id = "Parachute", Bit = 1, Price = 60, Name = "Parachute", Preview = "Parachute",
 			Description = "Jump out of any plane in the air — the chute opens by itself, just like in the cargo drop"},
+		-- Gun — ключ Config.Guns: оружие выдаётся при каждом появлении в бою (и сразу после покупки)
+		{Id = "C4", Bit = 2, Price = 100, Name = "C4 charges", Preview = "Gun_C4", Gun = "C4",
+			Description = "3 sticky charges every life: click to throw onto a ship, truck or wall, press F (BOOM on mobile) to blow them all"},
+		{Id = "Igla", Bit = 4, Price = 180, Name = "Igla MANPADS", Preview = "Gun_Igla", Gun = "Igla",
+			Description = "Heat-seeking missile: keep an enemy plane or helicopter in the sight until it locks, then fire. 3 missiles every life"},
+		{Id = "Javelin", Bit = 8, Price = 250, Name = "Javelin", Preview = "Gun_Javelin", Gun = "Javelin",
+			Description = "Guided anti-ship missile: lock on an enemy ship and fire — it flies to the target by itself. 4 missiles every life"},
 	},
 	BailMinHeight = 40,
 }
@@ -451,6 +463,7 @@ Config.Bots = {
 -- Только для тестов в Studio (в опубликованной игре не действует)
 Config.Dev = {
 	StudioGold = 1000000,
+	StudioDiamonds = 100000, -- только в Studio: диамантов не меньше стольки (проверка базара); 0 = выключить
 	StudioTreasury = 1000000, -- только в Studio: казна каждой команды на старте раунда; 0 = выключить
 	StudioWalkSpeed = 0, -- скорость бега в Studio; 0 = обычная
 }
@@ -587,6 +600,37 @@ Config.Guns = {
 	RPG7 = {DisplayName = "RPG-7", Class = "RPG", Rocket = true, Damage = 250, SplashRadius = 14, RPM = 30, Range = 1000,
 		Mag = 1, Reserve = 4, Reload = 3, ShellSpeed = 280, Gravity = 8, Hip = 1.5, Aim = 0.3, Bloom = 0, Recoil = 3, RecoilYaw = 0.5, Shake = 2.5,
 		AimFOV = 45, Price = 400, Sound = "RPGLaunch"},
+	-- Покупные стволы оружейного стенда (Price — золото, до смерти). Reserve — запас патронов сверх магазина.
+	-- Semi — один выстрел на нажатие; Pellets — дробин в выстреле (Damage — за каждую, разлёт = Hip / Aim);
+	-- Scope — оптика: в прицеле (ПКМ / AIM) весь экран — прицельная сетка, чувствительность ниже.
+	-- MP5: лучший от бедра (малый разброс и отдача), но слабее автоматов на дистанции.
+	MP5 = {DisplayName = "MP5", Class = "Rifle", Damage = 22, RPM = 900, Range = 450, Mag = 30, Reserve = 150, Reload = 1.9,
+		Hip = 1.3, Aim = 0.35, Bloom = 0.1, Recoil = 0.26, RecoilYaw = 0.12, RecoilDrift = 0.4, Shake = 0.3, AimFOV = 55, Price = 250, Sound = "MP5"},
+	-- дробовик: в упор 9 x 13 = 117 (убивает с выстрела), на 40 студах попадает уже треть дроби
+	Shotgun = {DisplayName = "R870 shotgun", Class = "Rifle", Damage = 13, Pellets = 9, Semi = true, RPM = 75, Range = 140, Mag = 6, Reserve = 30, Reload = 3,
+		Hip = 4.2, Aim = 3.2, Bloom = 0, Recoil = 2.4, RecoilYaw = 0.6, Shake = 1.6, AimFOV = 58, Price = 300, Sound = "Shotgun"},
+	-- снайперка: в тело 95 (два выстрела), в голову x1,5 — наповал; от бедра почти не попадает
+	Sniper = {DisplayName = "AWP sniper", Class = "Rifle", Damage = 95, Semi = true, Scope = true, RPM = 42, Range = 1600, Mag = 5, Reserve = 25, Reload = 3.2,
+		Hip = 5, Aim = 0.03, Bloom = 0, Recoil = 3.2, RecoilYaw = 0.4, Shake = 2, AimFOV = 14, Price = 600, Sound = "Sniper"},
+	-- Оружие военного базара (Config.Bazaar.Items, Gun): выдаётся каждую жизнь, пока куплено.
+	-- Homing — самонаведение (Shared.Homing): "Naval" — корабли, "Air" — самолёты и вертолёты; цель захватывается,
+	-- пока она в конусе LockCone от прицела ближе LockRange, и только через LockTime сек. удержания (рамка красная → зелёная).
+	-- RequireLock — без захвата не стреляет.
+	-- Speed / TurnRate — скорость ракеты и поворот (°/с), Life — сек. полёта, Proximity — неконтактный взрыватель (студы).
+	-- Javelin: 4 ракеты; катер — 2 попадания, линкор — 8, авианосец — 16. Без захвата летит прямо, как РПГ.
+	Javelin = {DisplayName = "Javelin", Class = "AT", Rocket = true, Homing = "Naval", Damage = 420, SplashRadius = 12,
+		Speed = 170, TurnRate = 55, Life = 12, Gravity = 6, LockRange = 1300, LockCone = 12, LockTime = 2.5,
+		RPM = 15, Range = 1500, Mag = 1, Reserve = 3, Reload = 4, Hip = 1.5, Aim = 0.3, Bloom = 0, Recoil = 3, RecoilYaw = 0.5, Shake = 2.5,
+		AimFOV = 40, Sound = "RPGLaunch"},
+	-- Игла: 3 ракеты; истребитель — 1 попадание, вертолёт — 2, бомбардировщик — 3
+	Igla = {DisplayName = "Igla", Class = "Manpads", Rocket = true, Homing = "Air", RequireLock = true, Damage = 300, SplashRadius = 10,
+		Speed = 260, TurnRate = 110, Life = 9, Gravity = 0, Proximity = 12, LockRange = 1500, LockCone = 14, LockTime = 1.5,
+		RPM = 20, Range = 1800, Mag = 1, Reserve = 2, Reload = 3.5, Hip = 1.5, Aim = 0.3, Bloom = 0, Recoil = 2.5, RecoilYaw = 0.4, Shake = 2,
+		AimFOV = 40, Sound = "RPGLaunch"},
+	-- C4: 3 заряда на жизнь, бросок ~45 студов (GunService), прилипает к кораблю, грузовику, стене; подрыв — F / кнопка BOOM;
+	-- одновременно не больше MaxActive. Взрыв 400 по площади: катер — с одного заряда, линкор — 10
+	C4 = {DisplayName = "C4", Class = "C4", Charge = true, Semi = true, Damage = 400, SplashRadius = 18, MaxActive = 3,
+		RPM = 120, Range = 60, Mag = 3, Reserve = 0, Reload = 1, Hip = 0, Aim = 0, Bloom = 0, Recoil = 0, RecoilYaw = 0, Shake = 0, AimFOV = 70},
 	-- старая винтовка (теперь только у ботов)
 	Rifle = {DisplayName = "Rifle", Class = "Rifle", Damage = 25, RPM = 400, Range = 700, Mag = 30, Reload = 2,
 		Hip = 2.5, Aim = 0.6, Bloom = 0.3, Recoil = 1, RecoilYaw = 0.4, AimFOV = 55, Sound = "Rifle"},

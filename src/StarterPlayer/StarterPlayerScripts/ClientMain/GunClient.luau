@@ -30,6 +30,9 @@ return function(ctx)
 	local touchOnly = UI.touchOnly
 	local rng = Random.new()
 	-- общее с GunPose: толчок оружия в руках и прицеливание
+	local Homing = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Homing"))
+	local AltRemote = ctx.Remotes:WaitForChild("GunAlt", 10)
+	local LockRemote = ctx.Remotes:WaitForChild("GunLock", 10)
 	local gunState = {kick = 0, aiming = false}
 	ctx.gunState = gunState
 
@@ -71,9 +74,9 @@ return function(ctx)
 	panel.Size = UDim2.fromOffset(220, 74)
 	if touchOnly then
 		-- на телефоне справа внизу кнопки — патроны по центру снизу
-		panel.AnchorPoint = Vector2.new(0.5, 1)
-		panel.Position = UDim2.new(0.5, 0, 1, -10)
-		panel.Size = UDim2.fromOffset(170, 58)
+		panel.AnchorPoint = Vector2.new(0, 1)
+		panel.Position = UDim2.new(0.5, 44, 1, -12) -- справа от слота оружия, не поверх него
+		panel.Size = UDim2.fromOffset(88, 28)
 	end
 	panel.BackgroundColor3 = Color3.fromRGB(26, 74, 160)
 	panel.BackgroundTransparency = 0.1
@@ -101,9 +104,48 @@ return function(ctx)
 	local nameLbl = label("", UDim2.fromOffset(14, 8), UDim2.new(1, -28, 0, 18), 14, Color3.fromRGB(170, 180, 195))
 	local ammoLbl = label("", UDim2.fromOffset(14, 26), UDim2.new(1, -28, 0, 30), 28, Color3.new(1, 1, 1))
 	local hintLbl = label("", UDim2.fromOffset(14, 54), UDim2.new(1, -28, 0, 14), 11, Color3.fromRGB(150, 158, 170))
+	if touchOnly then
+		-- телефон: только счётчик патронов, маленькой плашкой (название оружия видно на самом слоте)
+		nameLbl.Visible, hintLbl.Visible = false, false
+		ammoLbl.Position, ammoLbl.Size = UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1)
+		ammoLbl.TextSize, ammoLbl.TextXAlignment = 17, Enum.TextXAlignment.Center
+		panel.BackgroundTransparency = 0.35
+		ps.Thickness = 2
+	end
 
 	-- телефон: круглые кнопки вокруг прыжка — перезарядка (слева), FIRE (выше-слева; зажав,
 	-- можно вести пальцем и крутить камеру), AIM (над прыжком)
+	-- оптика (gun.Scope): в прицеле весь экран — чёрная маска с круглым окном и сеткой
+	gui.ClipToDeviceSafeArea = false
+	local scope = UI.new("Frame", {Name = "Scope", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Visible = false, ZIndex = 5}, gui)
+	local hole = UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundTransparency = 1}, scope)
+	UI.new("UICorner", {CornerRadius = UDim.new(0.5, 0)}, hole)
+	local scopeRing = UI.new("UIStroke", {Color = Color3.new(0, 0, 0), Thickness = 100}, hole)
+	local scopeBars = {}
+	for i = 1, 4 do scopeBars[i] = UI.new("Frame", {BackgroundColor3 = Color3.new(0, 0, 0), BorderSizePixel = 0}, scope) end
+	for _, s in ipairs({UDim2.new(1, 0, 0, 1), UDim2.new(0, 1, 1, 0)}) do
+		UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = s, BackgroundColor3 = Color3.new(0, 0, 0), BorderSizePixel = 0}, hole)
+	end
+	local function layoutScope()
+		local v = gui.AbsoluteSize
+		local d = math.floor(v.Y * 0.94)
+		hole.Size = UDim2.fromOffset(d, d)
+		scopeRing.Thickness = d * 0.25 -- закрывает углы квадрата вокруг круга (они не дальше 0,21 d от окружности)
+		-- полосы вокруг квадрата с запасом за края экрана (поля под вырез камеры на телефоне)
+		local sx, sy, m = math.ceil((v.X - d) / 2) + 2, math.ceil((v.Y - d) / 2) + 2, 300
+		scopeBars[1].Position, scopeBars[1].Size = UDim2.fromOffset(-m, -m), UDim2.new(0, sx + m, 1, m * 2)
+		scopeBars[2].Position, scopeBars[2].Size = UDim2.new(1, -sx, 0, -m), UDim2.new(0, sx + m, 1, m * 2)
+		scopeBars[3].Position, scopeBars[3].Size = UDim2.fromOffset(-m, -m), UDim2.new(1, m * 2, 0, sy + m)
+		scopeBars[4].Position, scopeBars[4].Size = UDim2.new(0, -m, 1, -sy), UDim2.new(1, m * 2, 0, sy + m)
+	end
+
+	-- захват цели управляемой ракетой (gun.Homing): рамка на захваченной технике
+	local lockBox = UI.new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(64, 64), BackgroundTransparency = 1, Visible = false}, gui)
+	local lockStroke = UI.new("UIStroke", {Color = Color3.fromRGB(255, 60, 50), Thickness = 2}, lockBox)
+	UI.new("UICorner", {CornerRadius = UDim.new(0, 6)}, lockBox)
+	local lockLbl = UI.new("TextLabel", {AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, 4), Size = UDim2.fromOffset(120, 16), BackgroundTransparency = 1,
+		Text = "LOCK", TextColor3 = Color3.fromRGB(255, 60, 50), Font = Enum.Font.GothamBlack, TextSize = 14, TextStrokeTransparency = 0.4}, lockBox)
+
 	local touchButtons = {}
 	if touchOnly then
 		touchButtons.fire = UI.roundButton(gui, "gunFire", "FIRE", Color3.fromRGB(205, 60, 50))
@@ -118,6 +160,9 @@ return function(ctx)
 	local tool, gun, hum, hrp
 	local firing, aiming, freeCursor = false, false, false
 	local pendingShot = false -- клик короче кадра не должен теряться
+	local lockModel, lockWarnT = nil, 0 -- захваченная цель управляемой ракеты
+	local lockCand, lockStart = nil, 0 -- цель, которую сейчас захватываем, и с какого момента
+	local c4Hinted = false
 	local reloadAskedAt, reloadStart, wasReloading = 0, 0, false
 	local nextShot, bloom = 0, 0
 	local pendP, pendY = 0, 0           -- толчок, который ещё не дошёл до прицела, градусы
@@ -172,6 +217,10 @@ return function(ctx)
 		hrp = h.Parent and h.Parent:FindFirstChild("HumanoidRootPart")
 		gui.Enabled = true
 		nameLbl.Text = gun.DisplayName
+		if gun.Charge and not c4Hinted then
+			c4Hinted = true
+			UI.toast(touchOnly and "C4: FIRE — throw a charge, BOOM — detonate" or "C4: click — throw a charge, F — detonate", "info")
+		end
 		bloom, pendP, pendY, climb, burst, shake = 0, 0, 0, 0, 0, 0
 		aimPos, tapRay, wasFirstPerson = nil, nil, nil
 		gunState.tool = t
@@ -221,6 +270,8 @@ return function(ctx)
 		-- клик/касание за миг до того, как убрал оружие (сел, умер), не должен выстрелить при следующем взятии
 		pendingShot, tapRay, dragX, dragY = false, nil, 0, 0
 		gui.Enabled = false
+		scope.Visible, crossImg.Visible, gunState.scoped = false, true, false
+		UserInputService.MouseDeltaSensitivity = 1
 		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 		UserInputService.MouseIconEnabled = true
 		restoreCamera()
@@ -272,10 +323,12 @@ return function(ctx)
 		local spread = (aiming and gun.Aim or gun.Hip) + bloom
 		if hum.MoveDirection.Magnitude > 0.1 then spread *= aiming and 1.3 or 1.5 end
 		if hum.FloorMaterial == Enum.Material.Air then spread *= 2 end
-		local r = math.rad(spread) * math.sqrt(rng:NextNumber())
-		local a = rng:NextNumber() * math.pi * 2
 		local origin, baseDir = aimRay(cam)
-		local dir = (CFrame.lookAt(Vector3.zero, baseDir) * CFrame.Angles(math.sin(a) * r, math.cos(a) * r, 0)).LookVector
+		local function scatter()
+			local r = math.rad(spread) * math.sqrt(rng:NextNumber())
+			local a = rng:NextNumber() * math.pi * 2
+			return (CFrame.lookAt(Vector3.zero, baseDir) * CFrame.Angles(math.sin(a) * r, math.cos(a) * r, 0)).LookVector
+		end
 		local fx = workspace:FindFirstChild("ClientFx")
 		local sfx = workspace:FindFirstChild("Effects")
 		local ex = {char}
@@ -283,22 +336,48 @@ return function(ctx)
 		if sfx then table.insert(ex, sfx) end
 		rayParams.FilterDescendantsInstances = ex
 		local reach = gun.Range + (origin - head.Position).Magnitude
-		local res = workspace:Raycast(origin, dir * reach, rayParams)
-		local target = res and res.Position or origin + dir * reach
-		-- цель не может быть между камерой и стрелком (камера сзади)
-		if (target - head.Position):Dot(dir) < 1 then target = head.Position + dir * gun.Range end
-		aimPos = target
-		-- деталь, в которую попали на нашем экране: сервер проверит и засчитает (иначе пинг съедает попадания)
-		Fire:FireServer(target, res and res.Instance or nil)
+		local target, ends
+		if gun.Pellets then
+			-- дробь: Pellets лучей веером; серверу — куда целились и во что попала каждая дробина ({деталь, точка, …}),
+			-- он проверит каждую отдельно
+			local hits = {}
+			ends = {}
+			for i = 1, gun.Pellets do
+				local d = scatter()
+				local pres = workspace:Raycast(origin, d * reach, rayParams)
+				ends[i] = pres and pres.Position or origin + d * reach
+				if pres then
+					table.insert(hits, pres.Instance)
+					table.insert(hits, pres.Position)
+				end
+			end
+			target = head.Position + baseDir * gun.Range
+			aimPos = target
+			Fire:FireServer(target, hits)
+		else
+			local dir = scatter()
+			local res = workspace:Raycast(origin, dir * reach, rayParams)
+			target = res and res.Position or origin + dir * reach
+			-- цель не может быть между камерой и стрелком (камера сзади)
+			if (target - head.Position):Dot(dir) < 1 then target = head.Position + dir * gun.Range end
+			aimPos = target
+			-- деталь, в которую попали на нашем экране: сервер проверит и засчитает (иначе пинг съедает попадания)
+			Fire:FireServer(target, res and res.Instance or nil)
+		end
 		local muzzle = tool:FindFirstChild("Muzzle") or tool:FindFirstChild("Handle")
 		-- от первого лица настоящее оружие скрыто — вспышка и трассер идут из дула копии перед камерой
 		local fpCF = gunState.firstPerson and gunState.vmMuzzleCF
 		local mcf = fpCF or (muzzle and muzzle.CFrame)
-		if mcf then
+		if mcf and not gun.Charge then
 			muzzleFlash(mcf, fpCF ~= nil)
 			if not gun.Rocket then
 				local shotFx = ctx.screens.ShotFx
-				if shotFx then shotFx.streak(mcf.Position, target, gun.Sound) end
+				if shotFx and ends then
+					-- дробь: трассер через одну дробину, звук — один
+					for i = 1, #ends, 2 do shotFx.streak(mcf.Position, ends[i], i == 1 and gun.Sound or nil) end
+				elseif shotFx then
+					shotFx.streak(mcf.Position, target, gun.Sound)
+				end
 			end
 		end
 		-- отдача: толчок копится и плавно доходит до прицела (GunRecoil); первые пули очереди почти не уводят
@@ -306,7 +385,7 @@ return function(ctx)
 		if now - lastShot > 60 / gun.RPM * 2.5 then burst = 0 end
 		burst += 1
 		lastShot = now
-		local k = (aiming and 0.6 or 1) * ((burst <= 2 and not gun.Rocket) and 0.4 or 1)
+		local k = (aiming and 0.6 or 1) * ((burst <= 2 and not gun.Rocket and not gun.Semi) and 0.4 or 1)
 		pendP += gun.Recoil * k * rng:NextNumber(0.9, 1.1)
 		-- вбок: свой «рисунок» у каждого ствола (RecoilDrift — куда тянет очередь) плюс немного случайности
 		local drift = math.sin(burst * 0.35) * (gun.RecoilDrift or 0)
@@ -317,6 +396,30 @@ return function(ctx)
 	end
 
 	------------------------------------------------------------------ ввод
+	-- подрыв брошенных C4 (F / BOOM) — работает и без C4 в руках: после последнего броска инструмента уже нет
+	local function detonate()
+		if AltRemote and (player:GetAttribute("C4Placed") or 0) > 0 then AltRemote:FireServer() end
+	end
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if not processed and input.KeyCode == Enum.KeyCode.F and not UserInputService:GetFocusedTextBox() then detonate() end
+	end)
+	-- кнопка / подсказка подрыва — свой экран, виден, пока есть брошенные заряды
+	local boomGui = UI.screen("C4Detonate", 13)
+	boomGui.Enabled = false
+	local boomHint = UI.label(boomGui, "", {AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -78), Size = UDim2.fromOffset(300, 24),
+		TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.fromRGB(255, 90, 80), TextSize = 18, TextStrokeTransparency = 0.3, Visible = not touchOnly})
+	if touchOnly then
+		local boomBtn = UI.roundButton(boomGui, "gunAlt", "BOOM", Color3.fromRGB(205, 60, 50))
+		boomBtn.Visible = true
+		boomBtn.Activated:Connect(detonate)
+	end
+	local function refreshBoom()
+		local n = player:GetAttribute("C4Placed") or 0
+		boomGui.Enabled = n > 0
+		boomHint.Text = ("[F] DETONATE C4 ×%d"):format(n)
+	end
+	player:GetAttributeChangedSignal("C4Placed"):Connect(refreshBoom)
+	refreshBoom()
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if not tool then return end
 		if input.KeyCode == Enum.KeyCode.LeftAlt then freeCursor = true return end
@@ -445,6 +548,48 @@ return function(ctx)
 		-- разогрев остывает
 		bloom = math.max(0, bloom - dt * BLOOM_DECAY)
 		gunState.aiming = aiming
+		-- управляемая ракета: та же цель, что выберет сервер (Shared.Homing)
+		-- захват: цель держится в конусе LockTime сек. — рамка красная и сужается, захвачена — зелёная (LOCKED).
+		-- Сервер считает время сам с момента, когда ему сообщили о начале захвата (Remotes.GunLock)
+		if gun.Homing and cam then
+			local m, part = Homing.find(gun.Homing, cam.CFrame.Position, cam.CFrame.LookVector, ctx.team(), gun.LockRange, gun.LockCone)
+			-- захваченную цель держим, пока она в конусе с небольшим запасом (не перескакивает на соседнюю)
+			if lockCand and m ~= lockCand then
+				local keep = Homing.check(lockCand, gun.Homing, cam.CFrame.Position, cam.CFrame.LookVector, ctx.team(), gun.LockRange, gun.LockCone + 3)
+				if keep then m, part = lockCand, keep end
+			end
+			if m ~= lockCand then
+				lockCand, lockStart = m, os.clock()
+				if LockRemote then LockRemote:FireServer(m) end
+			end
+			local prog = m and math.clamp((os.clock() - lockStart) / (gun.LockTime or 1), 0, 1) or 0
+			lockModel = prog >= 1 and m or nil
+			local v, on = Vector3.zero, false
+			if part then v, on = cam:WorldToViewportPoint(part.Position) end
+			lockBox.Visible = on
+			if on then
+				lockBox.Position = UDim2.fromOffset(v.X, v.Y)
+				local d = math.floor(96 - 40 * prog)
+				lockBox.Size = UDim2.fromOffset(d, d)
+				local col = lockModel and Color3.fromRGB(70, 230, 90) or Color3.fromRGB(255, 60, 50)
+				lockStroke.Color, lockLbl.TextColor3 = col, col
+				lockStroke.Thickness = lockModel and 3 or 2
+				lockLbl.Text = lockModel and "LOCKED" or ("LOCKING %d%%"):format(math.floor(prog * 100))
+			end
+		elseif lockBox.Visible or lockModel or lockCand then
+			lockModel, lockBox.Visible = nil, false
+			if lockCand and LockRemote then LockRemote:FireServer(nil) end
+			lockCand = nil
+		end
+		-- оптика: когда зум почти доехал — маска на экран, копию оружия убираем (GunViewmodel), мышь медленнее
+		local scoped = gun.Scope == true and aiming and firstPerson and fovNow < gun.AimFOV + 12
+		if scope.Visible ~= scoped then
+			scope.Visible = scoped
+			crossImg.Visible = not scoped
+			if scoped then layoutScope() end
+			UserInputService.MouseDeltaSensitivity = scoped and 0.25 or 1
+		end
+		gunState.scoped = scoped
 		local ammo = tool:GetAttribute("Ammo") or 0
 		local reloading = tool:GetAttribute("Reloading")
 		-- фаза перезарядки 0..1 — для анимации (GunViewmodel)
@@ -475,7 +620,12 @@ return function(ctx)
 			ammoLbl.Text = ("%d / %d"):format(ammo, gun.Mag)
 		end
 		ammoLbl.TextColor3 = ammo == 0 and Color3.fromRGB(255, 90, 80) or Color3.new(1, 1, 1)
+		if gun.Charge then
+			ammoLbl.Text = ("%d · %d set"):format(ammo, player:GetAttribute("C4Placed") or 0)
+		end
 		hintLbl.Text = reloading and "RELOADING..." or (touchOnly and "" or (firstPerson and "RMB aim · R reload · Alt cursor" or "Click — fire · RMB aim · R reload"))
+		if gun.Charge and not touchOnly then hintLbl.Text = "Click — throw · F — detonate"
+		elseif gun.Homing and not touchOnly then hintLbl.Text = reloading and "RELOADING..." or (lockModel and "LOCKED — fire!" or (lockCand and "Hold the aim — locking…" or "Aim at an enemy to start locking")) end
 	end)
 
 	-- отдача и огонь — после стандартной камеры. Камера Roblox берёт направление из текущего cam.CFrame,
@@ -505,7 +655,7 @@ return function(ctx)
 		end
 		-- палец движется по кнопке огня — ведём прицел, как в мобильных шутерах
 		if dragX ~= 0 or dragY ~= 0 then
-			local s = TOUCH_DEG * (aiming and 0.6 or 1)
+			local s = TOUCH_DEG * (aiming and 0.6 or 1) * (gunState.scoped and 0.3 or 1)
 			local cf = cam.CFrame
 			local look = cf.LookVector
 			local pitch = math.clamp(math.asin(look.Y) - math.rad(dragY * s), math.rad(-80), math.rad(80))
@@ -524,10 +674,17 @@ return function(ctx)
 		-- стрелять — только от первого лица (пока камера не доехала до головы — ждём)
 		if (firing or pendingShot) and firstPerson and not tool:GetAttribute("Reloading") and now >= nextShot and not freeCursor then
 			pendingShot = false
-			if ammo > 0 then
+			if ammo > 0 and gun.RequireLock and not lockModel then
+				-- Игла без захвата не стреляет
+				firing, nextShot = false, now + 0.3
+				if now - lockWarnT > 2 then
+					lockWarnT = now
+					UI.toast("No lock — keep an enemy aircraft in the sight until the box turns green", "error")
+				end
+			elseif ammo > 0 then
 				nextShot = now + 60 / gun.RPM
 				shoot()
-				if gun.Rocket then firing = false end -- РПГ — по одному выстрелу на нажатие
+				if gun.Rocket or gun.Semi then firing = false end -- РПГ — по одному выстрелу на нажатие
 			else
 				requestReload()
 				nextShot = now + 0.4

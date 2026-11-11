@@ -43,7 +43,7 @@ return function(ctx)
 
 	local panel = UI.panel(gui, {
 		Name = "Panel", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.52),
-		Size = UDim2.fromOffset(680, 240), Visible = false,
+		Size = UDim2.fromOffset(680, 470), Visible = false,
 	})
 	UI.scale(panel)
 	UI.padding(panel, 16)
